@@ -22,7 +22,7 @@ def rename_image_files(folder_path):
                 original_file_path = os.path.join(folder_path, filename)
 
                 # Create the new filename with the prefix.
-                new_filename = f"1(2)_{filename}"
+                new_filename = f"4(2)_{filename}"
 
                 # Create the full new path for the renamed file.
                 new_file_path = os.path.join(folder_path, new_filename)
@@ -41,6 +41,6 @@ def rename_image_files(folder_path):
 # --- HOW TO USE ---
 if __name__ == "__main__":
     # CORRECTED FOLDER PATH:
-    path_to_your_folder = r"C:\Users\vsamb\Documents\TuroArnis\no classes\1(2)"
+    path_to_your_folder = r"C:\Users\vsamb\Documents\TuroArnis\no classes\4 (2)"
     
     rename_image_files(path_to_your_folder)

@@ -8,13 +8,11 @@ import mediapipe as mp
 import threading
 import time
 from PIL import Image, ImageTk
-
-# import ttkbootstrap components
 import ttkbootstrap as ttk
 from ttkbootstrap.constants import *
 
-# --- results window class ---
-# (this class remains exactly the same as before)
+#ERRORR ON START WSADNAOIWNDOIAWNFOIANWFOIANFEI
+
 class ResultsWindow(ttk.Toplevel):
     def __init__(self, parent):
         super().__init__(parent, title="All User Results")
@@ -43,15 +41,12 @@ class ResultsWindow(ttk.Toplevel):
         for row_data in mock_data:
             self.table.insert("", END, values=(row_data["user"], row_data["form"], row_data["remarks"], row_data["accuracy"]))
 
-# --- main application class ---
 class TuroArnisGUI:
     def __init__(self, window, window_title):
         self.window = window
         self.window.title(window_title)
-        # set the window to a fixed 1920x1080 size
         self.window.geometry("1920x1080")
 
-        # initialize mediapipe and model variables (same as before)
         self.mp_pose = mp.solutions.pose
         self.pose = self.mp_pose.Pose(min_detection_confidence=0.5, min_tracking_confidence=0.5)
         self.mp_drawing = mp.solutions.drawing_utils
@@ -66,28 +61,20 @@ class TuroArnisGUI:
         except FileNotFoundError:
             print("[error] classifier model or class names file not found.")
 
-        # setup video capture
+        
         self.cap = cv2.VideoCapture(0)
         self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1920)
         self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 1080)
 
-        # --- create and place widgets using .place() ---
-
-        # 1. place the video label to fill the entire window (background)
         self.video_label = ttk.Label(self.window)
         self.video_label.place(x=0, y=0, relwidth=1, relheight=1)
 
-        # 2. create and place the floating controls panel on top
         self.controls_panel = ttk.Frame(self.window, padding=15)
-        # set a semi-transparent background for the "floating" effect
-        # note: tkinter rgba works on macos and some linux, but is tricky on windows.
-        # a solid color is more reliable.
-        self.controls_panel.configure(bootstyle="dark") # using a bootstyle for background
         
-        # position the panel at the top-left corner
+        self.controls_panel.configure(bootstyle="dark") 
+        
         self.controls_panel.place(x=20, y=20)
 
-        # --- populate controls panel (widgets are added using .pack within the panel) ---
         ttk.Label(self.controls_panel, text="Controls", font=("-size 14 -weight bold"), bootstyle="inverse-dark").pack(pady=(0, 10), anchor=W)
         
         self.user_button = ttk.Menubutton(self.controls_panel, text=self.current_user, bootstyle="secondary")
@@ -122,15 +109,12 @@ class TuroArnisGUI:
         self.view_all_results_button = ttk.Button(self.controls_panel, text="View All Results", command=self.open_results_window, bootstyle="info")
         self.view_all_results_button.pack(fill=X, pady=10, side=BOTTOM)
 
-        # thread control and main loop start (same as before)
         self.is_running = True
         self.thread = threading.Thread(target=self.video_loop, daemon=True)
         self.thread.start()
         self.window.protocol("WM_DELETE_WINDOW", self.on_closing)
         self.window.mainloop()
 
-    # --- all other methods (on_user_selected, on_action_selected, reset_feedback, etc.) ---
-    # --- are exactly the same as the previous version. no changes needed there. ---
 
     def on_user_selected(self, username):
         self.current_user = username
@@ -171,7 +155,6 @@ class TuroArnisGUI:
                 time.sleep(0.1)
                 continue
             
-            # resize the frame to fit the 1920x1080 window
             frame = cv2.resize(frame, (1920, 1080))
             
             frame = cv2.flip(frame, 1)
@@ -216,7 +199,6 @@ class TuroArnisGUI:
             
             time.sleep(0.01)
 
-# --- create the main window and run the app ---
 if __name__ == "__main__":
     root = ttk.Window(themename="superhero") 
     app = TuroArnisGUI(root, "TuroArnis - Arnis Form Corrector")

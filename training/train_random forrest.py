@@ -63,11 +63,8 @@ data.dropna(inplace=True)
 X = data.drop('class', axis=1) 
 y = data['class']
 
-# --- START: FIX FOR STRATIFICATION ERROR ---
 print("\n[INFO] Checking for and removing classes with too few samples...")
 
-# --- THIS IS THE LINE TO CHANGE ---
-# By increasing the threshold, you reduce the number of final classes, fixing the error.
 MINIMUM_SAMPLES_PER_CLASS = 5
 
 class_counts = y.value_counts()
@@ -83,12 +80,11 @@ if classes_to_remove:
     y = data['class']
 else:
     print(f"[INFO] All classes have at least {MINIMUM_SAMPLES_PER_CLASS} samples. No data removed.")
-# --- END: FIX FOR STRATIFICATION ERROR ---
+
 
 encoder = LabelEncoder()
 y_encoded = encoder.fit_transform(y)
 
-# This will now work because the number of classes will be less than 35.
 X_train, X_test, y_train, y_test = train_test_split(X, y_encoded, test_size=0.2, random_state=42, stratify=y_encoded)
 
 print(f"\n[INFO] Data split complete. Training on {len(X_train)} samples, testing on {len(X_test)} samples.")

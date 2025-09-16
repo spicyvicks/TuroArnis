@@ -63,10 +63,8 @@ data.dropna(inplace=True)
 X = data.drop('class', axis=1) 
 y = data['class']
 
-# --- START: APPLIED RECOMMENDED FIX ---
 print("\n[INFO] Checking for and removing classes with too few samples to allow for stratified splitting...")
 
-# You can adjust this threshold. If the error persists, you may need to increase it.
 MINIMUM_SAMPLES_PER_CLASS = 5 
 
 class_counts = y.value_counts()
@@ -78,18 +76,16 @@ if classes_to_remove:
     data = data[~data['class'].isin(classes_to_remove)]
     print(f"Removed {original_rows - len(data)} rows belonging to these rare classes.")
     
-    # Re-define X and y based on the filtered data
     X = data.drop('class', axis=1) 
     y = data['class']
 else:
     print(f"[INFO] All classes have at least {MINIMUM_SAMPLES_PER_CLASS} samples. Proceeding with all data.")
-# --- END: APPLIED RECOMMENDED FIX ---
+
 
 
 encoder = LabelEncoder()
 y_encoded = encoder.fit_transform(y)
 
-# This should now work without error, as the number of classes has been reduced.
 X_train, X_test, y_train, y_test = train_test_split(X, y_encoded, test_size=0.2, random_state=42, stratify=y_encoded)
 
 print(f"\n[INFO] Data split complete. Training on {len(X_train)} samples, testing on {len(X_test)} samples.")

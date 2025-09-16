@@ -13,7 +13,7 @@ from PyQt6.QtWidgets import (QApplication, QMainWindow, QLabel, QVBoxLayout,
                              QTableWidgetItem, QHeaderView)
 
 
-class ResultsWindow(QWidget):
+class ResultsWindow(QWidget): #mock data for now
     def __init__(self):
         super().__init__()
         self.setWindowTitle("All User Results")
@@ -110,11 +110,7 @@ class MainWindow(QMainWindow):
         self.dropdown_button = QPushButton("Choose Arnis Form")
         self.dropdown_menu = QMenu(self)
         
-        # --- START: THE DICTIONARY SOLUTION ---
-
-        # 1. Create a dictionary.
-        #    KEY   = The "pretty name" to show the user in the dropdown.
-        #    VALUE = The "real name" that your model actually knows.
+        #dictionary daw
         self.practice_stances = {
             "Crown Thrust": "crown_thrust_correct",
             "Left Chest Thrust": "left_chest_thrust_correct",
@@ -130,20 +126,16 @@ class MainWindow(QMainWindow):
             "Solar Plexus Thrust": "solar_plexus_thrust_correct"
         }
 
-        # 2. Build the dropdown menu from the dictionary's pretty names (the keys).
         for pretty_name in self.practice_stances.keys():
             action = QAction(pretty_name, self)
-            # The lambda passes the PRETTY name when a user clicks it
             action.triggered.connect(lambda checked, text=pretty_name: self.on_action_selected(text))
             self.dropdown_menu.addAction(action)
 
-        # --- END OF THE DICTIONARY SOLUTION ---
         
         self.dropdown_button.setMenu(self.dropdown_menu)
         controls_layout.addWidget(self.dropdown_button)
         
         self.user_button = QPushButton("Choose User")
-        # ... (rest of user button setup is the same)
         self.user_menu = QMenu(self)
         users = ["Default User", "John Doe", "Jane Smith"]
         for user_text in users:
@@ -167,13 +159,9 @@ class MainWindow(QMainWindow):
         self.timer.timeout.connect(self.update_frame)
         self.timer.start(30)
     
-    # --- CHANGE IN THIS FUNCTION ---
     def on_action_selected(self, pretty_name):
-        # Set the button to show the pretty name
         self.dropdown_button.setText(pretty_name)
         
-        # IMPORTANT: Look up the REAL model name from the dictionary
-        # and set it as the target for our comparison logic.
         self.target_form = self.practice_stances[pretty_name]
         
         self.remarks_label.setText(f"Remarks: Now perform {pretty_name}")
@@ -181,7 +169,6 @@ class MainWindow(QMainWindow):
         self.accuracy_label.setText("Accuracy: N/A")
         print(f"User selected '{pretty_name}', targeting model class: '{self.target_form}'")
 
-    # The rest of your code is perfect and needs no changes
     def resizeEvent(self, event): super().resizeEvent(event); margin=10; panel_height=self.main_controls_panel.sizeHint().height(); self.main_controls_panel.setGeometry(self.width()-self.main_controls_panel.width()-margin, margin, self.main_controls_panel.width(), panel_height)
     def update_frame(self):
         ret, frame = self.cap.read();
@@ -199,10 +186,23 @@ class MainWindow(QMainWindow):
         elif not self.target_form: self.remarks_label.setText("Remarks: Select a form to begin."); self.remarks_label.setStyleSheet("color: black;")
         else: self.remarks_label.setText("Remarks: No pose detected."); self.remarks_label.setStyleSheet("color: black;")
         frame_for_display=cv2.cvtColor(frame, cv2.COLOR_BGR2RGB); h, w, ch=frame_for_display.shape; bytes_per_line=ch * w; qt_image=QImage(frame_for_display.data, w, h, bytes_per_line, QImage.Format.Format_RGB888); self.video_label.setPixmap(QPixmap.fromImage(qt_image))
-    def on_user_selected(self, username): self.user_button.setText(username); print(f"User changed to: {username}"); self.remarks_label.setText("Remarks: Select a form to begin."); self.remarks_label.setStyleSheet("color: black;"); self.accuracy_label.setText("Accuracy: N/A"); self.dropdown_button.setText("Choose Arnis Form"); self.target_form=None
+    
+    def on_user_selected(self, username): 
+        self.user_button.setText(username); print(f"User changed to: {username}"); 
+        self.remarks_label.setText("Remarks: Select a form to begin."); 
+        self.remarks_label.setStyleSheet("color: black;"); 
+        self.accuracy_label.setText("Accuracy: N/A"); 
+        self.dropdown_button.setText("Choose Arnis Form"); 
+        self.target_form=None
+    
     def open_results_window(self):
-        if self.results_win is None or not self.results_win.isVisible(): self.results_win=ResultsWindow(); self.results_win.setFixedSize(1280, 720); self.results_win.show()
-    def closeEvent(self, event): self.cap.release(); self.pose.close(); super().closeEvent(event)
+        if self.results_win is None or not self.results_win.isVisible(): self.results_win=ResultsWindow(); 
+        self.results_win.setFixedSize(1280, 720); 
+        self.results_win.show()
+    
+    def closeEvent(self, event): 
+        self.cap.release(); 
+        self.pose.close(); super().closeEvent(event)
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)

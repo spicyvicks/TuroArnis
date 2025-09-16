@@ -70,45 +70,37 @@ print(f"[INFO] Feature extraction complete. 3D data saved to {csv_output_file}")
 
 print("\n[INFO] Starting model training using XGBOOST...")
 
-# Load the newly created dataset
 data = pd.read_csv(csv_output_file)
 data.dropna(inplace=True)
 
-# Separate features (X) and labels (y)
 X = data.drop('class', axis=1) 
 y = data['class']
 
-# XGBoost requires labels to be integers (0, 1, 2...).
 encoder = LabelEncoder()
 y_encoded = encoder.fit_transform(y)
 
-# Split the data into training and testing sets
 X_train, X_test, y_train, y_test = train_test_split(X, y_encoded, test_size=0.2, random_state=42, stratify=y_encoded)
 
-# Initialize the XGBoost Classifier
 model = xgb.XGBClassifier(use_label_encoder=False, eval_metric='mlogloss', random_state=42)
 
 print("[INFO] Training the model...")
-# Train the model
+
 model.fit(X_train, y_train)
 
 print("[INFO] Evaluating the model...")
-# Make predictions on the test set
+
 y_pred = model.predict(X_test)
 
-# Evaluate the model's performance
 accuracy = accuracy_score(y_test, y_pred)
 print(f"\nModel Accuracy: {accuracy * 100:.2f}%")
 print("\nClassification Report:")
 print(classification_report(y_test, y_pred, target_names=encoder.classes_, zero_division=0))
 
-# Save the trained model and the encoder
 model_filename = 'arnis_xgboost_classifier.joblib'
 joblib.dump(model, model_filename)
 class_names_filename = 'arnis_class_names.joblib'
-joblib.dump(encoder.classes_, class_names_filename) # Save the original class names
+joblib.dump(encoder.classes_, class_names_filename) 
 
 print(f"\n[INFO] Training complete. Model saved to {model_filename} and class names to {class_names_filename}")
 
-# Clean up the pose model
 pose.close()

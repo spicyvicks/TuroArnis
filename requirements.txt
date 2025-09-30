@@ -1,1 +1,11 @@
-pip install opencv-python mediapipe ultralytics numpy pandas joblib filterpy ttkbootstrap pillow
+tensorflow
+opencv-python
+mediapipe
+pandas
+scikit-learn
+joblib
+ultralytics
+filterpy
+scikit-image
+ttkbootstrap
+pillow

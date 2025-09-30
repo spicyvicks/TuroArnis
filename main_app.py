@@ -8,8 +8,7 @@ from PIL import Image, ImageTk
 import ttkbootstrap as ttk
 from ttkbootstrap.constants import *
 import queue
-
-
+import numpy as np
 from gui.results_window import ResultsWindow
 from computer_vision.pose_analyzer import PoseAnalyzer
 
@@ -18,47 +17,31 @@ class TuroArnisGUI:
         self.window = window
         self.window.title(window_title)
         
-        # initialize our new pose analyzer class
+        # --- new: make window full screen ---
+        self.window.state('zoomed') # this maximizes the window on startup
+        
+        # get the screen size for resizing the video feed
+        self.screen_width = self.window.winfo_screenwidth()
+        self.screen_height = self.window.winfo_screenheight()
+
+        # initialize our pose analyzer class
         self.analyzer = PoseAnalyzer()
 
-        # Set desired height and calculate width based on 16:9 aspect ratio
-        target_height = 1920
-        aspect_ratio = 16/9
-        target_width = int(target_height * aspect_ratio)
-
         self.cap = cv2.VideoCapture(0)
-        # Set camera resolution
-        self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, target_width)
-        self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, target_height)
         
-        # Get actual supported resolution (might be different from requested)
-        self.cam_width = int(self.cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-        self.cam_height = int(self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-        
-        # Set window size
-        self.window.geometry(f"{self.cam_width}x{self.cam_height}")
-
-        # Center the window on screen
-        screen_width = self.window.winfo_screenwidth()
-        screen_height = self.window.winfo_screenheight()
-        x = (screen_width - self.cam_width) // 2
-        y = (screen_height - self.cam_height) // 2
-        self.window.geometry(f"+{x}+{y}")
-
         self.queue = queue.Queue(maxsize=1)
         self.target_form = None
         self.current_user = "Default User"
 
-        # --- create and place gui widgets (this part is largely the same) ---
+        # --- create and place gui widgets ---
         self.video_label = ttk.Label(self.window)
         self.video_label.place(x=0, y=0, relwidth=1, relheight=1)
         
         self.controls_panel = ttk.Frame(self.window, padding=15, bootstyle="dark")
         self.controls_panel.place(x=20, y=20)
-
-        ttk.Label(self.controls_panel, text="Controls", font=("-size 14 -weight bold"), bootstyle="inverse-dark").pack(pady=(0, 10), anchor=W)
         
-        # user dropdown
+        # ... (rest of the widget population is exactly the same) ...
+        ttk.Label(self.controls_panel, text="Controls", font=("-size 14 -weight bold"), bootstyle="inverse-dark").pack(pady=(0, 10), anchor=W)
         self.user_button = ttk.Menubutton(self.controls_panel, text=self.current_user, bootstyle="secondary")
         self.user_button.pack(fill=X, pady=5)
         self.user_menu = ttk.Menu(self.user_button)
@@ -66,8 +49,6 @@ class TuroArnisGUI:
         for user_text in users:
             self.user_menu.add_command(label=user_text, command=lambda u=user_text: self.on_user_selected(u))
         self.user_button["menu"] = self.user_menu
-
-        # form dropdown
         self.practice_stances = {
             "Crown Thrust": "crown_thrust_correct", "Left Chest Thrust": "left_chest_thrust_correct",
             "Left Elbow Block": "left_elbow_block_correct", "Left Eye Thrust": "left_eye_thrust_correct",
@@ -82,14 +63,12 @@ class TuroArnisGUI:
         for pretty_name in self.practice_stances.keys():
             self.form_menu.add_command(label=pretty_name, command=lambda p=pretty_name: self.on_action_selected(p))
         self.form_button["menu"] = self.form_menu
-
-        # feedback labels (simplified as feedback is on-screen now)
         ttk.Separator(self.controls_panel, orient=HORIZONTAL).pack(fill=X, pady=15)
         self.status_label = ttk.Label(self.controls_panel, text="Status: Select a form", font="-size 12", wraplength=220, bootstyle="inverse-dark")
         self.status_label.pack(fill=X, pady=5, anchor=W)
-
         self.view_all_results_button = ttk.Button(self.controls_panel, text="View All Results", command=self.open_results_window, bootstyle="info")
         self.view_all_results_button.pack(fill=X, pady=10, side=BOTTOM)
+
 
         # thread control and startup
         self.is_running = True
@@ -100,6 +79,27 @@ class TuroArnisGUI:
         self.process_queue()
         self.window.mainloop()
 
+    def resize_and_pad(self, img, size, pad_color=0):
+        h, w, _ = img.shape
+        sh, sw = size
+        if h > sh or w > sw: interp = cv2.INTER_AREA
+        else: interp = cv2.INTER_CUBIC
+        aspect = w / h
+        if aspect > (sw / sh):
+            new_w, new_h = sw, np.round(sw / aspect).astype(int)
+            pad_vert = (sh - new_h) / 2
+            pad_top, pad_bot = np.floor(pad_vert).astype(int), np.ceil(pad_vert).astype(int)
+            pad_left, pad_right = 0, 0
+        else:
+            new_h, new_w = sh, np.round(sh * aspect).astype(int)
+            pad_horz = (sw - new_w) / 2
+            pad_left, pad_right = np.floor(pad_horz).astype(int), np.ceil(pad_horz).astype(int)
+            pad_top, pad_bot = 0, 0
+        
+        scaled_img = cv2.resize(img, (new_w, new_h), interpolation=interp)
+        scaled_img = cv2.copyMakeBorder(scaled_img, pad_top, pad_bot, pad_left, pad_right, borderType=cv2.BORDER_CONSTANT, value=[pad_color]*3)
+        return scaled_img
+
     def video_loop(self):
         while self.is_running:
             ret, frame = self.cap.read()
@@ -107,18 +107,20 @@ class TuroArnisGUI:
                 time.sleep(0.1)
                 continue
             
+            # resize frame to fit the full screen window
+            frame = self.resize_and_pad(frame, size=(self.screen_height, self.screen_width))
             frame = cv2.flip(frame, 1)
 
-            # call the analyzer to do all the heavy lifting
-            processed_frame = self.analyzer.process_frame(frame, self.target_form)
+            processed_frame, analysis_results = self.analyzer.process_frame(frame, self.target_form)
 
-            # put the final, annotated frame in the queue
+            # (feedback logic is now inside pose_analyzer, so this loop is clean)
             if self.queue.full():
                 try: self.queue.get_nowait()
                 except queue.Empty: pass
             
             self.queue.put(processed_frame)
 
+    # ... (rest of the methods are the same) ...
     def process_queue(self):
         try:
             frame = self.queue.get_nowait()
@@ -130,26 +132,25 @@ class TuroArnisGUI:
             pass
         finally:
             self.window.after(20, self.process_queue)
-
+    
     def on_action_selected(self, pretty_name):
         self.form_button.config(text=pretty_name)
         self.target_form = self.practice_stances[pretty_name]
         self.status_label.config(text=f"Status: Analyzing '{pretty_name}'")
         print(f"targeting model class: '{self.target_form}'")
-
+    
     def open_results_window(self):
         ResultsWindow(self.window)
-
+    
     def on_closing(self):
         print("closing application...")
         self.is_running = False
-        time.sleep(0.5) # give the thread time to finish its current loop
+        time.sleep(0.5)
         self.analyzer.close()
         self.cap.release()
         self.window.destroy()
-        
+    
     def on_user_selected(self, username):
-        # this is now less critical but can be used for logging
         self.current_user = username
         self.user_button.config(text=username)
         print(f"current user set to: {username}")
@@ -159,6 +160,7 @@ class TuroArnisGUI:
         self.form_button.config(text="Choose Arnis Form")
         self.status_label.config(text="Status: Select a form")
 
+
 if __name__ == "__main__":
     root = ttk.Window(themename="superhero")
-    app = TuroArnisGUI(root, "TuroArnis - Multi-User Form Corrector")
+    app = TuroArnisGUI(root, "TuroArnis - Arnis Form Correction")

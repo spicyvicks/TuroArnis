@@ -1,21 +1,22 @@
-right temple block
 left temple block
-right elbow block
+right temple block
 left elbow block
+right elbow block
 solar plexus thrust
-right chest thrust
 left chest thrust
+right chest thrust
 left knee block
 right knee block
 left eye thrust
 right eye thrust
-crown block
+crown thrust
+
 
 
 1-2 temple
 3-4 elbows/ribs
-5 trusting solar plexus 
-6-7 trusting right and left chestside 
+5 trusting solar plexus
+6-7 trusting right and left chestside
 8-9 both left and right knee
 10-thrusting left eye
 11-thrusting right eye

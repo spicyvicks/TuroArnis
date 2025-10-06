@@ -3,7 +3,7 @@ from ttkbootstrap.constants import *
 
 class ResultsWindow(ttk.Toplevel):
     def __init__(self, parent):
-        super().__init__(parent, title="All User Results")
+        super().__init__(master=parent, title="All User Results")
         self.geometry("1000x600")
         columns = ("user", "form", "remarks", "accuracy")
         self.table = ttk.Treeview(self, columns=columns, show='headings', bootstyle="primary")

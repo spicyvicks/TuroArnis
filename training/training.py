@@ -17,6 +17,10 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from sklearn.metrics import confusion_matrix
 
+from sklearn.preprocessing import StandardScaler
+scaler = StandardScaler()
+X_scaled = scaler.fit_transform(X)
+
 mp_pose = mp.solutions.pose
 pose = mp_pose.Pose(static_image_mode=True, min_detection_confidence=0.5)
 
@@ -268,7 +272,7 @@ if __name__ == "__main__":
     
     
     print("\n[info] saving model and label encoder...")
-    model_folder = 'models_tf'
+    model_folder = 'models'
     os.makedirs(model_folder, exist_ok=True)
     model.save(os.path.join(model_folder, 'arnis_tf_classifier.h5'))
     joblib.dump(label_encoder, os.path.join(model_folder, 'label_encoder.joblib'))
@@ -276,11 +280,9 @@ if __name__ == "__main__":
     print("[info] training complete and artifacts saved.")
 
 def train_hybrid_model(X, y, test_size=0.2):
-    # Encode labels
     encoder = LabelEncoder()
     y_encoded = encoder.fit_transform(y)
     
-    # Split data
     X_train, X_test, y_train, y_test = train_test_split(
         X, y_encoded, 
         test_size=test_size, 
@@ -288,7 +290,6 @@ def train_hybrid_model(X, y, test_size=0.2):
         stratify=y_encoded
     )
     
-    # Train Random Forest
     rf_model = RandomForestClassifier(
         n_estimators=100,
         max_depth=None,
@@ -297,7 +298,10 @@ def train_hybrid_model(X, y, test_size=0.2):
     )
     rf_model.fit(X_train, y_train)
     
-    # Save models
+    y_pred = rf_model.predict(X_test)
+    accuracy = accuracy_score(y_test, y_pred)
+    print(f"Random Forest Accuracy: {accuracy:.4f}")
+
     joblib.dump(rf_model, 'models/arnis_random_forest_classifier.joblib')
     joblib.dump(encoder, 'models/label_encoder.joblib')
     

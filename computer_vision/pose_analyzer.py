@@ -1,5 +1,3 @@
-# file: computer_vision/pose_analyzer.py
-
 import os
 import sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -140,7 +138,6 @@ class PoseAnalyzer:
         return analysis_results
 
     def _translate_landmarks(self, landmarks, main_frame, x1, y1, x2, y2):
-        #helper to translate cropped landmarks to main frame coordinates
         frame_height, frame_width, _ = main_frame.shape
         crop_width, crop_height = x2 - x1, y2 - y1
         

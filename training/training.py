@@ -10,16 +10,12 @@ from keras.models import Sequential
 from keras.layers import Dense
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder
-from sklearn.metrics import classification_report
+from sklearn.metrics import classification_report, accuracy_score
 from sklearn.ensemble import RandomForestClassifier
 
 import matplotlib.pyplot as plt
 import seaborn as sns
 from sklearn.metrics import confusion_matrix
-
-from sklearn.preprocessing import StandardScaler
-scaler = StandardScaler()
-X_scaled = scaler.fit_transform(X)
 
 mp_pose = mp.solutions.pose
 pose = mp_pose.Pose(static_image_mode=True, min_detection_confidence=0.5)
@@ -93,10 +89,37 @@ def extract_features_from_image(image_path):
     except Exception as e:
         print(f"[ERROR] Error processing landmarks in {image_path}: {str(e)}")
         return None
+    
+def train_hybrid_model(X, y, test_size=0.2):
+    encoder = LabelEncoder()
+    y_encoded = encoder.fit_transform(y)
+    
+    X_train, X_test, y_train, y_test = train_test_split(
+        X, y_encoded, 
+        test_size=test_size, 
+        random_state=42, 
+        stratify=y_encoded
+    )
+    
+    rf_model = RandomForestClassifier(
+        n_estimators=100,
+        max_depth=None,
+        min_samples_split=2,
+        random_state=42
+    )
+    rf_model.fit(X_train, y_train)
+    
+    y_pred = rf_model.predict(X_test)
+    accuracy = accuracy_score(y_test, y_pred)
+    print(f"Random Forest Accuracy: {accuracy:.4f}")
+
+    joblib.dump(rf_model, 'models/arnis_random_forest_classifier.joblib')
+    joblib.dump(encoder, 'models/rf_label_encoder.joblib')
+    
+    return rf_model, encoder
 
 #training
 if __name__ == "__main__":
-    #root dir
     current_dir = os.path.dirname(os.path.abspath(__file__))
     root_dir = os.path.dirname(current_dir)
     dataset_folder = os.path.join(root_dir, 'dataset_multiclass_2')
@@ -275,34 +298,13 @@ if __name__ == "__main__":
     model_folder = 'models'
     os.makedirs(model_folder, exist_ok=True)
     model.save(os.path.join(model_folder, 'arnis_tf_classifier.h5'))
-    joblib.dump(label_encoder, os.path.join(model_folder, 'label_encoder.joblib'))
+    joblib.dump(label_encoder, os.path.join(model_folder, 'tf_label_encoder.joblib'))
     
     print("[info] training complete and artifacts saved.")
 
-def train_hybrid_model(X, y, test_size=0.2):
-    encoder = LabelEncoder()
-    y_encoded = encoder.fit_transform(y)
-    
-    X_train, X_test, y_train, y_test = train_test_split(
-        X, y_encoded, 
-        test_size=test_size, 
-        random_state=42, 
-        stratify=y_encoded
-    )
-    
-    rf_model = RandomForestClassifier(
-        n_estimators=100,
-        max_depth=None,
-        min_samples_split=2,
-        random_state=42
-    )
-    rf_model.fit(X_train, y_train)
-    
-    y_pred = rf_model.predict(X_test)
-    accuracy = accuracy_score(y_test, y_pred)
-    print(f"Random Forest Accuracy: {accuracy:.4f}")
+    print("[info] training complete and artifacts saved.")
 
-    joblib.dump(rf_model, 'models/arnis_random_forest_classifier.joblib')
-    joblib.dump(encoder, 'models/label_encoder.joblib')
-    
-    return rf_model, encoder
+    print("\n[info] training Random Forest model...")
+    rf_model, rf_encoder = train_hybrid_model(X, y_labels)
+    print("[info] Random Forest model and encoder saved.")
+

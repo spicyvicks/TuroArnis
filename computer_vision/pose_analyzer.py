@@ -26,10 +26,10 @@ class PoseAnalyzer:
             min_tracking_confidence=0.5
         )
 
-        # Load both models
+        #models
         try:
             self.rf_classifier = joblib.load('models/arnis_random_forest_classifier.joblib')
-            self.tf_model = tf.keras.models.load_model('models_tf/arnis_tf_classifier.h5')
+            self.tf_model = tf.keras.models.load_model('models/arnis_tf_classifier.h5')
             self.label_encoder = joblib.load('models/label_encoder.joblib')
             print("[info] models loaded successfully")
         except Exception as e:
@@ -38,7 +38,7 @@ class PoseAnalyzer:
             self.tf_model = None
             self.label_encoder = None
         
-        self.detection_interval = 3  # Only detect every N frames
+        self.detection_interval = 3  
         self.frame_count = 0
         self.last_detections = None
         
@@ -48,15 +48,14 @@ class PoseAnalyzer:
         self.frame_count += 1
         analysis_results = []
         
-        # Only run YOLO detection every N frames
         if self.frame_count % self.detection_interval == 0:
             results_yolo = self.yolo_model(
                 frame, 
                 stream=True, 
                 verbose=False, 
                 classes=[0],
-                conf=0.5,  # Increase confidence threshold
-                imgsz=320  # Reduce input size
+                conf=0.5,  
+                imgsz=320  
             )
             
             detections = np.empty((0, 5))
@@ -69,10 +68,8 @@ class PoseAnalyzer:
             tracked_persons = self.tracker.update(detections)
             self.last_detections = tracked_persons
         else:
-            # Use last known detections
             tracked_persons = self.last_detections if self.last_detections is not None else []
 
-        #for each tracked person, analyze pose
         for person in tracked_persons:
             x1, y1, x2, y2, person_id = map(int, person)
             
@@ -114,7 +111,6 @@ class PoseAnalyzer:
                 except Exception as e:
                     print(f"error during tensorflow analysis for user {person_id}: {e}")
 
-            # New code block for Random Forest Classifier
             if self.rf_classifier and pose_results.pose_world_landmarks:
                 try:
                     live_angles = self._calculate_all_angles_3d(pose_results.pose_world_landmarks.landmark)

@@ -28,30 +28,51 @@ class PoseAnalyzer:
             min_tracking_confidence=0.5
         )
 
+        # Load both models
         try:
-            self.classifier_model = tf.keras.models.load_model('models_tf/arnis_tf_classifier.h5')
-            self.label_encoder = joblib.load('models_tf/label_encoder.joblib')
-            print("[info] tensorflow model and encoder loaded successfully.")
+            self.rf_classifier = joblib.load('models/arnis_random_forest_classifier.joblib')
+            self.tf_model = tf.keras.models.load_model('models_tf/arnis_tf_classifier.h5')
+            self.label_encoder = joblib.load('models/label_encoder.joblib')
+            print("[info] models loaded successfully")
         except Exception as e:
-            print(f"[warning] could not load tensorflow model or encoder: {e}")
-            self.classifier_model = None
+            print(f"[warning] could not load models: {e}")
+            self.rf_classifier = None
+            self.tf_model = None
             self.label_encoder = None
+        
+        self.detection_interval = 3  # Only detect every N frames
+        self.frame_count = 0
+        self.last_detections = None
         
         print("[info] computer vision components ready.")
 
     def process_frame(self, frame):
+        self.frame_count += 1
         analysis_results = []
         
-        #detect & track users
-        results_yolo = self.yolo_model(frame, stream=True, verbose=False, classes=[0])
-        detections = np.empty((0, 5))
-        for r in results_yolo:
-            for box in r.boxes:
-                if box.conf[0] >= 0.5:
-                    x1, y1, x2, y2 = map(int, box.xyxy[0])
-                    detections = np.vstack((detections, np.array([x1, y1, x2, y2, box.conf[0]])))
-        
-        tracked_persons = self.tracker.update(detections)
+        # Only run YOLO detection every N frames
+        if self.frame_count % self.detection_interval == 0:
+            results_yolo = self.yolo_model(
+                frame, 
+                stream=True, 
+                verbose=False, 
+                classes=[0],
+                conf=0.5,  # Increase confidence threshold
+                imgsz=320  # Reduce input size
+            )
+            
+            detections = np.empty((0, 5))
+            for r in results_yolo:
+                for box in r.boxes:
+                    if box.conf[0] >= 0.5:
+                        x1, y1, x2, y2 = map(int, box.xyxy[0])
+                        detections = np.vstack((detections, np.array([x1, y1, x2, y2, box.conf[0]])))
+            
+            tracked_persons = self.tracker.update(detections)
+            self.last_detections = tracked_persons
+        else:
+            # Use last known detections
+            tracked_persons = self.last_detections if self.last_detections is not None else []
 
         #for each tracked person, analyze pose
         for person in tracked_persons:
@@ -79,21 +100,40 @@ class PoseAnalyzer:
                 #store
                 person_result['landmarks'] = self._translate_landmarks(pose_results.pose_landmarks, frame, x1, y1, x2, y2)
             
-            if self.classifier_model and self.label_encoder and pose_results.pose_world_landmarks:
+            if self.tf_model and self.label_encoder and pose_results.pose_world_landmarks:
                 try:
                     live_angles = self._calculate_all_angles_3d(pose_results.pose_world_landmarks.landmark)
                     person_result['live_angles'] = live_angles
 
                     if live_angles:
                         live_features = pd.DataFrame([list(live_angles.values())])
-                        prediction_proba = self.classifier_model.predict(live_features, verbose=0)[0]
-                        prediction_index = np.argmax(prediction_proba)
+                        tf_prediction_proba = self.tf_model.predict(live_features, verbose=0)[0]
+                        tf_prediction_index = np.argmax(tf_prediction_proba)
                         
-                        person_result['confidence'] = prediction_proba[prediction_index]
-                        person_result['predicted_class'] = self.label_encoder.inverse_transform([prediction_index])[0]
+                        person_result['confidence'] = tf_prediction_proba[tf_prediction_index]
+                        person_result['predicted_class'] = self.label_encoder.inverse_transform([tf_prediction_index])[0]
                 
                 except Exception as e:
                     print(f"error during tensorflow analysis for user {person_id}: {e}")
+
+            # New code block for Random Forest Classifier
+            if self.rf_classifier and pose_results.pose_world_landmarks:
+                try:
+                    live_angles = self._calculate_all_angles_3d(pose_results.pose_world_landmarks.landmark)
+                    person_result['live_angles'] = live_angles
+
+                    if live_angles:
+                        live_features = pd.DataFrame([list(live_angles.values())])
+                        rf_prediction_proba = self.rf_classifier.predict_proba(live_features)[:, 1]  # Get probability of positive class
+                        rf_prediction_index = np.where(rf_prediction_proba >= 0.5)[0]
+                        
+                        if len(rf_prediction_index) > 0:
+                            rf_prediction_index = rf_prediction_index[0]
+                            person_result['confidence'] = rf_prediction_proba[rf_prediction_index]
+                            person_result['predicted_class'] = self.label_encoder.inverse_transform([rf_prediction_index])[0]
+                
+                except Exception as e:
+                    print(f"error during random forest analysis for user {person_id}: {e}")
 
             analysis_results.append(person_result)
             

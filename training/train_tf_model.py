@@ -1,5 +1,3 @@
-# file: train_tf_model.py
-
 import os
 import csv
 import cv2

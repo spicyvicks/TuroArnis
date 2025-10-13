@@ -21,12 +21,12 @@ class TuroArnisGUI:
         self.screen_width = self.window.winfo_screenwidth()
         self.screen_height = self.window.winfo_screenheight()
 
-        self.analyzer = PoseAnalyzer(detection_interval=self.processing_interval)
-        self.cap = cv2.VideoCapture(0)
-
         self.frame_counter = 0
         self.processing_interval = 3
         self.last_known_results = []
+
+        self.analyzer = PoseAnalyzer(detection_interval=self.processing_interval)
+        self.cap = cv2.VideoCapture(0)
 
         self.queue = queue.Queue(maxsize=1)
         self.target_form = None
@@ -116,37 +116,35 @@ class TuroArnisGUI:
             
             frame = cv2.flip(frame, 1)
             
+            # This is now our main canvas for all drawing
             processing_frame = cv2.resize(frame, (640, 480))
-            display_frame = frame.copy()
             
-            self.last_known_results = self.analyzer.process_frame(processing_frame)
+            # The analyzer now works on this frame directly
+            analysis_results = self.analyzer.process_frame(processing_frame)
 
-            if self.frame_counter % (self.processing_interval + 1) == 0:
-                self.last_known_results = self.analyzer.process_frame(processing_frame)
+            # Use the latest results for drawing, even on frames that weren't processed
+            if analysis_results:
+                self.last_known_results = analysis_results
 
             if self.last_known_results:
                 for result in self.last_known_results:
-                    px1, py1, px2, py2 = result['bbox']
-                    h_proc, w_proc, _ = processing_frame.shape
-                    h_disp, w_disp, _ = display_frame.shape
-                    
-                    x1 = int(px1 * w_disp / w_proc)
-                    y1 = int(py1 * h_disp / h_proc)
-                    x2 = int(px2 * w_disp / w_proc)
-                    y2 = int(py2 * h_disp / h_proc)
-                    
+                    # Bbox coordinates are already correct for the processing_frame
+                    x1, y1, x2, y2 = result['bbox']
                     person_id = result['id']
                     
-                    cv2.rectangle(display_frame, (x1, y1), (x2, y2), (255, 0, 255), 2)
-                    cv2.putText(display_frame, f"User {person_id}", (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (255, 0, 255), 2)
+                    # Draw Bounding Box
+                    cv2.rectangle(processing_frame, (x1, y1), (x2, y2), (255, 0, 255), 2)
+                    cv2.putText(processing_frame, f"User {person_id}", (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (255, 0, 255), 2)
 
+                    # Draw Landmarks
                     if result['landmarks']:
                         self.analyzer.mp_drawing.draw_landmarks(
-                            display_frame, result['landmarks'], self.analyzer.mp_pose.POSE_CONNECTIONS,
+                            processing_frame, result['landmarks'], self.analyzer.mp_pose.POSE_CONNECTIONS,
                             landmark_drawing_spec=self.analyzer.mp_drawing.DrawingSpec(color=(245,117,66), thickness=2, circle_radius=2),
                             connection_drawing_spec=self.analyzer.mp_drawing.DrawingSpec(color=(245,66,230), thickness=2, circle_radius=2)
                         )
 
+                    # Draw Feedback Text
                     if self.target_form:
                         predicted_class = result['predicted_class']
                         confidence = result['confidence']
@@ -168,18 +166,17 @@ class TuroArnisGUI:
                                             error_messages.append(f"{joint.replace('_', ' ').title()} {feedback}")
                             
                             if is_correct:
-                                cv2.putText(display_frame, "Correct!", (x1, y2 + 30), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 255, 0), 2)
+                                cv2.putText(processing_frame, "Correct!", (x1, y2 + 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
                             else:
-                                for i, msg in enumerate(error_messages[:2]): #display 2 errors
-                                    cv2.putText(display_frame, msg, (x1, y2 + 30 + (i * 30)), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
+                                for i, msg in enumerate(error_messages[:2]):
+                                    cv2.putText(processing_frame, msg, (x1, y2 + 30 + (i * 25)), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 255), 2)
                         else:
                             pretty_form_name = self.form_button.cget('text')
                             if pretty_form_name != "Choose Arnis Form":
-                                cv2.putText(display_frame, f"Adjust to {pretty_form_name}", (x1, y2 + 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
-
-            self.frame_counter += 1
+                                cv2.putText(processing_frame, f"Adjust to {pretty_form_name}", (x1, y2 + 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
             
-            final_frame = self.resize_and_pad(display_frame, size=(self.screen_width, self.screen_height))
+            # After all drawing is done, resize the completed frame for display
+            final_frame = self.resize_and_pad(processing_frame, size=(self.screen_width, self.screen_height))
 
             if self.queue.full():
                 try: self.queue.get_nowait()

@@ -28,15 +28,12 @@ class PoseAnalyzer:
 
         #models
         try:
-            self.rf_classifier = joblib.load('models/arnis_random_forest_classifier.joblib')
-            self.tf_model = tf.keras.models.load_model('models/arnis_tf_classifier.h5')
+            self.classifier = joblib.load('models/arnis_classifiers.joblib')
             self.label_encoder = joblib.load('models/label_encoder.joblib')
             print("[info] models loaded successfully")
         except Exception as e:
             print(f"[warning] could not load models: {e}")
-            self.rf_classifier = None
-            self.tf_model = None
-            self.label_encoder = None
+            self.classifier = None
         
         self.detection_interval = 3  
         self.frame_count = 0

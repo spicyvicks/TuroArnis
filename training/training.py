@@ -17,6 +17,8 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from sklearn.metrics import confusion_matrix
 
+from duo import ArnisClassifiers
+
 mp_pose = mp.solutions.pose
 pose = mp_pose.Pose(static_image_mode=True, min_detection_confidence=0.5)
 
@@ -35,22 +37,16 @@ def calculate_angle_3d(a, b, c):
     cross_product = np.cross(ba, bc)
     dot_product = np.dot(ba, bc)
     
-    magnitude_ba = np.linalg.norm(ba)
-    magnitude_bc = np.linalg.norm(bc)
+    magnitude = np.linalg.norm(ba) * np.linalg.norm(bc)
     
     #no zero product
-    if magnitude_ba * magnitude_bc < 1e-10:
+    if magnitude < 1e-10:
         return 0.0
         
     #signed angle using arctan2(norm of cross product, dot product) = angle, range [-π, π]
-    angle = np.arctan2(np.linalg.norm(cross_product), dot_product)
-    angle_deg = np.degrees(angle)
-    
-    #y component of cross pfor sign
-    if cross_product[1] < 0:
-        angle_deg = -angle_deg
-        
-    return angle_deg
+    cosine_angle = np.clip(dot_product / magnitude, -1.0, 1.0)
+    angle = np.degrees(np.arccos(cosine_angle))    
+    return angle
 
 def extract_features_from_image(image_path):
     image = cv2.imread(image_path)
@@ -112,9 +108,6 @@ def train_hybrid_model(X, y, test_size=0.2):
     y_pred = rf_model.predict(X_test)
     accuracy = accuracy_score(y_test, y_pred)
     print(f"Random Forest Accuracy: {accuracy:.4f}")
-
-    joblib.dump(rf_model, 'models/arnis_random_forest_classifier.joblib')
-    joblib.dump(encoder, 'models/rf_label_encoder.joblib')
     
     return rf_model, encoder
 
@@ -130,7 +123,7 @@ if __name__ == "__main__":
     print(f"[DEBUG] CSV output absolute path: {os.path.abspath(csv_output_file)}")
 
     #save
-    model_folder = os.path.join(root_dir, 'models_tf')
+    model_folder = os.path.join(root_dir, 'models')
     if not os.path.exists(dataset_folder):
         raise ValueError(f"Dataset folder '{dataset_folder}' not found")
     
@@ -252,13 +245,17 @@ if __name__ == "__main__":
     
     model.summary()
 
+    X_train, X_test, y_train, y_test = train_test_split(X, y_categorical, test_size=0.2, random_state=42, stratify=y_categorical)
+
+    X_train, X_val, y_train, y_val = train_test_split(X_train, y_train, test_size=0.2, random_state=42, stratify=y_train)
+
     #training
     print("\n[info] training the model...")
     history = model.fit(
         X_train, y_train,
         epochs=50, 
         batch_size=8,
-        validation_data=(X_test, y_test)
+        validation_data=(X_val, y_val)
     )
 
     #evaluation
@@ -297,8 +294,8 @@ if __name__ == "__main__":
     print("\n[info] saving model and label encoder...")
     model_folder = 'models'
     os.makedirs(model_folder, exist_ok=True)
-    model.save(os.path.join(model_folder, 'arnis_tf_classifier.h5'))
-    joblib.dump(label_encoder, os.path.join(model_folder, 'tf_label_encoder.joblib'))
+    model.save(os.path.join(model_folder, 'arnis_classifier.h5'))
+    joblib.dump(label_encoder, os.path.join(model_folder, 'label_encoder.joblib'))
     
     print("[info] training complete and artifacts saved.")
 

@@ -21,11 +21,11 @@ class TuroArnisGUI:
         self.screen_width = self.window.winfo_screenwidth()
         self.screen_height = self.window.winfo_screenheight()
 
-        self.analyzer = PoseAnalyzer()
+        self.analyzer = PoseAnalyzer(detection_interval=self.processing_interval)
         self.cap = cv2.VideoCapture(0)
 
         self.frame_counter = 0
-        self.processing_interval = 2 
+        self.processing_interval = 3
         self.last_known_results = []
 
         self.queue = queue.Queue(maxsize=1)
@@ -119,6 +119,8 @@ class TuroArnisGUI:
             processing_frame = cv2.resize(frame, (640, 480))
             display_frame = frame.copy()
             
+            self.last_known_results = self.analyzer.process_frame(processing_frame)
+
             if self.frame_counter % (self.processing_interval + 1) == 0:
                 self.last_known_results = self.analyzer.process_frame(processing_frame)
 

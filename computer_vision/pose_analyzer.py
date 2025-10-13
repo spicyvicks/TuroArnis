@@ -12,7 +12,7 @@ import tensorflow as tf
 from mediapipe.framework.formats import landmark_pb2
 
 class PoseAnalyzer:
-    def __init__(self, **kwargs): 
+    def __init__(self): 
         print("[info] initializing computer vision components...")
         self.yolo_model = YOLO('yolov8n.pt')
         self.tracker = Sort(max_age=90, min_hits=3, iou_threshold=0.3)
@@ -40,7 +40,7 @@ class PoseAnalyzer:
         
         self.detection_interval = 3  
         self.frame_count = 0
-        self.last_detections = None
+        self.last_detections = []
         
         print("[info] computer vision components ready.")
 
@@ -117,14 +117,10 @@ class PoseAnalyzer:
                     person_result['live_angles'] = live_angles
 
                     if live_angles:
-                        live_features = pd.DataFrame([list(live_angles.values())])
-                        rf_prediction_proba = self.rf_classifier.predict_proba(live_features)[:, 1]  # Get probability of positive class
-                        rf_prediction_index = np.where(rf_prediction_proba >= 0.5)[0]
-                        
-                        if len(rf_prediction_index) > 0:
-                            rf_prediction_index = rf_prediction_index[0]
-                            person_result['confidence'] = rf_prediction_proba[rf_prediction_index]
-                            person_result['predicted_class'] = self.label_encoder.inverse_transform([rf_prediction_index])[0]
+                        rf_prediction_proba = self.rf_classifier.predict_proba(live_features)[0]
+                        rf_prediction_index = np.argmax(rf_prediction_proba)
+                        person_result['confidence'] = rf_prediction_proba[rf_prediction_index]
+                        person_result['predicted_class'] = self.label_encoder.inverse_transform([rf_prediction_index])[0]
                 
                 except Exception as e:
                     print(f"error during random forest analysis for user {person_id}: {e}")
@@ -143,7 +139,8 @@ class PoseAnalyzer:
         for landmark in landmarks_copy.landmark:
             pixel_x = landmark.x * crop_width + x1
             pixel_y = landmark.y * crop_height + y1
-            landmark.x, landmark.y = pixel_x / frame_width, pixel_y / frame_height
+            landmark.x = np.clip(pixel_x / frame_width, 0.0, 1.0)
+            landmark.y = np.clip(pixel_y / frame_height, 0.0, 1.0)  
         
         return landmarks_copy
 

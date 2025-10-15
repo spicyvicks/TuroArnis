@@ -12,14 +12,13 @@ class ArnisClassifiers:
         print("Hybrid model ready.")
 
     def predict(self, live_features_df):
-        #live_features_df (pd.DataFrame): A DataFrame with the live angle features.
         
-        # 1. TensorFlow 
+        #tensorFlow 
         tf_pred_proba = self.tf_model.predict(live_features_df, verbose=0)[0]
         tf_pred_index = np.argmax(tf_pred_proba)
         tf_confidence = tf_pred_proba[tf_pred_index]
         
-        # 2. Random Forest 
+        #random Forest 
         rf_pred_proba = self.rf_classifier.predict_proba(live_features_df)[0]
         rf_pred_index = np.argmax(rf_pred_proba)
         rf_confidence = rf_pred_proba[rf_pred_index]

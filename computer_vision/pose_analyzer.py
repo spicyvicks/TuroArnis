@@ -48,7 +48,6 @@ class PoseAnalyzer:
         print("[info] computer vision components ready.")
 
     def _calculate_iou(self, boxA, boxB):
-        # Helper function to calculate Intersection over Union
         xA = max(boxA[0], boxB[0])
         yA = max(boxA[1], boxB[1])
         xB = min(boxA[2], boxB[2])
@@ -68,7 +67,7 @@ class PoseAnalyzer:
         self.frame_count += 1
         h, w, _ = frame.shape
 
-        # STAGE 1: PERSON TRACKING with YOLO/SORT
+        #tracking people with YOLO + SORT
         if self.frame_count % self.detection_interval == 0:
             results_yolo = self.yolo_model(frame, stream=True, verbose=False, classes=[0], conf=0.5, imgsz=320)
             detections = np.empty((0, 5))
@@ -82,7 +81,7 @@ class PoseAnalyzer:
         else:
             tracked_persons = self.last_detections if self.last_detections is not None else []
             
-        # STAGE 2: PREPARE RESULT OBJECTS FOR ALL TRACKED PEOPLE
+        #result
         analysis_results = {
             int(p[4]): {
                 'id': int(p[4]), 'bbox': tuple(map(int, p[:4])), 'predicted_class': "N/A",
@@ -90,13 +89,13 @@ class PoseAnalyzer:
             } for p in tracked_persons
         }
 
-        # STAGE 3: POSE ANALYSIS with MEDIAPIPE (finds the most prominent person)
+        #pose
         image_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         pose_results = self.pose.process(image_rgb)
 
-        # STAGE 4: MATCH POSE TO TRACKED PERSON USING IoU
+        #iou matching and analysis
         if pose_results.pose_landmarks and len(tracked_persons) > 0:
-            # 4a. Calculate the bounding box for the detected MediaPipe landmarks
+            #box calculation
             landmarks = pose_results.pose_landmarks.landmark
             min_x, max_x = w, 0
             min_y, max_y = h, 0
@@ -106,7 +105,7 @@ class PoseAnalyzer:
                 min_y, max_y = min(min_y, py), max(max_y, py)
             mp_box = (min_x, min_y, max_x, max_y)
 
-            # 4b. Find the tracked person with the best bounding box overlap
+            #find person
             best_iou = 0.0
             best_match_id = -1
             for person_id, data in analysis_results.items():
@@ -116,8 +115,7 @@ class PoseAnalyzer:
                     best_iou = iou
                     best_match_id = person_id
 
-            # 4c. If a good match is found, perform analysis and assign the pose data
-            if best_match_id != -1 and best_iou > 0.3: # Using a 30% overlap threshold
+            if best_match_id != -1 and best_iou > 0.3: #30% IoU threshold
                 live_angles = self._calculate_all_angles_3d(pose_results.pose_world_landmarks.landmark)
                 predicted_class, confidence = "N/A", 0.0
 
@@ -125,7 +123,7 @@ class PoseAnalyzer:
                     try:
                         feature_columns = ['left_elbow', 'left_shoulder', 'left_hip', 'left_knee', 
                                            'right_elbow', 'right_shoulder', 'right_hip', 'right_knee']
-                        # Ensure the dictionary values are ordered correctly for the model
+                        
                         ordered_angles = [live_angles[key] for key in feature_columns]
                         live_features_df = pd.DataFrame([ordered_angles], columns=feature_columns)
                         live_features_array = live_features_df.values
@@ -136,13 +134,11 @@ class PoseAnalyzer:
                     except Exception as e:
                         print(f"Error during prediction for user {best_match_id}: {e}")
                 
-                # Assign all pose data to the single matched person
                 analysis_results[best_match_id]['landmarks'] = pose_results.pose_landmarks
                 analysis_results[best_match_id]['live_angles'] = live_angles
                 analysis_results[best_match_id]['predicted_class'] = predicted_class
                 analysis_results[best_match_id]['confidence'] = confidence
         
-        # Convert the dictionary of results back to a list for the GUI
         return list(analysis_results.values())
 
     def _calculate_all_angles_3d(self, landmarks):

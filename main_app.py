@@ -85,6 +85,15 @@ class TuroArnisGUI:
         self.process_queue()
         self.window.mainloop()
 
+    def draw_text_with_bg(self, img, text, pos, font_face, font_scale, text_color, bg_color, thickness):
+        (text_w, text_h), baseline = cv2.getTextSize(text, font_face, font_scale, thickness)
+        
+        top_left = (pos[0], pos[1] - text_h - baseline)
+        bottom_right = (pos[0] + text_w, pos[1] + baseline)
+        
+        cv2.rectangle(img, top_left, bottom_right, bg_color, cv2.FILLED)
+        cv2.putText(img, text, (pos[0], pos[1]), font_face, font_scale, text_color, thickness)
+
     def resize_and_pad(self, img, size, pad_color=0):
         h, w, _ = img.shape
         sw, sh = size
@@ -106,8 +115,15 @@ class TuroArnisGUI:
         scaled_img = cv2.resize(img, (new_w, new_h), interpolation=interp)
         padded_img = cv2.copyMakeBorder(scaled_img, pad_top, pad_bot, pad_left, pad_right, borderType=cv2.BORDER_CONSTANT, value=[pad_color]*3)
         return padded_img
-
+    
     def video_loop(self):
+        COLOR_DEFAULT = (255, 0, 0)      # blue
+        COLOR_CORRECT = (0, 255, 0)      # green
+        COLOR_ERROR = (0, 0, 255)        # red
+        COLOR_PROMPT = (0, 255, 255)     # yellow
+        COLOR_WHITE = (255, 255, 255)    # white bg
+        COLOR_BLACK = (0, 0, 0)          # black
+
         while self.is_running:
             ret, frame = self.cap.read()
             if not ret:
@@ -115,36 +131,23 @@ class TuroArnisGUI:
                 continue
             
             frame = cv2.flip(frame, 1)
-            
-            # This is now our main canvas for all drawing
             processing_frame = cv2.resize(frame, (640, 480))
             
-            # The analyzer now works on this frame directly
             analysis_results = self.analyzer.process_frame(processing_frame)
 
-            # Use the latest results for drawing, even on frames that weren't processed
             if analysis_results:
                 self.last_known_results = analysis_results
 
             if self.last_known_results:
                 for result in self.last_known_results:
-                    # Bbox coordinates are already correct for the processing_frame
                     x1, y1, x2, y2 = result['bbox']
                     person_id = result['id']
                     
-                    # Draw Bounding Box
-                    cv2.rectangle(processing_frame, (x1, y1), (x2, y2), (255, 0, 255), 2)
-                    cv2.putText(processing_frame, f"User {person_id}", (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (255, 0, 255), 2)
+                    draw_color = COLOR_ERROR  # default to red 
+                    box_color = COLOR_DEFAULT
+                    is_correct = False
+                    error_messages = []
 
-                    # Draw Landmarks
-                    if result['landmarks']:
-                        self.analyzer.mp_drawing.draw_landmarks(
-                            processing_frame, result['landmarks'], self.analyzer.mp_pose.POSE_CONNECTIONS,
-                            landmark_drawing_spec=self.analyzer.mp_drawing.DrawingSpec(color=(245,117,66), thickness=2, circle_radius=2),
-                            connection_drawing_spec=self.analyzer.mp_drawing.DrawingSpec(color=(245,66,230), thickness=2, circle_radius=2)
-                        )
-
-                    # Draw Feedback Text
                     if self.target_form:
                         predicted_class = result['predicted_class']
                         confidence = result['confidence']
@@ -152,8 +155,7 @@ class TuroArnisGUI:
                         
                         if predicted_class == self.target_form and confidence > 0.60:
                             ideal_pose = POSE_LIBRARY.get(self.target_form)
-                            error_messages = []
-                            is_correct = True
+                            pose_is_perfect = True
                             
                             if ideal_pose and live_angles:
                                 for joint, ideal_range in ideal_pose.items():
@@ -161,21 +163,58 @@ class TuroArnisGUI:
                                     if live_angle is not None:
                                         min_angle, max_angle = ideal_range
                                         if not (min_angle <= live_angle <= max_angle):
-                                            is_correct = False
+                                            pose_is_perfect = False
                                             feedback = "too bent" if live_angle < min_angle else "too straight"
                                             error_messages.append(f"{joint.replace('_', ' ').title()} {feedback}")
                             
-                            if is_correct:
-                                cv2.putText(processing_frame, "Correct!", (x1, y2 + 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
-                            else:
-                                for i, msg in enumerate(error_messages[:2]):
-                                    cv2.putText(processing_frame, msg, (x1, y2 + 30 + (i * 25)), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 255), 2)
+                            if pose_is_perfect:
+                                is_correct = True
+                                draw_color = COLOR_CORRECT
+                    
+                    #box
+                    cv2.rectangle(processing_frame, (x1, y1), (x2, y2), box_color, 2)
+
+                    #user
+                    self.draw_text_with_bg(
+                        img=processing_frame, text=f"User {person_id}", 
+                        pos=(x1, y1 - 10), font_face=cv2.FONT_HERSHEY_SIMPLEX, font_scale=0.9,
+                        text_color=COLOR_BLACK, bg_color=COLOR_WHITE, thickness=2
+                    )
+
+                    #landmarks
+                    if result['landmarks']:
+                        landmark_spec = self.analyzer.mp_drawing.DrawingSpec(color=draw_color, thickness=2, circle_radius=2)
+                        connection_spec = self.analyzer.mp_drawing.DrawingSpec(color=draw_color, thickness=2, circle_radius=2)
+                        self.analyzer.mp_drawing.draw_landmarks(
+                            processing_frame, result['landmarks'], self.analyzer.mp_pose.POSE_CONNECTIONS,
+                            landmark_drawing_spec=landmark_spec, connection_drawing_spec=connection_spec
+                        )
+
+                    #feedback
+                    if self.target_form:
+                        if is_correct:
+                            self.draw_text_with_bg(
+                                img=processing_frame, text="Correct!", 
+                                pos=(x1, y2 + 30), font_face=cv2.FONT_HERSHEY_SIMPLEX, font_scale=0.7,
+                                text_color=COLOR_CORRECT, bg_color=COLOR_WHITE, thickness=2
+                            )
                         else:
-                            pretty_form_name = self.form_button.cget('text')
-                            if pretty_form_name != "Choose Arnis Form":
-                                cv2.putText(processing_frame, f"Adjust to {pretty_form_name}", (x1, y2 + 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
+                            if error_messages:
+                                for i, msg in enumerate(error_messages[:2]):
+                                    self.draw_text_with_bg(
+                                        img=processing_frame, text=msg, 
+                                        pos=(x1, y2 + 30 + (i * 30)), font_face=cv2.FONT_HERSHEY_SIMPLEX, font_scale=0.6,
+                                        text_color=COLOR_ERROR, bg_color=COLOR_WHITE, thickness=2
+                                    )
+                            else:
+                                pretty_form_name = self.form_button.cget('text')
+                                if pretty_form_name != "Choose Arnis Form":
+                                    self.draw_text_with_bg(
+                                        img=processing_frame, text=f"Adjust to {pretty_form_name}", 
+                                        pos=(x1, y2 + 30), font_face=cv2.FONT_HERSHEY_SIMPLEX, font_scale=0.7,
+                                        text_color=COLOR_PROMPT, bg_color=COLOR_WHITE, thickness=2
+                                    )
             
-            # After all drawing is done, resize the completed frame for display
             final_frame = self.resize_and_pad(processing_frame, size=(self.screen_width, self.screen_height))
 
             if self.queue.full():

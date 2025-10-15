@@ -58,6 +58,33 @@ def extract_features_from_image(image_path):
         print(f"[error] processing landmarks in {image_path}: {e}")
         return None
 
+def plot_training_history(history, save_path):
+    plt.figure(figsize=(15, 6))
+
+    plt.subplot(1, 2, 1)
+    plt.plot(history.history['accuracy'], label='Training Accuracy', marker='o')
+    plt.plot(history.history['val_accuracy'], label='Validation Accuracy', marker='o')
+    plt.title('Model Accuracy Over Epochs', fontsize=16)
+    plt.xlabel('Epoch', fontsize=12)
+    plt.ylabel('Accuracy', fontsize=12)
+    plt.legend(loc='lower right')
+    plt.grid(True)
+    plt.ylim(0, 1.05) 
+
+    plt.subplot(1, 2, 2)
+    plt.plot(history.history['loss'], label='Training Loss', marker='o')
+    plt.plot(history.history['val_loss'], label='Validation Loss', marker='o')
+    plt.title('Model Loss Over Epochs', fontsize=16)
+    plt.xlabel('Epoch', fontsize=12)
+    plt.ylabel('Loss', fontsize=12)
+    plt.legend(loc='upper right')
+    plt.grid(True)
+
+    plt.tight_layout()
+    plt.savefig(save_path)
+    print(f"\n[info] Training history plot saved to: {save_path}")
+    plt.close()
+
 if __name__ == "__main__":
     dataset_folder = os.path.join(project_root, 'dataset_multiclass_2')
     csv_output_file = os.path.join(project_root, 'arnis_poses_features.csv')
@@ -140,24 +167,39 @@ if __name__ == "__main__":
         rf_val_scores.append(acc_rf)
         print(f"  - RF validation accuracy: {acc_rf:.4f}")
 
-    print("\n--- Average Cross-Validation Scores ---")
-    print(f"Average TF Accuracy: {np.mean(tf_val_scores):.4f} (+/- {np.std(tf_val_scores):.4f})")
-    print(f"Average RF Accuracy: {np.mean(rf_val_scores):.4f} (+/- {np.std(rf_val_scores):.4f})")
+    print("\n--- average Cross-Validation scores ---")
+    print(f"average TF accuracy: {np.mean(tf_val_scores):.4f} (+/- {np.std(tf_val_scores):.4f})")
+    print(f"average RF accuracy: {np.mean(rf_val_scores):.4f} (+/- {np.std(rf_val_scores):.4f})")
 
     print("\n[info] training final models on the full training pool...")
     
-    # final tensorflow model
     y_pool_tf = tf.keras.utils.to_categorical(y_pool, num_classes=num_classes)
+    y_test_tf = tf.keras.utils.to_categorical(y_test, num_classes=num_classes)
+
     final_tf_model = Sequential([
         Dense(64, activation='relu', input_shape=(X.shape[1],)), Dropout(0.2),
         Dense(32, activation='relu'), Dropout(0.2),
         Dense(num_classes, activation='softmax')
     ])
     final_tf_model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
-    final_tf_model.fit(X_pool, y_pool_tf, epochs=50, batch_size=8, verbose=0)
+    
+    print("[info] starting final TensorFlow model training...")
+    history = final_tf_model.fit(
+        X_pool, 
+        y_pool_tf, 
+        epochs=50, 
+        batch_size=8, 
+        validation_data=(X_test, y_test_tf), 
+        verbose=1
+    )
     print("[info] final tensorflow model trained.")
 
-    # final random forest model
+    # --- Generate and Save the Training History Plot ---
+    history_plot_path = os.path.join(models_dir, 'training_history.png')
+    plot_training_history(history, history_plot_path)
+
+
+    # --- Final Random Forest Model (No changes needed here) ---
     final_rf_model = RandomForestClassifier(n_estimators=100, random_state=42)
     final_rf_model.fit(X_pool, y_pool)
     print("[info] final random forest model trained.")

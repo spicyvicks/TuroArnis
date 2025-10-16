@@ -5,6 +5,16 @@ import cv2
 import mediapipe as mp
 import numpy as np
 import pandas as pd
+import joblib
+import tensorflow as tf
+from keras.models import Sequential
+from keras.layers import Dense, Dropout
+from sklearn.model_selection import train_test_split, StratifiedKFold
+from sklearn.preprocessing import LabelEncoder
+from sklearn.metrics import classification_report, accuracy_score
+from sklearn.ensemble import RandomForestClassifier
+import matplotlib.pyplot as plt
+import seaborn as sns
 from tqdm import tqdm
 from multiprocessing import Pool, cpu_count
 
@@ -15,15 +25,6 @@ def init_worker():
     worker_pose_instance = mp.solutions.pose.Pose(
         static_image_mode=True, min_detection_confidence=0.5
     )
-
-def calculate_angle_3d_for_worker(a, b, c):
-    a, b, c = np.array(a), np.array(b), np.array(c)
-    ba, bc = a - b, c - b
-    dot_product = np.dot(ba, bc)
-    magnitude = np.linalg.norm(ba) * np.linalg.norm(bc)
-    if magnitude < 1e-10: return 0.0
-    cosine_angle = np.clip(dot_product / magnitude, -1.0, 1.0)
-    return np.degrees(np.arccos(cosine_angle))
 
 def extract_features_from_image(image_path):
     global worker_pose_instance
@@ -39,73 +40,65 @@ def extract_features_from_image(image_path):
     if not results.pose_world_landmarks: return None
     try:
         landmarks = results.pose_world_landmarks.landmark
-        mp_pose_ref = mp.solutions.pose
-        lm_data = {mp_pose_ref.PoseLandmark(idx).name.lower(): [lm.x, lm.y, lm.z] for idx, lm in enumerate(landmarks)}
+        mp_pose = mp.solutions.pose 
+        lm_data = {mp_pose.PoseLandmark(idx).name.lower(): [lm.x, lm.y, lm.z] for idx, lm in enumerate(landmarks)}
         angles = {
-            'left_elbow': calculate_angle_3d_for_worker(lm_data['left_shoulder'], lm_data['left_elbow'], lm_data['left_wrist']),
-            'left_shoulder': calculate_angle_3d_for_worker(lm_data['left_hip'], lm_data['left_shoulder'], lm_data['left_elbow']),
-            'left_hip': calculate_angle_3d_for_worker(lm_data['left_shoulder'], lm_data['left_hip'], lm_data['left_knee']),
-            'left_knee': calculate_angle_3d_for_worker(lm_data['left_hip'], lm_data['left_knee'], lm_data['left_ankle']),
-            'right_elbow': calculate_angle_3d_for_worker(lm_data['right_shoulder'], lm_data['right_elbow'], lm_data['right_wrist']),
-            'right_shoulder': calculate_angle_3d_for_worker(lm_data['right_hip'], lm_data['right_shoulder'], lm_data['right_elbow']),
-            'right_hip': calculate_angle_3d_for_worker(lm_data['right_shoulder'], lm_data['right_hip'], lm_data['right_knee']),
-            'right_knee': calculate_angle_3d_for_worker(lm_data['right_hip'], lm_data['right_knee'], lm_data['right_ankle']),
+            'left_elbow': calculate_angle_3d(lm_data['left_shoulder'], lm_data['left_elbow'], lm_data['left_wrist']),
+            'left_shoulder': calculate_angle_3d(lm_data['left_hip'], lm_data['left_shoulder'], lm_data['left_elbow']),
+            'left_hip': calculate_angle_3d(lm_data['left_shoulder'], lm_data['left_hip'], lm_data['left_knee']),
+            'left_knee': calculate_angle_3d(lm_data['left_hip'], lm_data['left_knee'], lm_data['left_ankle']),
+            'right_elbow': calculate_angle_3d(lm_data['right_shoulder'], lm_data['right_elbow'], lm_data['right_wrist']),
+            'right_shoulder': calculate_angle_3d(lm_data['right_hip'], lm_data['right_shoulder'], lm_data['right_elbow']),
+            'right_hip': calculate_angle_3d(lm_data['right_shoulder'], lm_data['right_hip'], lm_data['right_knee']),
+            'right_knee': calculate_angle_3d(lm_data['right_hip'], lm_data['right_knee'], lm_data['right_ankle']),
         }
         return angles
-    except Exception:
+    except Exception as e:
+        print(f"\n[Error] Failed processing landmarks in '{os.path.basename(image_path)}': {e}")
         return None
+
+current_dir = os.path.dirname(os.path.abspath(__file__))
+project_root = os.path.dirname(current_dir)
+sys.path.append(project_root)
+from duo.duo_instance import ArnisClassifiers
+
+
+def calculate_angle_3d(a, b, c):
+    a, b, c = np.array(a), np.array(b), np.array(c)
+    ba, bc = a - b, c - b
+    dot_product = np.dot(ba, bc)
+    magnitude = np.linalg.norm(ba) * np.linalg.norm(bc)
+    if magnitude < 1e-10: return 0.0
+    cosine_angle = np.clip(dot_product / magnitude, -1.0, 1.0)
+    angle = np.degrees(np.arccos(cosine_angle))
+    return angle
+
 def plot_training_history(history, save_path):
-        plt.figure(figsize=(15, 6))
-        if 'accuracy' in history.history:
-            plt.subplot(1, 2, 1)
-            plt.plot(history.history['accuracy'], label='Training Accuracy', marker='o')
-            if 'val_accuracy' in history.history:
-                plt.plot(history.history['val_accuracy'], label='Validation Accuracy', marker='o')
-            plt.title('Model Accuracy Over Epochs', fontsize=16)
-            plt.xlabel('Epoch', fontsize=12)
-            plt.ylabel('Accuracy', fontsize=12)
-            plt.legend(loc='lower right')
-            plt.grid(True)
-            plt.ylim(0, 1.05) 
-        else:
-            print("[Warning] 'accuracy' metric not found in history. Skipping accuracy plot.")
+    plt.figure(figsize=(15, 6))
+    plt.subplot(1, 2, 1)
+    plt.plot(history.history['accuracy'], label='Training Accuracy', marker='o')
+    plt.plot(history.history['val_accuracy'], label='Validation Accuracy', marker='o')
+    plt.title('Model Accuracy Over Epochs', fontsize=16)
+    plt.xlabel('Epoch', fontsize=12)
+    plt.ylabel('Accuracy', fontsize=12)
+    plt.legend(loc='lower right')
+    plt.grid(True)
+    plt.ylim(0, 1.05)
+    plt.subplot(1, 2, 2)
+    plt.plot(history.history['loss'], label='Training Loss', marker='o')
+    plt.plot(history.history['val_loss'], label='Validation Loss', marker='o')
+    plt.title('Model Loss Over Epochs', fontsize=16)
+    plt.xlabel('Epoch', fontsize=12)
+    plt.ylabel('Loss', fontsize=12)
+    plt.legend(loc='upper right')
+    plt.grid(True)
+    plt.tight_layout()
+    plt.savefig(save_path)
+    print(f"\n[info] Training history plot saved to: {save_path}")
+    plt.close()
 
-        if 'loss' in history.history:
-            plt.subplot(1, 2, 2)
-            plt.plot(history.history['loss'], label='Training Loss', marker='o')
-            if 'val_loss' in history.history:
-                plt.plot(history.history['val_loss'], label='Validation Loss', marker='o')
-            plt.title('Model Loss Over Epochs', fontsize=16)
-            plt.xlabel('Epoch', fontsize=12)
-            plt.ylabel('Loss', fontsize=12)
-            plt.legend(loc='upper right')
-            plt.grid(True)
-        else:
-            print("[Warning] 'loss' metric not found in history. Skipping loss plot.")
-
-        plt.tight_layout()
-        plt.savefig(save_path)
-        print(f"\n[info] Training history plot saved to: {save_path}")
-        plt.close()
 
 if __name__ == "__main__":
-    import matplotlib
-    matplotlib.use('Agg')
-    import joblib
-    import tensorflow as tf
-    from keras.models import Sequential
-    from keras.layers import Dense, Dropout
-    from sklearn.model_selection import train_test_split, StratifiedKFold
-    from sklearn.preprocessing import LabelEncoder
-    from sklearn.metrics import classification_report, accuracy_score
-    from sklearn.ensemble import RandomForestClassifier
-    import matplotlib.pyplot as plt
-    
-    current_dir = os.path.dirname(os.path.abspath(__file__))
-    project_root = os.path.dirname(current_dir)
-    sys.path.append(project_root)
-    from duo.duo_instance import ArnisClassifiers
-
     dataset_folder = os.path.join(project_root, 'dataset_multiclass')
     csv_output_file = os.path.join(project_root, 'arnis_poses_features.csv')
     models_dir = os.path.join(project_root, 'models')
@@ -113,7 +106,7 @@ if __name__ == "__main__":
     RUN_EXTRACTION = True
 
     if RUN_EXTRACTION:
-        print("\n[INFO] Gathering image files for feature extraction...")
+        print("\n[info] starting feature extraction...")
         feature_columns = ['left_elbow', 'left_shoulder', 'left_hip', 'left_knee',
                            'right_elbow', 'right_shoulder', 'right_hip', 'right_knee']
         header = ['class'] + feature_columns
@@ -130,15 +123,11 @@ if __name__ == "__main__":
                     all_image_paths.append(full_path)
                     path_to_class_map[full_path] = class_name
         
-        num_processes = 4
-        print(f"[INFO] Starting feature extraction with {num_processes} worker processes for {len(all_image_paths)} images...")
+        num_processes = cpu_count() - 1 if cpu_count() > 1 else 1
+        print(f"[info] starting feature extraction with {num_processes} worker processes...")
 
-        results = []
         with Pool(processes=num_processes, initializer=init_worker) as pool:
-            with tqdm(total=len(all_image_paths), desc="Extracting Features") as pbar:
-                for result in pool.imap_unordered(extract_features_from_image, all_image_paths):
-                    results.append(result)
-                    pbar.update(1)
+            results = list(tqdm(pool.imap(extract_features_from_image, all_image_paths), total=len(all_image_paths), desc="Extracting Features"))
 
         with open(csv_output_file, 'w', newline='') as f:
             writer = csv.writer(f)
@@ -149,10 +138,10 @@ if __name__ == "__main__":
                     class_name = path_to_class_map[image_path]
                     writer.writerow([class_name] + [angles.get(joint, 0) for joint in feature_columns])
         
-        print(f"\n[INFO] Feature extraction complete.")
+        print(f"\n[info] feature extraction complete.")
     else:
-        print(f"[INFO] Skipping feature extraction.")
-
+        print(f"[info] skipping feature extraction.")
+    
     print("\n[info] preparing data...")
     data = pd.read_csv(csv_output_file).dropna()
     X = data.drop('class', axis=1).values

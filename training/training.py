@@ -86,7 +86,7 @@ def plot_training_history(history, save_path):
     plt.close()
 
 if __name__ == "__main__":
-    dataset_folder = os.path.join(project_root, 'dataset_multiclass_2')
+    dataset_folder = os.path.join(project_root, 'dataset_multiclass')
     csv_output_file = os.path.join(project_root, 'arnis_poses_features.csv')
     models_dir = os.path.join(project_root, 'models')
     os.makedirs(models_dir, exist_ok=True)

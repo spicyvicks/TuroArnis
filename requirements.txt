@@ -1,11 +1,11 @@
-tensorflow
 opencv-python
-mediapipe
+tensorflow-intel
 pandas
 scikit-learn
 joblib
-ultralytics
-filterpy
-scikit-image
 ttkbootstrap
-pillow
+Pillow
+mediapipe
+ultralytics
+imgaug
+seaborn

@@ -11,7 +11,6 @@ from gui.results_window import ResultsWindow
 from computer_vision.pose_analyzer import PoseAnalyzer
 from pose_definitions import POSE_LIBRARY
 
-
 class TuroArnisGUI:
     def __init__(self, window, window_title):
         self.window = window
@@ -87,10 +86,8 @@ class TuroArnisGUI:
 
     def draw_text_with_bg(self, img, text, pos, font_face, font_scale, text_color, bg_color, thickness):
         (text_w, text_h), baseline = cv2.getTextSize(text, font_face, font_scale, thickness)
-        
         top_left = (pos[0], pos[1] - text_h - baseline)
         bottom_right = (pos[0] + text_w, pos[1] + baseline)
-        
         cv2.rectangle(img, top_left, bottom_right, bg_color, cv2.FILLED)
         cv2.putText(img, text, (pos[0], pos[1]), font_face, font_scale, text_color, thickness)
 
@@ -111,18 +108,17 @@ class TuroArnisGUI:
             pad_horz = (sw - new_w) / 2
             pad_left, pad_right = np.floor(pad_horz).astype(int), np.ceil(pad_horz).astype(int)
             pad_top, pad_bot = 0, 0
-        
         scaled_img = cv2.resize(img, (new_w, new_h), interpolation=interp)
         padded_img = cv2.copyMakeBorder(scaled_img, pad_top, pad_bot, pad_left, pad_right, borderType=cv2.BORDER_CONSTANT, value=[pad_color]*3)
         return padded_img
     
     def video_loop(self):
-        COLOR_DEFAULT = (255, 0, 0)      # blue
-        COLOR_CORRECT = (0, 255, 0)      # green
-        COLOR_ERROR = (0, 0, 255)        # red
-        COLOR_PROMPT = (0, 255, 255)     # yellow
-        COLOR_WHITE = (255, 255, 255)    # white bg
-        COLOR_BLACK = (0, 0, 0)          # black
+        COLOR_DEFAULT = (255, 0, 0)
+        COLOR_CORRECT = (0, 255, 0)
+        COLOR_ERROR = (0, 0, 255)
+        COLOR_PROMPT = (0, 255, 255)
+        COLOR_WHITE = (255, 255, 255)
+        COLOR_BLACK = (0, 0, 0)
 
         while self.is_running:
             ret, frame = self.cap.read()
@@ -143,7 +139,7 @@ class TuroArnisGUI:
                     x1, y1, x2, y2 = result['bbox']
                     person_id = result['id']
                     
-                    draw_color = COLOR_ERROR  # default to red 
+                    draw_color = COLOR_ERROR
                     box_color = COLOR_DEFAULT
                     is_correct = False
                     error_messages = []
@@ -171,52 +167,42 @@ class TuroArnisGUI:
                                 is_correct = True
                                 draw_color = COLOR_CORRECT
                     
-                    #box
                     cv2.rectangle(processing_frame, (x1, y1), (x2, y2), box_color, 2)
+                    
+                    if result['stick_endpoints']:
+                        pt1, pt2 = result['stick_endpoints']
+                        cv2.line(processing_frame, pt1, pt2, COLOR_PROMPT, 4)
 
-                    #user
-                    self.draw_text_with_bg(
-                        img=processing_frame, text=f"User {person_id}", 
-                        pos=(x1, y1 - 10), font_face=cv2.FONT_HERSHEY_SIMPLEX, font_scale=0.9,
-                        text_color=COLOR_BLACK, bg_color=COLOR_WHITE, thickness=2
-                    )
+                    self.draw_text_with_bg(img=processing_frame, text=f"User {person_id}", pos=(x1, y1 - 10), font_face=cv2.FONT_HERSHEY_SIMPLEX, font_scale=0.9, text_color=COLOR_BLACK, bg_color=COLOR_WHITE, thickness=2)
 
-                    #landmarks
                     if result['landmarks']:
                         landmark_spec = self.analyzer.mp_drawing.DrawingSpec(color=draw_color, thickness=2, circle_radius=2)
                         connection_spec = self.analyzer.mp_drawing.DrawingSpec(color=draw_color, thickness=2, circle_radius=2)
-                        self.analyzer.mp_drawing.draw_landmarks(
-                            processing_frame, result['landmarks'], self.analyzer.mp_pose.POSE_CONNECTIONS,
-                            landmark_drawing_spec=landmark_spec, connection_drawing_spec=connection_spec
-                        )
+                        self.analyzer.mp_drawing.draw_landmarks(processing_frame, result['landmarks'], self.analyzer.mp_pose.POSE_CONNECTIONS, landmark_drawing_spec=landmark_spec, connection_drawing_spec=connection_spec)
 
-                    #feedback
                     if self.target_form:
                         if is_correct:
-                            self.draw_text_with_bg(
-                                img=processing_frame, text="Correct!", 
-                                pos=(x1, y2 + 30), font_face=cv2.FONT_HERSHEY_SIMPLEX, font_scale=0.7,
-                                text_color=COLOR_CORRECT, bg_color=COLOR_WHITE, thickness=2
-                            )
+                            self.draw_text_with_bg(img=processing_frame, text="Correct!", pos=(x1, y2 + 30), font_face=cv2.FONT_HERSHEY_SIMPLEX, font_scale=0.7, text_color=COLOR_CORRECT, bg_color=COLOR_WHITE, thickness=2)
                         else:
-                            if error_messages:
-                                for i, msg in enumerate(error_messages[:2]):
-                                    self.draw_text_with_bg(
-                                        img=processing_frame, text=msg, 
-                                        pos=(x1, y2 + 30 + (i * 30)), font_face=cv2.FONT_HERSHEY_SIMPLEX, font_scale=0.6,
-                                        text_color=COLOR_ERROR, bg_color=COLOR_WHITE, thickness=2
-                                    )
+                            error_display_list = []
+                            if result['grip_angle'] is not None:
+                                # You can customize these target ranges per form
+                                target_min, target_max = 80, 120 
+                                if not (target_min <= result['grip_angle'] <= target_max):
+                                    feedback = "Extend stick" if result['grip_angle'] < target_min else "Retract stick"
+                                    error_display_list.append(f"Grip: {feedback}")
+                            
+                            error_display_list.extend(error_messages)
+
+                            if error_display_list:
+                                for i, msg in enumerate(error_display_list[:3]): # Show up to 3 errors
+                                    self.draw_text_with_bg(img=processing_frame, text=msg, pos=(x1, y2 + 30 + (i * 30)), font_face=cv2.FONT_HERSHEY_SIMPLEX, font_scale=0.6, text_color=COLOR_ERROR, bg_color=COLOR_WHITE, thickness=2)
                             else:
                                 pretty_form_name = self.form_button.cget('text')
                                 if pretty_form_name != "Choose Arnis Form":
-                                    self.draw_text_with_bg(
-                                        img=processing_frame, text=f"Adjust to {pretty_form_name}", 
-                                        pos=(x1, y2 + 30), font_face=cv2.FONT_HERSHEY_SIMPLEX, font_scale=0.7,
-                                        text_color=COLOR_PROMPT, bg_color=COLOR_WHITE, thickness=2
-                                    )
+                                    self.draw_text_with_bg(img=processing_frame, text=f"Adjust to {pretty_form_name}", pos=(x1, y2 + 30), font_face=cv2.FONT_HERSHEY_SIMPLEX, font_scale=0.7, text_color=COLOR_PROMPT, bg_color=COLOR_WHITE, thickness=2)
             
             final_frame = self.resize_and_pad(processing_frame, size=(self.screen_width, self.screen_height))
-
             if self.queue.full():
                 try: self.queue.get_nowait()
                 except queue.Empty: pass

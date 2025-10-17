@@ -88,16 +88,39 @@ def plot_training_history(history, save_path):
         print(f"\n[info] Training history plot saved to: {save_path}")
         plt.close()
 
+def plot_confusion_matrix(y_true, y_pred, class_names, save_path):
+    cm = confusion_matrix(y_true, y_pred)
+    
+    cm_df = pd.DataFrame(cm,
+                         index = class_names, 
+                         columns = class_names)
+    
+    plt.figure(figsize=(12, 10))
+
+    sns.heatmap(cm_df, annot=True, fmt='g', cmap='Blues')
+
+    plt.title('Confusion Matrix for Hybrid Model', fontsize=16)
+    plt.ylabel('Actual Class', fontsize=12)
+    plt.xlabel('Predicted Class', fontsize=12)
+    
+    plt.tight_layout()
+    
+    plt.savefig(save_path)
+    print(f"\n[info] Confusion matrix plot saved to: {save_path}")
+    
+    plt.close()
+
 if __name__ == "__main__":
     import matplotlib
     matplotlib.use('Agg')
     import joblib
+    import seaborn as sns
     import tensorflow as tf
     from keras.models import Sequential
     from keras.layers import Dense, Dropout
     from sklearn.model_selection import train_test_split, StratifiedKFold
     from sklearn.preprocessing import LabelEncoder
-    from sklearn.metrics import classification_report, accuracy_score
+    from sklearn.metrics import classification_report, accuracy_score, confusion_matrix
     from sklearn.ensemble import RandomForestClassifier
     import matplotlib.pyplot as plt
     
@@ -192,7 +215,7 @@ if __name__ == "__main__":
             Dense(32, activation='relu'), Dropout(0.2),
             Dense(num_classes, activation='softmax')
         ])
-        temp_tf_model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
+        temp_tf_model.compile(optimizer='Adam', loss='categorical_crossentropy', metrics=['accuracy'])
         temp_tf_model.fit(X_train_fold, y_train_tf, epochs=50, batch_size=8, verbose=0)
         
         _, acc_tf = temp_tf_model.evaluate(X_val_fold, y_val_tf, verbose=0)
@@ -220,13 +243,13 @@ if __name__ == "__main__":
         Dense(32, activation='relu'), Dropout(0.2),
         Dense(num_classes, activation='softmax')
     ])
-    final_tf_model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
+    final_tf_model.compile(optimizer='Adam', loss='categorical_crossentropy', metrics=['accuracy'])
     
     print("[info] starting final TensorFlow model training...")
     history = final_tf_model.fit(
         X_pool, 
         y_pool_tf, 
-        epochs=50, 
+        epochs=1000, 
         batch_size=8, 
         validation_data=(X_test, y_test_tf), 
         verbose=1
@@ -259,6 +282,10 @@ if __name__ == "__main__":
 
     print("\n--- Final Classification Report (Hybrid Model) ---")
     print(classification_report(y_test, y_pred_hybrid, target_names=class_names))
+
+    print("\n[info] Generating confusion matrix plot...")
+    cm_plot_path = os.path.join(models_dir, 'confusion_matrix.png')
+    plot_confusion_matrix(y_test, y_pred_hybrid, class_names, cm_plot_path)
 
     print("\n[info] saving final models and unified wrapper...")
     tf_model_path_rel = 'models/arnis_tf_classifier.h5'

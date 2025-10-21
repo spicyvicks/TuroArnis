@@ -7,19 +7,20 @@ import joblib
 import mediapipe as mp
 from ultralytics import YOLO
 
+# --- NEW: Import TensorFlow for the Keras model ---
+import tensorflow as tf
+
 current_dir = os.path.dirname(os.path.abspath(__file__))
 project_root = os.path.dirname(current_dir)
 sys.path.append(project_root)
 
 from sort import Sort
-from duo.duo_instance import ArnisClassifiers
 
 class PoseAnalyzer:
     def __init__(self, detection_interval=3):
         print("[info] initializing computer vision components...")
-        self.yolo_model = YOLO('yolov8n.pt') # Person detector
+        self.yolo_model = YOLO('yolov8n.pt') 
 
-        # --- NEW: LOAD THE CUSTOM STICK DETECTOR ---
         try:
             stick_model_path = os.path.join(project_root, 'models', 'stick_detector.pt')
             if not os.path.exists(stick_model_path):
@@ -44,14 +45,22 @@ class PoseAnalyzer:
         )
 
         try:
-            model_path = os.path.join(project_root, 'models', 'arnis_classifiers.joblib')
+            model_path = os.path.join(project_root, 'models', 'arnis_coordinates_classifier.keras')
+            encoder_path = os.path.join(project_root, 'models', 'label_encoder.joblib')
+
             if not os.path.exists(model_path):
-                raise FileNotFoundError(f"Combined model file not found. Expected at: {model_path}")
-            self.classifier = joblib.load(model_path)
-            print("[info] hybrid model wrapper loaded successfully.")
+                raise FileNotFoundError(f"Keras model file not found. Expected at: {model_path}")
+            if not os.path.exists(encoder_path):
+                raise FileNotFoundError(f"Label encoder file not found. Expected at: {encoder_path}")
+
+            self.pose_classifier_model = tf.keras.models.load_model(model_path)
+            self.label_encoder = joblib.load(encoder_path)
+            
+            print("[info] Keras pose classification model and encoder loaded successfully.")
         except Exception as e:
-            print(f"[critical] could not load models: {e}")
-            self.classifier = None
+            print(f"[critical] could not load new models: {e}")
+            self.pose_classifier_model = None
+            self.label_encoder = None
         
         self.detection_interval = detection_interval
         self.frame_count = 0
@@ -74,35 +83,23 @@ class PoseAnalyzer:
         x1, y1, x2, y2 = stick_bbox
         stick_roi = frame[y1:y2, x1:x2]
         if stick_roi.size == 0: return None
-        
         hsv_roi = cv2.cvtColor(stick_roi, cv2.COLOR_BGR2HSV)
-        # IMPORTANT: Tune these HSV values for your stick's color and lighting!
-        lower_brown = np.array([5, 50, 50])
-        upper_brown = np.array([30, 255, 255])
+        lower_brown = np.array([5, 50, 50]); upper_brown = np.array([30, 255, 255])
         mask = cv2.inRange(hsv_roi, lower_brown, upper_brown)
-        
         contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         if not contours: return None
-        
         largest_contour = max(contours, key=cv2.contourArea)
         if cv2.contourArea(largest_contour) < 50: return None
-        
         rect = cv2.minAreaRect(largest_contour)
         box = np.int0(cv2.boxPoints(rect))
-        
-        side1_len = np.linalg.norm(box[0] - box[1])
-        side2_len = np.linalg.norm(box[1] - box[2])
+        side1_len = np.linalg.norm(box[0] - box[1]); side2_len = np.linalg.norm(box[1] - box[2])
         pt1, pt2 = ((box[1] + box[2]) // 2, (box[0] + box[3]) // 2) if side1_len > side2_len else ((box[0] + box[1]) // 2, (box[2] + box[3]) // 2)
-        
-        endpoint1 = (pt1[0] + x1, pt1[1] + y1)
-        endpoint2 = (pt2[0] + x1, pt2[1] + y1)
-        return (endpoint1, endpoint2)
+        return ((pt1[0] + x1, pt1[1] + y1), (pt2[0] + x1, pt2[1] + y1))
 
     def _calculate_angle_2d(self, a, b, c):
         a, b, c = np.array(a), np.array(b), np.array(c)
         ba, bc = a - b, c - b
-        dot_product = np.dot(ba, bc)
-        magnitude = np.linalg.norm(ba) * np.linalg.norm(bc)
+        dot_product = np.dot(ba, bc); magnitude = np.linalg.norm(ba) * np.linalg.norm(bc)
         if magnitude < 1e-6: return 0.0
         cosine_angle = np.clip(dot_product / magnitude, -1.0, 1.0)
         return np.degrees(np.arccos(cosine_angle))
@@ -129,38 +126,28 @@ class PoseAnalyzer:
             results_stick = self.stick_model(frame, verbose=False, conf=0.4, imgsz=320)
             for r in results_stick:
                 for box in r.boxes:
-                    x1, y1, x2, y2 = map(int, box.xyxy[0])
-                    stick_boxes.append((x1, y1, x2, y2))
+                    x1, y1, x2, y2 = map(int, box.xyxy[0]); stick_boxes.append((x1, y1, x2, y2))
             
-        analysis_results = {
-            int(p[4]): {
-                'id': int(p[4]), 'bbox': tuple(map(int, p[:4])), 'predicted_class': "N/A",
-                'confidence': 0.0, 'live_angles': None, 'landmarks': None,
-                'stick_endpoints': None, 'grip_angle': None
-            } for p in tracked_persons
-        }
+        analysis_results = { int(p[4]): {'id': int(p[4]), 'bbox': tuple(map(int, p[:4])), 'predicted_class': "N/A", 'confidence': 0.0, 'live_angles': None, 'landmarks': None, 'stick_endpoints': None, 'grip_angle': None } for p in tracked_persons }
 
         if stick_boxes and tracked_persons is not None:
             for stick_box in stick_boxes:
                 best_iou, best_match_id = 0.0, -1
                 for person in tracked_persons:
-                    person_box = tuple(map(int, person[:4]))
-                    iou = self._calculate_iou(stick_box, person_box)
-                    if iou > best_iou:
-                        best_iou, best_match_id = iou, int(person[4])
+                    iou = self._calculate_iou(stick_box, tuple(map(int, person[:4])))
+                    if iou > best_iou: best_iou, best_match_id = iou, int(person[4])
                 
                 if best_match_id != -1 and best_iou > 0.05 and analysis_results[best_match_id]['stick_endpoints'] is None:
                     endpoints = self._get_stick_orientation(frame, stick_box)
-                    if endpoints:
-                        analysis_results[best_match_id]['stick_endpoints'] = endpoints
+                    if endpoints: analysis_results[best_match_id]['stick_endpoints'] = endpoints
         
         image_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         pose_results = self.pose.process(image_rgb)
 
         if pose_results.pose_landmarks and tracked_persons is not None and len(tracked_persons) > 0:
-            landmarks = pose_results.pose_landmarks.landmark
+            landmarks_2d = pose_results.pose_landmarks.landmark
             min_x, max_x, min_y, max_y = w, 0, h, 0
-            for lm in landmarks:
+            for lm in landmarks_2d:
                 px, py = int(lm.x * w), int(lm.y * h)
                 min_x, max_x = min(min_x, px), max(max_x, px)
                 min_y, max_y = min(min_y, py), max(max_y, py)
@@ -173,35 +160,43 @@ class PoseAnalyzer:
                     best_iou, best_match_id = iou, person_id
             
             if best_match_id != -1 and best_iou > 0.3:
-                live_angles = self._calculate_all_angles_3d(pose_results.pose_world_landmarks.landmark)
+                
                 predicted_class, confidence = "N/A", 0.0
-
-                if self.classifier and live_angles:
+                
+                if self.pose_classifier_model and self.label_encoder:
                     try:
-                        feature_columns = ['left_elbow', 'left_shoulder', 'left_hip', 'left_knee', 'right_elbow', 'right_shoulder', 'right_hip', 'right_knee']
-                        ordered_angles = [live_angles[key] for key in feature_columns]
-                        live_features_df = pd.DataFrame([ordered_angles], columns=feature_columns)
-                        prediction_result = self.classifier.predict(live_features_df.values)
-                        predicted_class, confidence = prediction_result['predicted_class'], prediction_result['confidence']
+                        world_landmarks = pose_results.pose_world_landmarks.landmark
+                        coords = np.array([[lm.x, lm.y, lm.z] for lm in world_landmarks]).flatten()
+                        
+                        coords_batch = np.expand_dims(coords, axis=0)
+                        
+                        pred_proba = self.pose_classifier_model.predict(coords_batch, verbose=0)[0]
+                        
+                        pred_index = np.argmax(pred_proba)
+                        confidence = pred_proba[pred_index]
+                        predicted_class = self.label_encoder.inverse_transform([pred_index])[0]
+                        
                     except Exception as e:
                         print(f"Error during prediction for user {best_match_id}: {e}")
                 
+                live_angles = self._calculate_all_angles_3d(pose_results.pose_world_landmarks.landmark)
+
                 analysis_results[best_match_id].update({
-                    'landmarks': pose_results.pose_landmarks, 'live_angles': live_angles,
-                    'predicted_class': predicted_class, 'confidence': confidence
+                    'landmarks': pose_results.pose_landmarks, 
+                    'live_angles': live_angles, 
+                    'predicted_class': predicted_class, 
+                    'confidence': float(confidence)
                 })
 
                 stick_endpoints = analysis_results[best_match_id]['stick_endpoints']
                 if stick_endpoints:
-                    r_wrist_lm = landmarks[self.mp_pose.PoseLandmark.RIGHT_WRIST]
-                    r_shoulder_lm = landmarks[self.mp_pose.PoseLandmark.RIGHT_SHOULDER]
+                    r_wrist_lm = landmarks_2d[self.mp_pose.PoseLandmark.RIGHT_WRIST]
+                    r_shoulder_lm = landmarks_2d[self.mp_pose.PoseLandmark.RIGHT_SHOULDER]
                     wrist_pt = (int(r_wrist_lm.x * w), int(r_wrist_lm.y * h))
                     shoulder_pt = (int(r_shoulder_lm.x * w), int(r_shoulder_lm.y * h))
-                    
                     dist0 = np.linalg.norm(np.array(wrist_pt) - np.array(stick_endpoints[0]))
                     dist1 = np.linalg.norm(np.array(wrist_pt) - np.array(stick_endpoints[1]))
                     tip = stick_endpoints[0] if dist0 > dist1 else stick_endpoints[1]
-                    
                     grip_angle = self._calculate_angle_2d(shoulder_pt, wrist_pt, tip)
                     analysis_results[best_match_id]['grip_angle'] = grip_angle
 

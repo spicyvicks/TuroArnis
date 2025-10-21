@@ -31,7 +31,6 @@ class TuroArnisGUI:
         self.target_form = None
         self.current_user = "Default User"
 
-        #widgets
         self.video_label = ttk.Label(self.window)
         self.video_label.place(x=0, y=0, relwidth=1, relheight=1)
         
@@ -48,18 +47,12 @@ class TuroArnisGUI:
         self.user_button["menu"] = self.user_menu
         
         self.practice_stances = {
-            "Crown Thrust": "crown_thrust_correct", 
-            "Left Chest Thrust": "left_chest_thrust_correct",
-            "Left Elbow Block": "left_elbow_block_correct", 
-            "Left Eye Thrust": "left_eye_thrust_correct",
-            "Left Knee Block": "left_knee_block_correct", 
-            "Left Temple Block": "left_temple_block_correct",
-            "Right Chest Thrust": "right_chest_thrust_correct", 
-            "Right Elbow Block": "right_elbow_block_correct",
-            "Right Eye Thrust": "right_eye_thrust_correct", 
-            "Right Knee Block": "right_knee_block_correct",
-            "Right Temple Block": "right_temple_block_correct", 
-            "Solar Plexus Thrust": "solar_plexus_thrust_correct"
+            "Crown Thrust": "crown_thrust_correct", "Left Chest Thrust": "left_chest_thrust_correct",
+            "Left Elbow Block": "left_elbow_block_correct", "Left Eye Thrust": "left_eye_thrust_correct",
+            "Left Knee Block": "left_knee_block_correct", "Left Temple Block": "left_temple_block_correct",
+            "Right Chest Thrust": "right_chest_thrust_correct", "Right Elbow Block": "right_elbow_block_correct",
+            "Right Eye Thrust": "right_eye_thrust_correct", "Right Knee Block": "right_knee_block_correct",
+            "Right Temple Block": "right_temple_block_correct", "Solar Plexus Thrust": "solar_plexus_thrust_correct"
         }
         self.form_button = ttk.Menubutton(self.controls_panel, text="Choose Arnis Form", bootstyle="primary")
         self.form_button.pack(fill=X, pady=5)
@@ -75,7 +68,6 @@ class TuroArnisGUI:
         self.view_all_results_button = ttk.Button(self.controls_panel, text="View All Results", command=self.open_results_window, bootstyle="info")
         self.view_all_results_button.pack(fill=X, pady=10, side=BOTTOM)
 
-        # startup
         self.is_running = True
         self.thread = threading.Thread(target=self.video_loop, daemon=True)
         self.thread.start()
@@ -92,19 +84,15 @@ class TuroArnisGUI:
         cv2.putText(img, text, (pos[0], pos[1]), font_face, font_scale, text_color, thickness)
 
     def resize_and_pad(self, img, size, pad_color=0):
-        h, w, _ = img.shape
-        sw, sh = size
-        interp = cv2.INTER_AREA if h > sh or w > sw else cv2.INTER_CUBIC
-        aspect = w / h
+        h, w, _ = img.shape; sw, sh = size
+        interp = cv2.INTER_AREA if h > sh or w > sw else cv2.INTER_CUBIC; aspect = w / h
         if aspect > sw / sh:
-            new_w = sw
-            new_h = np.round(new_w / aspect).astype(int)
+            new_w = sw; new_h = np.round(new_w / aspect).astype(int)
             pad_vert = (sh - new_h) / 2
             pad_top, pad_bot = np.floor(pad_vert).astype(int), np.ceil(pad_vert).astype(int)
             pad_left, pad_right = 0, 0
         else:
-            new_h = sh
-            new_w = np.round(new_h * aspect).astype(int)
+            new_h = sh; new_w = np.round(new_h * aspect).astype(int)
             pad_horz = (sw - new_w) / 2
             pad_left, pad_right = np.floor(pad_horz).astype(int), np.ceil(pad_horz).astype(int)
             pad_top, pad_bot = 0, 0
@@ -113,12 +101,9 @@ class TuroArnisGUI:
         return padded_img
     
     def video_loop(self):
-        COLOR_DEFAULT = (255, 0, 0)
-        COLOR_CORRECT = (0, 255, 0)
-        COLOR_ERROR = (0, 0, 255)
-        COLOR_PROMPT = (0, 255, 255)
-        COLOR_WHITE = (255, 255, 255)
-        COLOR_BLACK = (0, 0, 0)
+        COLOR_DEFAULT = (255, 0, 0); COLOR_CORRECT = (0, 255, 0); COLOR_ERROR = (0, 0, 255)
+        COLOR_PROMPT = (0, 255, 255); COLOR_WHITE = (255, 255, 255); COLOR_BLACK = (0, 0, 0)
+        COLOR_BG_TRANSPARENT = (0, 0, 0) 
 
         while self.is_running:
             ret, frame = self.cap.read()
@@ -131,11 +116,16 @@ class TuroArnisGUI:
             
             analysis_results = self.analyzer.process_frame(processing_frame)
 
+            feedback_x = processing_frame.shape[1] - 270 
+            feedback_y = 30                          
+            
             if analysis_results:
                 self.last_known_results = analysis_results
 
             if self.last_known_results:
-                for result in self.last_known_results:
+                # one user feedback
+                if len(self.last_known_results) > 0:
+                    result = self.last_known_results[0] 
                     x1, y1, x2, y2 = result['bbox']
                     person_id = result['id']
                     
@@ -181,12 +171,16 @@ class TuroArnisGUI:
                         self.analyzer.mp_drawing.draw_landmarks(processing_frame, result['landmarks'], self.analyzer.mp_pose.POSE_CONNECTIONS, landmark_drawing_spec=landmark_spec, connection_drawing_spec=connection_spec)
 
                     if self.target_form:
+                        overlay = processing_frame.copy()
+                        cv2.rectangle(overlay, (feedback_x - 10, feedback_y - 20), (processing_frame.shape[1] - 10, feedback_y + 150), COLOR_BG_TRANSPARENT, -1)
+                        alpha = 0.6
+                        processing_frame = cv2.addWeighted(overlay, alpha, processing_frame, 1 - alpha, 0)
+                        
                         if is_correct:
-                            self.draw_text_with_bg(img=processing_frame, text="Correct!", pos=(x1, y2 + 30), font_face=cv2.FONT_HERSHEY_SIMPLEX, font_scale=0.7, text_color=COLOR_CORRECT, bg_color=COLOR_WHITE, thickness=2)
+                            cv2.putText(processing_frame, "Correct!", (feedback_x, feedback_y), cv2.FONT_HERSHEY_SIMPLEX, 0.7, COLOR_CORRECT, 2)
                         else:
                             error_display_list = []
                             if result['grip_angle'] is not None:
-                                # You can customize these target ranges per form
                                 target_min, target_max = 80, 120 
                                 if not (target_min <= result['grip_angle'] <= target_max):
                                     feedback = "Extend stick" if result['grip_angle'] < target_min else "Retract stick"
@@ -195,12 +189,14 @@ class TuroArnisGUI:
                             error_display_list.extend(error_messages)
 
                             if error_display_list:
-                                for i, msg in enumerate(error_display_list[:3]): # Show up to 3 errors
-                                    self.draw_text_with_bg(img=processing_frame, text=msg, pos=(x1, y2 + 30 + (i * 30)), font_face=cv2.FONT_HERSHEY_SIMPLEX, font_scale=0.6, text_color=COLOR_ERROR, bg_color=COLOR_WHITE, thickness=2)
+                                cv2.putText(processing_frame, "Feedback:", (feedback_x, feedback_y), cv2.FONT_HERSHEY_SIMPLEX, 0.7, COLOR_PROMPT, 2)
+                                for i, msg in enumerate(error_display_list[:4]): # Show up to 4 errors
+                                    cv2.putText(processing_frame, msg, (feedback_x, feedback_y + 30 + (i * 25)), cv2.FONT_HERSHEY_SIMPLEX, 0.6, COLOR_ERROR, 2)
                             else:
                                 pretty_form_name = self.form_button.cget('text')
                                 if pretty_form_name != "Choose Arnis Form":
-                                    self.draw_text_with_bg(img=processing_frame, text=f"Adjust to {pretty_form_name}", pos=(x1, y2 + 30), font_face=cv2.FONT_HERSHEY_SIMPLEX, font_scale=0.7, text_color=COLOR_PROMPT, bg_color=COLOR_WHITE, thickness=2)
+                                    cv2.putText(processing_frame, f"Adjust to Form:", (feedback_x, feedback_y), cv2.FONT_HERSHEY_SIMPLEX, 0.7, COLOR_PROMPT, 2)
+                                    cv2.putText(processing_frame, pretty_form_name, (feedback_x, feedback_y + 30), cv2.FONT_HERSHEY_SIMPLEX, 0.6, COLOR_WHITE, 2)
             
             final_frame = self.resize_and_pad(processing_frame, size=(self.screen_width, self.screen_height))
             if self.queue.full():

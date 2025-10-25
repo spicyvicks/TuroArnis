@@ -5,8 +5,8 @@ import time
 import numpy as np
 from tqdm import tqdm #
 
-INPUT_DATASET_FOLDER = "dataset_multiclass_2"
-OUTPUT_DATASET_FOLDER = "dataset_multiclass"
+INPUT_DATASET_FOLDER = "cropped"
+OUTPUT_DATASET_FOLDER = "dataset"
 
 IMAGES_PER_ORIGINAL = 10 # images to create
 

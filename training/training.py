@@ -97,7 +97,7 @@ if __name__ == "__main__":
     project_root = os.path.dirname(current_dir)
     sys.path.append(project_root)
 
-    dataset_folder = os.path.join(project_root, 'dataset')
+    dataset_folder = os.path.join(project_root, 'dataset_multiclass_2')
     csv_output_file = os.path.join(project_root, 'arnis_poses_coordinates.csv')
     models_dir = os.path.join(project_root, 'models')
     model_save_path = os.path.join(models_dir, 'arnis_coordinates_classifier.keras')
@@ -163,28 +163,78 @@ if __name__ == "__main__":
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
     print(f"  - Data split: {len(X_train)} for training, {len(X_test)} for testing.")
 
+    # Define optimizer with momentum and weight decay
+    optimizer = tf.keras.optimizers.Adam(
+        learning_rate=0.001,  # Initial learning rate
+        beta_1=0.9,  # momentum
+        beta_2=0.999,
+        weight_decay=1e-5  # L2 regularization
+    )
+    
+    # Enhanced model architecture
     model = tf.keras.models.Sequential([
+        # Input and normalization
         tf.keras.layers.Input((num_features,)),
         tf.keras.layers.BatchNormalization(),
-        tf.keras.layers.Dense(128, activation='relu'),
-        tf.keras.layers.Dropout(0.5),
-        tf.keras.layers.Dense(64, activation='relu'),
-        tf.keras.layers.Dropout(0.5),
+        
+        # First block - larger features
+        tf.keras.layers.Dense(256, kernel_regularizer=tf.keras.regularizers.L2(1e-4)),
+        tf.keras.layers.LayerNormalization(),
+        tf.keras.layers.LeakyReLU(alpha=0.1),
+        tf.keras.layers.Dropout(0.4),
+        
+        # Second block - medium features
+        tf.keras.layers.Dense(128, kernel_regularizer=tf.keras.regularizers.L2(1e-4)),
+        tf.keras.layers.LayerNormalization(),
+        tf.keras.layers.LeakyReLU(alpha=0.1),
+        tf.keras.layers.Dropout(0.3),
+        
+        # Third block - focused features
+        tf.keras.layers.Dense(64, kernel_regularizer=tf.keras.regularizers.L2(1e-4)),
+        tf.keras.layers.LayerNormalization(),
+        tf.keras.layers.LeakyReLU(alpha=0.1),
+        tf.keras.layers.Dropout(0.2),
+        
+        # Fourth block - class-specific features
+        tf.keras.layers.Dense(32, kernel_regularizer=tf.keras.regularizers.L2(1e-4)),
+        tf.keras.layers.LayerNormalization(),
+        tf.keras.layers.LeakyReLU(alpha=0.1),
+        tf.keras.layers.Dropout(0.1),
+        
+        # Output layer
         tf.keras.layers.Dense(num_classes, activation='softmax')
     ])
     
-    model.compile(optimizer='adam', loss='sparse_categorical_crossentropy', metrics=['accuracy'])
+    model.compile(
+        optimizer=optimizer,
+        loss='sparse_categorical_crossentropy',
+        metrics=['accuracy']
+    )
     
-    es_callback = tf.keras.callbacks.EarlyStopping(patience=50, monitor='val_accuracy', restore_best_weights=True)
+    # Callbacks
+    es_callback = tf.keras.callbacks.EarlyStopping(
+        patience=50,
+        monitor='val_accuracy',
+        restore_best_weights=True,
+        mode='max'
+    )
+    
+    reduce_lr = tf.keras.callbacks.ReduceLROnPlateau(
+        monitor='val_loss',
+        factor=0.2,
+        patience=20,
+        min_lr=1e-6,
+        mode='min'
+    )
     
     print("\n  - Starting model training... (Progress will be shown for each epoch below)")
     history = model.fit(
         X_train, y_train,
         epochs=500,
-        batch_size=32,
+        batch_size=16,  # Smaller batch size for better generalization
         validation_data=(X_test, y_test),
-        callbacks=[es_callback],
-        verbose=1  
+        callbacks=[es_callback, reduce_lr],
+        verbose=1
     )
     print("\n[SUCCESS] Model training complete.")
 
@@ -198,7 +248,7 @@ if __name__ == "__main__":
     y_pred = np.argmax(y_pred_proba, axis=1)
 
     print("\n--- Final Classification Report ---")
-    print(classification_report(y_test, y_pred, target_names=class_names))
+    print(classification_report(y_test, y_pred, target_names=class_names, zero_division=0))
     
     print("\n[INFO] Generating and saving evaluation plots...")
     history_plot_path = os.path.join(models_dir, 'training_history.png')

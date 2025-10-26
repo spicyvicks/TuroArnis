@@ -97,7 +97,7 @@ if __name__ == "__main__":
     project_root = os.path.dirname(current_dir)
     sys.path.append(project_root)
 
-    dataset_folder = os.path.join(project_root, 'dataset_multiclass_2')
+    dataset_folder = os.path.join(project_root, 'dataset')
     csv_output_file = os.path.join(project_root, 'arnis_poses_coordinates.csv')
     models_dir = os.path.join(project_root, 'models')
     model_save_path = os.path.join(models_dir, 'arnis_coordinates_classifier.keras')

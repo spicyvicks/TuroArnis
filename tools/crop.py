@@ -79,8 +79,8 @@ def main():
     parser = argparse.ArgumentParser(description="Crop persons from dataset and save to an output dataset folder")
     parser.add_argument("--input_dir", type=str, default="dataset_multiclass_2",
                         help="Source dataset folder (default: dataset_multiclass_2)")
-    parser.add_argument("--output_dir", type=str, default="dataset",
-                        help="Destination dataset folder (default: dataset)")
+    parser.add_argument("--output_dir", type=str, default="crop",
+                        help="Destination dataset folder (default: crop)")
     parser.add_argument("--model", type=str, default="yolov8n.pt",
                         help="Path to YOLO model weights")
     args = parser.parse_args()

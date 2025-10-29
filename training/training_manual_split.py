@@ -13,7 +13,9 @@ worker_pose_instance = None
 def init_worker():
     global worker_pose_instance
     worker_pose_instance = mp.solutions.pose.Pose(
-        static_image_mode=True, min_detection_confidence=0.5
+        static_image_mode=True, 
+        min_detection_confidence=0.5,
+        model_complexity=2 
     )
 
 def extract_coordinates_from_image(image_path):
@@ -24,6 +26,7 @@ def extract_coordinates_from_image(image_path):
     image = cv2.imread(image_path)
     if image is None: 
         return None
+        
     image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
     
     results = worker_pose_instance.process(image_rgb)
@@ -32,13 +35,28 @@ def extract_coordinates_from_image(image_path):
         return None
         
     try:
-        coordinates = np.array([[lm.x, lm.y, lm.z] for lm in results.pose_world_landmarks.landmark]).flatten().tolist()
+        landmarks = np.array([[lm.x, lm.y, lm.z] for lm in results.pose_world_landmarks.landmark])
+        
+        left_hip_idx = 23
+        right_hip_idx = 24
+        
+        if left_hip_idx >= len(landmarks) or right_hip_idx >= len(landmarks):
+            return None
+            
+        hip_center = (landmarks[left_hip_idx] + landmarks[right_hip_idx]) / 2.0
+        
+        normalized_landmarks = landmarks - hip_center
+        
+        coordinates = normalized_landmarks.flatten().tolist()
         return coordinates
+        
     except Exception:
         return None
 
-def extract_features_from_folder(folder_path, output_csv, num_processes=4):
-    """Extract features from all images in a folder and save to CSV."""
+def extract_features_from_folder(folder_path, output_csv, num_processes=None):
+    if num_processes is None:
+        num_processes = max(1, cpu_count() - 1)
+        
     print(f"\n[INFO] Extracting features from: {folder_path}")
     
     header = ['class'] + [f'{ax}_{i}' for i in range(33) for ax in ['x', 'y', 'z']]
@@ -48,15 +66,23 @@ def extract_features_from_folder(folder_path, output_csv, num_processes=4):
     path_to_class_map = {}
     class_counts = {}
     
-    for class_name in pose_classes:
-        class_folder_path = os.path.join(folder_path, class_name)
-        class_counts[class_name] = 0
-        for filename in os.listdir(class_folder_path):
-            if filename.lower().endswith(('.png', '.jpg', '.jpeg')):
-                full_path = os.path.join(class_folder_path, filename)
+    def process_folder(current_path, class_name):
+        count = 0
+        for item in os.listdir(current_path):
+            item_path = os.path.join(current_path, item)
+            if os.path.isdir(item_path):
+                count += process_folder(item_path, class_name)
+            elif item.lower().endswith(('.png', '.jpg', '.jpeg')):
+                full_path = item_path
                 all_image_paths.append(full_path)
                 path_to_class_map[full_path] = class_name
-                class_counts[class_name] += 1
+                count += 1
+        return count
+
+    for class_name in pose_classes:
+        class_folder_path = os.path.join(folder_path, class_name)
+        count = process_folder(class_folder_path, class_name)
+        class_counts[class_name] = count
     
     print("\nClass distribution:")
     for class_name, count in class_counts.items():
@@ -83,14 +109,16 @@ def extract_features_from_folder(folder_path, output_csv, num_processes=4):
     
     print("\nSuccessful extractions per class:")
     for class_name, count in class_success_counts.items():
-        total = class_counts[class_name]
-        print(f"  - {class_name}: {count}/{total} ({count/total*100:.1f}%)")
+        total = class_counts.get(class_name, 0)
+        percentage = count/total*100 if total > 0 else 0
+        print(f"  - {class_name}: {count}/{total} ({percentage:.1f}%)")
     
     print(f"\n  - Total successful extractions: {success_count}/{len(all_image_paths)}")
     return success_count
 
 def plot_training_history(history, save_path, plt):
     plt.figure(figsize=(15, 6))
+    
     plt.subplot(1, 2, 1)
     plt.plot(history.history['accuracy'], label='Training Accuracy', marker='o')
     plt.plot(history.history['val_accuracy'], label='Validation Accuracy', marker='o')
@@ -117,7 +145,7 @@ def plot_training_history(history, save_path, plt):
 
 if __name__ == "__main__":
     import matplotlib
-    matplotlib.use('Agg')
+    matplotlib.use('Agg') 
     import joblib
     import seaborn as sns
     import tensorflow as tf
@@ -125,15 +153,12 @@ if __name__ == "__main__":
     from sklearn.metrics import classification_report, confusion_matrix
     import matplotlib.pyplot as plt
     
-    # Setup paths
     current_dir = os.path.dirname(os.path.abspath(__file__))
     project_root = os.path.dirname(current_dir)
     
-    # Define your training and validation dataset folders here
-    train_folder = os.path.join(project_root, 'dataset_multiclass_2')  # Your main dataset
-    val_folder = os.path.join(project_root, 'dataset', 'validation')   # Your validation dataset
+    train_folder = os.path.join(project_root, 'dataset')  #main dataset
+    val_folder = os.path.join(project_root, 'dataset_multiclass_2', 'validation')   #validation dataset
     
-    # Output paths
     train_csv = os.path.join(project_root, 'arnis_poses_coordinates_train.csv')
     val_csv = os.path.join(project_root, 'arnis_poses_coordinates_val.csv')
     
@@ -143,42 +168,46 @@ if __name__ == "__main__":
     
     os.makedirs(models_dir, exist_ok=True)
     
-    # Check if validation folder exists
+    if not os.path.exists(train_folder):
+        print(f"\n[ERROR] Training folder not found: {train_folder}")
+        sys.exit(1)
+        
     if not os.path.exists(val_folder):
         print(f"\n[ERROR] Validation folder not found: {val_folder}")
         print("Please create a 'validation' folder in your dataset directory")
         print("with the following structure:")
-        print("\ndataset/")
+        print("\ndataset_multiclass_2/")
         print("    validation/")
         print("        class1/")
         print("        class2/")
         print("        ...")
         sys.exit(1)
     
-    # Extract features
+    N_PROCESSES = max(1, cpu_count() - 1)
+    
     print("\n[STAGE 1] Extracting features...")
     print("\nProcessing TRAINING data:")
-    train_samples = extract_features_from_folder(train_folder, train_csv)
+    train_samples = extract_features_from_folder(train_folder, train_csv, num_processes=N_PROCESSES)
     print("\nProcessing VALIDATION data:")
-    val_samples = extract_features_from_folder(val_folder, val_csv)
+    val_samples = extract_features_from_folder(val_folder, val_csv, num_processes=N_PROCESSES)
     
+    if train_samples == 0 or val_samples == 0:
+        print("\n[ERROR] No pose features were successfully extracted. Check dataset and MediaPipe setup.")
+        sys.exit(1)
+
     print("\n[STAGE 2] Preparing data for training...")
-    # Load training data
     train_data = pd.read_csv(train_csv).dropna()
     X_train = train_data.drop('class', axis=1).values
     y_train_labels = train_data['class'].values
     
-    # Load validation data
     val_data = pd.read_csv(val_csv).dropna()
     X_val = val_data.drop('class', axis=1).values
     y_val_labels = val_data['class'].values
     
-    # Fit label encoder on all classes (both train and val)
     all_labels = np.concatenate([y_train_labels, y_val_labels])
     label_encoder = LabelEncoder()
     label_encoder.fit(all_labels)
     
-    # Transform labels
     y_train = label_encoder.transform(y_train_labels)
     y_val = label_encoder.transform(y_val_labels)
     
@@ -194,7 +223,6 @@ if __name__ == "__main__":
     
     print("\n[STAGE 3] Training model...")
     
-    # Model definition
     optimizer = tf.keras.optimizers.Adam(
         learning_rate=0.001,
         beta_1=0.9,
@@ -204,7 +232,7 @@ if __name__ == "__main__":
     
     model = tf.keras.models.Sequential([
         tf.keras.layers.Input((num_features,)),
-        tf.keras.layers.BatchNormalization(),
+        tf.keras.layers.BatchNormalization(), 
         
         tf.keras.layers.Dense(256, kernel_regularizer=tf.keras.regularizers.L2(1e-4)),
         tf.keras.layers.LayerNormalization(),

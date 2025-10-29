@@ -163,45 +163,37 @@ if __name__ == "__main__":
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
     print(f"  - Data split: {len(X_train)} for training, {len(X_test)} for testing.")
 
-    # Define optimizer with momentum and weight decay
     optimizer = tf.keras.optimizers.Adam(
-        learning_rate=0.001,  # Initial learning rate
-        beta_1=0.9,  # momentum
+        learning_rate=0.001,  
+        beta_1=0.9, 
         beta_2=0.999,
-        weight_decay=1e-5  # L2 regularization
+        weight_decay=1e-5  
     )
     
-    # Enhanced model architecture
     model = tf.keras.models.Sequential([
-        # Input and normalization
         tf.keras.layers.Input((num_features,)),
         tf.keras.layers.BatchNormalization(),
         
-        # First block - larger features
         tf.keras.layers.Dense(256, kernel_regularizer=tf.keras.regularizers.L2(1e-4)),
         tf.keras.layers.LayerNormalization(),
         tf.keras.layers.LeakyReLU(alpha=0.1),
         tf.keras.layers.Dropout(0.4),
         
-        # Second block - medium features
         tf.keras.layers.Dense(128, kernel_regularizer=tf.keras.regularizers.L2(1e-4)),
         tf.keras.layers.LayerNormalization(),
         tf.keras.layers.LeakyReLU(alpha=0.1),
         tf.keras.layers.Dropout(0.3),
         
-        # Third block - focused features
         tf.keras.layers.Dense(64, kernel_regularizer=tf.keras.regularizers.L2(1e-4)),
         tf.keras.layers.LayerNormalization(),
         tf.keras.layers.LeakyReLU(alpha=0.1),
         tf.keras.layers.Dropout(0.2),
         
-        # Fourth block - class-specific features
         tf.keras.layers.Dense(32, kernel_regularizer=tf.keras.regularizers.L2(1e-4)),
         tf.keras.layers.LayerNormalization(),
         tf.keras.layers.LeakyReLU(alpha=0.1),
         tf.keras.layers.Dropout(0.1),
         
-        # Output layer
         tf.keras.layers.Dense(num_classes, activation='softmax')
     ])
     
@@ -211,7 +203,6 @@ if __name__ == "__main__":
         metrics=['accuracy']
     )
     
-    # Callbacks
     es_callback = tf.keras.callbacks.EarlyStopping(
         patience=50,
         monitor='val_accuracy',
@@ -231,7 +222,7 @@ if __name__ == "__main__":
     history = model.fit(
         X_train, y_train,
         epochs=500,
-        batch_size=16,  # Smaller batch size for better generalization
+        batch_size=16,  
         validation_data=(X_test, y_test),
         callbacks=[es_callback, reduce_lr],
         verbose=1

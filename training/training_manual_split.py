@@ -183,11 +183,14 @@ if __name__ == "__main__":
         print("        ...")
         sys.exit(1)
     
-    N_PROCESSES = max(1, cpu_count() - 1)
+    MAX_PROCESSES_CAP = 6 
+    N_PROCESSES = max(1, min(cpu_count() - 1, MAX_PROCESSES_CAP))
+    print(f"\n[INFO] Multiprocessing set to {N_PROCESSES} workers (Max Cap: {MAX_PROCESSES_CAP}).")
     
     print("\n[STAGE 1] Extracting features...")
     print("\nProcessing TRAINING data:")
     train_samples = extract_features_from_folder(train_folder, train_csv, num_processes=N_PROCESSES)
+    
     print("\nProcessing VALIDATION data:")
     val_samples = extract_features_from_folder(val_folder, val_csv, num_processes=N_PROCESSES)
     

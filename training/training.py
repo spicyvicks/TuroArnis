@@ -7,14 +7,16 @@ import numpy as np
 import pandas as pd
 from tqdm import tqdm
 from multiprocessing import Pool, cpu_count
-
+from sklearn.model_selection import train_test_split 
 
 worker_pose_instance = None
 
 def init_worker():
     global worker_pose_instance
     worker_pose_instance = mp.solutions.pose.Pose(
-        static_image_mode=True, min_detection_confidence=0.5
+        static_image_mode=True, 
+        min_detection_confidence=0.5,
+        model_complexity=2
     )
 
 def extract_coordinates_from_image(image_path):
@@ -25,6 +27,7 @@ def extract_coordinates_from_image(image_path):
     image = cv2.imread(image_path)
     if image is None: 
         return None
+        
     image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
     
     results = worker_pose_instance.process(image_rgb)
@@ -33,8 +36,21 @@ def extract_coordinates_from_image(image_path):
         return None
         
     try:
-        coordinates = np.array([[lm.x, lm.y, lm.z] for lm in results.pose_world_landmarks.landmark]).flatten().tolist()
+        landmarks = np.array([[lm.x, lm.y, lm.z] for lm in results.pose_world_landmarks.landmark])
+        
+        left_hip_idx = 23
+        right_hip_idx = 24
+        
+        if left_hip_idx >= len(landmarks) or right_hip_idx >= len(landmarks):
+            return None
+            
+        hip_center = (landmarks[left_hip_idx] + landmarks[right_hip_idx]) / 2.0
+        
+        normalized_landmarks = landmarks - hip_center
+        
+        coordinates = normalized_landmarks.flatten().tolist()
         return coordinates
+        
     except Exception:
         return None
 
@@ -66,7 +82,6 @@ def plot_training_history(history, save_path, plt):
     plt.close()
 
 def plot_confusion_matrix(y_true, y_pred, class_names, save_path, plt, sns, confusion_matrix):
-    #heatmap
     cm = confusion_matrix(y_true, y_pred)
     cm_df = pd.DataFrame(cm, index=class_names, columns=class_names)
     
@@ -88,7 +103,6 @@ if __name__ == "__main__":
     import joblib
     import seaborn as sns
     import tensorflow as tf
-    from sklearn.model_selection import train_test_split
     from sklearn.preprocessing import LabelEncoder
     from sklearn.metrics import classification_report, confusion_matrix
     import matplotlib.pyplot as plt
@@ -97,7 +111,7 @@ if __name__ == "__main__":
     project_root = os.path.dirname(current_dir)
     sys.path.append(project_root)
 
-    dataset_folder = os.path.join(project_root, 'dataset')
+    dataset_folder = os.path.join(project_root, 'dataset_multiclass_2')
     csv_output_file = os.path.join(project_root, 'arnis_poses_coordinates.csv')
     models_dir = os.path.join(project_root, 'models')
     model_save_path = os.path.join(models_dir, 'arnis_coordinates_classifier.keras')
@@ -110,6 +124,10 @@ if __name__ == "__main__":
     if RUN_FEATURE_EXTRACTION:
         print("\n[STAGE 1] Starting Coordinate Feature Extraction...")
         
+        if not os.path.exists(dataset_folder):
+            print(f"\n[ERROR] Dataset folder not found: {dataset_folder}")
+            sys.exit(1)
+            
         header = ['class'] + [f'{ax}_{i}' for i in range(33) for ax in ['x', 'y', 'z']]
         
         pose_classes = sorted([d for d in os.listdir(dataset_folder) if os.path.isdir(os.path.join(dataset_folder, d))])
@@ -118,19 +136,30 @@ if __name__ == "__main__":
         path_to_class_map = {}
         for class_name in pose_classes:
             class_folder_path = os.path.join(dataset_folder, class_name)
-            for filename in os.listdir(class_folder_path):
-                if filename.lower().endswith(('.png', '.jpg', '.jpeg')):
-                    full_path = os.path.join(class_folder_path, filename)
+            for item in os.listdir(class_folder_path):
+                 item_path = os.path.join(class_folder_path, item)
+                 if os.path.isdir(item_path):
+                     for filename in os.listdir(item_path):
+                         if filename.lower().endswith(('.png', '.jpg', '.jpeg')):
+                             full_path = os.path.join(item_path, filename)
+                             all_image_paths.append(full_path)
+                             path_to_class_map[full_path] = class_name
+                 elif item.lower().endswith(('.png', '.jpg', '.jpeg')):
+                    full_path = item_path
                     all_image_paths.append(full_path)
                     path_to_class_map[full_path] = class_name
         
-        num_processes = 4
-        print(f"  - Using {num_processes} processes for {len(all_image_paths)} images...")
+        MAX_PROCESSES_CAP = 6  
+        num_processes = max(1, min(cpu_count() - 1, MAX_PROCESSES_CAP))
+        
+        print(f"  - Found {len(all_image_paths)} images.")
+        print(f"  - Using {num_processes} processes for extraction...")
 
         with Pool(processes=num_processes, initializer=init_worker) as pool:
             image_coords = pool.imap(extract_coordinates_from_image, all_image_paths)
             results = list(tqdm(image_coords, total=len(all_image_paths), desc="  - Extracting Coordinates"))
 
+        success_count = 0
         with open(csv_output_file, 'w', newline='') as f:
             writer = csv.writer(f)
             writer.writerow(header)
@@ -139,16 +168,42 @@ if __name__ == "__main__":
                     image_path = all_image_paths[i]
                     class_name = path_to_class_map[image_path]
                     writer.writerow([class_name] + coords)
+                    success_count += 1
         
-        print("\n[SUCCESS] Coordinate extraction complete. CSV saved.")
+        print(f"\n[SUCCESS] Coordinate extraction complete. {success_count} samples saved to CSV.")
         print("="*50)
+        
+        if success_count == 0:
+            print("[CRITICAL ERROR] No pose features were successfully extracted. Check if images are valid.")
+            sys.exit(1)
+            
     else:
         print("\n[STAGE 1] Skipping coordinate extraction. Using existing CSV.")
+        if not os.path.exists(csv_output_file):
+            print(f"[ERROR] Skipping extraction but CSV file not found: {csv_output_file}")
+            sys.exit(1)
         print("="*50)
 
     print("\n[STAGE 2] Starting Model Training...")
     
     data = pd.read_csv(csv_output_file).dropna()
+    
+    if data.empty:
+        print("\n[CRITICAL ERROR] CSV file loaded, but it is empty after dropping missing values (.dropna()). Cannot train.")
+        sys.exit(1)
+
+    class_counts = data['class'].value_counts()  
+    MIN_SAMPLES_PER_CLASS = 2 
+    valid_classes = class_counts[class_counts >= MIN_SAMPLES_PER_CLASS].index
+    data = data[data['class'].isin(valid_classes)]
+    removed_classes_count = len(class_counts) - len(valid_classes)
+    if removed_classes_count > 0:
+        print(f"  - WARNING: Removed {removed_classes_count} classes with < {MIN_SAMPLES_PER_CLASS} sample(s) for stratified split.")
+    
+    if data.empty:
+        print("\n[CRITICAL ERROR] All data was removed after filtering for minimum samples. Cannot train.")
+        sys.exit(1)
+
     X = data.drop('class', axis=1).values
     y_labels = data['class'].values
     
@@ -159,6 +214,10 @@ if __name__ == "__main__":
     num_classes = len(class_names)
     num_features = X.shape[1]
     print(f"  - Training on {num_features} features for {num_classes} classes.")
+    
+    if len(X) < 2: 
+        print(f"\n[CRITICAL ERROR] Only {len(X)} sample(s) available. Need at least 2 for train_test_split. Cannot train.")
+        sys.exit(1)
 
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
     print(f"  - Data split: {len(X_train)} for training, {len(X_test)} for testing.")

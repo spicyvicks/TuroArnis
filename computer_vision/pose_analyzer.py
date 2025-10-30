@@ -6,8 +6,6 @@ import pandas as pd
 import joblib
 import mediapipe as mp
 from ultralytics import YOLO
-
-# --- NEW: Import TensorFlow for the Keras model ---
 import tensorflow as tf
 
 current_dir = os.path.dirname(os.path.abspath(__file__))

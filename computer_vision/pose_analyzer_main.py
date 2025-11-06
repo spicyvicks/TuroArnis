@@ -5,15 +5,8 @@ import numpy as np
 import pandas as pd
 import joblib
 import mediapipe as mp
+from ultralytics import YOLO
 import tensorflow as tf
-
-# --- CRITICAL FIX: Add Pylance suppressions for dynamic imports ---
-from tensorflow.keras.utils import custom_object_scope # type: ignore [attr-defined]
-from tensorflow.keras.layers import InputLayer # type: ignore
-
-# Add suppression for Ultralytics
-from ultralytics import YOLO # type: ignore 
-# -------------------------------------------------------------------------
 
 current_dir = os.path.dirname(os.path.abspath(__file__))
 project_root = os.path.dirname(current_dir)
@@ -21,35 +14,22 @@ sys.path.append(project_root)
 
 from sort import Sort
 
-# --- CRITICAL FIX FOR InputLayer ERROR ---
-class CustomInputLayer(InputLayer):
-    def __init__(self, batch_shape=None, **kwargs):
-        if batch_shape is not None:
-            kwargs['input_shape'] = batch_shape[1:] 
-        super().__init__(**kwargs)
-# ----------------------------------------
-
 class PoseAnalyzer:
-    def __init__(self, detection_interval=3, enable_stick_detection=True):
+    def __init__(self, detection_interval=3):
         print("[info] initializing computer vision components...")
         self.yolo_model = YOLO('yolov8n.pt') 
-        self.enable_stick_detection = enable_stick_detection
 
-        self.stick_model = None
-        if self.enable_stick_detection:
-            try:
-                stick_model_path = os.path.join(project_root, 'models', 'stick_detector.pt')
-                if not os.path.exists(stick_model_path):
-                    print(f"[warning] Stick detector model not found at: {stick_model_path}. Stick analysis will be disabled.")
-                    self.stick_model = None
-                else:
-                    self.stick_model = YOLO(stick_model_path)
-                    print("[info] custom stick detector loaded successfully.")
-            except Exception as e:
-                print(f"[critical] could not load stick detector model: {e}")
+        try:
+            stick_model_path = os.path.join(project_root, 'models', 'stick_detector.pt')
+            if not os.path.exists(stick_model_path):
+                print(f"[warning] Stick detector model not found at: {stick_model_path}. Stick analysis will be disabled.")
                 self.stick_model = None
-        else:
-            print("[info] Stick detection explicitly disabled for testing.")
+            else:
+                self.stick_model = YOLO(stick_model_path)
+                print("[info] custom stick detector loaded successfully.")
+        except Exception as e:
+            print(f"[critical] could not load stick detector model: {e}")
+            self.stick_model = None
 
         self.tracker = Sort(max_age=90, min_hits=3, iou_threshold=0.3)
         
@@ -57,7 +37,7 @@ class PoseAnalyzer:
         self.mp_pose = mp.solutions.pose
         self.pose = self.mp_pose.Pose(
             static_image_mode=False,
-            model_complexity=2,
+            model_complexity=1,
             min_detection_confidence=0.5,
             min_tracking_confidence=0.5
         )
@@ -71,14 +51,8 @@ class PoseAnalyzer:
             if not os.path.exists(encoder_path):
                 raise FileNotFoundError(f"Label encoder file not found. Expected at: {encoder_path}")
 
-            # --- USE custom_object_scope TO LOAD THE MODEL ---
-            with custom_object_scope({'InputLayer': CustomInputLayer}):
-                self.pose_classifier_model = tf.keras.models.load_model(model_path)
-
+            self.pose_classifier_model = tf.keras.models.load_model(model_path)
             self.label_encoder = joblib.load(encoder_path)
-            
-            if not self.pose_classifier_model.optimizer:
-                self.pose_classifier_model.compile(optimizer='adam', loss='sparse_categorical_crossentropy', metrics=['accuracy'])
             
             print("[info] Keras pose classification model and encoder loaded successfully.")
         except Exception as e:
@@ -190,27 +164,7 @@ class PoseAnalyzer:
                 if self.pose_classifier_model and self.label_encoder:
                     try:
                         world_landmarks = pose_results.pose_world_landmarks.landmark
-                        
-                        # --- ROBUST 99-Feature Generation and Normalization ---
-                        landmarks_np = np.array([[lm.x, lm.y, lm.z] for lm in world_landmarks])
-                        
-                        EXPECTED_LANDMARKS = 33 
-                        
-                        if len(landmarks_np) != EXPECTED_LANDMARKS:
-                            raise ValueError(f"MediaPipe returned {len(landmarks_np)} world landmarks, expected {EXPECTED_LANDMARKS}.")
-
-                        left_hip_idx = 23
-                        right_hip_idx = 24
-                        
-                        hip_center = (landmarks_np[left_hip_idx] + landmarks_np[right_hip_idx]) / 2.0
-                        normalized_landmarks = landmarks_np - hip_center
-                        
-                        coords = normalized_landmarks.flatten()
-                        
-                        EXPECTED_FEATURES = EXPECTED_LANDMARKS * 3
-                        if coords.shape[0] != EXPECTED_FEATURES:
-                            raise ValueError(f"Feature vector shape is {coords.shape[0]}, expected {EXPECTED_FEATURES}.")
-                        # --------------------------------------------------------
+                        coords = np.array([[lm.x, lm.y, lm.z] for lm in world_landmarks]).flatten()
                         
                         coords_batch = np.expand_dims(coords, axis=0)
                         
@@ -221,7 +175,7 @@ class PoseAnalyzer:
                         predicted_class = self.label_encoder.inverse_transform([pred_index])[0]
                         
                     except Exception as e:
-                        print(f"[ERROR] Prediction failed for user {best_match_id}: {e}")
+                        print(f"Error during prediction for user {best_match_id}: {e}")
                 
                 live_angles = self._calculate_all_angles_3d(pose_results.pose_world_landmarks.landmark)
 
@@ -233,7 +187,7 @@ class PoseAnalyzer:
                 })
 
                 stick_endpoints = analysis_results[best_match_id]['stick_endpoints']
-                if self.enable_stick_detection and stick_endpoints: 
+                if stick_endpoints:
                     r_wrist_lm = landmarks_2d[self.mp_pose.PoseLandmark.RIGHT_WRIST]
                     r_shoulder_lm = landmarks_2d[self.mp_pose.PoseLandmark.RIGHT_SHOULDER]
                     wrist_pt = (int(r_wrist_lm.x * w), int(r_wrist_lm.y * h))

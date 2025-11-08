@@ -12,8 +12,8 @@ from gui.results_window import ResultsWindow
 from computer_vision.pose_analyzer import PoseAnalyzer
 from pose_definitions import POSE_LIBRARY
 
-TEST_IMAGE_PATH = 'Right Elbow Block.jpg' 
-DEFAULT_TEST_POSE_PRETTY_NAME = "Right Elbow Block" 
+TEST_IMAGE_PATH = 'Left Temple Block.jpg' 
+DEFAULT_TEST_POSE_PRETTY_NAME = "Left Temple Block" 
 
 class TuroArnisGUI:
     def __init__(self, window, window_title):

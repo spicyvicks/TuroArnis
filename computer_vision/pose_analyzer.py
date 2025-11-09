@@ -82,69 +82,80 @@ class PoseAnalyzer:
         iou = interArea / float(boxAArea + boxBArea - interArea)
         return iou
 
-    # --- NEW HEURISTIC STICK DETECTOR ---
-    def _detect_stick_heuristically(self, frame, landmarks_2d, frame_shape):
+    # --- REPLACEMENT FUNCTION for pose_analyzer.py ---
+    def _detect_stick_by_shape(self, frame, landmarks_2d, frame_shape):
         h, w = frame_shape
         try:
-            # Anchor points: right wrist and right elbow
+            # 1. Define a Region of Interest (ROI) around the right arm
             r_wrist = landmarks_2d[self.mp_pose.PoseLandmark.RIGHT_WRIST]
             r_elbow = landmarks_2d[self.mp_pose.PoseLandmark.RIGHT_ELBOW]
-            
-            # Define a Region of Interest (ROI) around the hand/forearm
-            x1 = int(min(r_wrist.x, r_elbow.x) * w) - 50
-            x2 = int(max(r_wrist.x, r_elbow.x) * w) + 50
-            y1 = int(min(r_wrist.y, r_elbow.y) * h) - 50
-            y2 = int(max(r_wrist.y, r_elbow.y) * h) + 50
+            r_shoulder = landmarks_2d[self.mp_pose.PoseLandmark.RIGHT_SHOULDER]
 
-            # Clamp coordinates to be within frame boundaries
-            x1, y1 = max(0, x1), max(0, y1)
-            x2, y2 = min(w, x2), min(h, y2)
+            # Find the bounding box of the arm to create the ROI
+            x_coords = [r_wrist.x, r_elbow.x, r_shoulder.x]
+            y_coords = [r_wrist.y, r_elbow.y, r_shoulder.y]
             
-            roi = frame[y1:y2, x1:x2]
-            if roi.size == 0: return None
+            # Expand the ROI to give some search margin
+            roi_x1 = int(min(x_coords) * w) - 80
+            roi_y1 = int(min(y_coords) * h) - 80
+            roi_x2 = int(max(x_coords) * w) + 80
+            roi_y2 = int(max(y_coords) * h) + 80
 
-            # Convert ROI to HSV for color segmentation
-            hsv_roi = cv2.cvtColor(roi, cv2.COLOR_BGR2HSV)
+            # Clamp coordinates to be within the frame
+            roi_x1, roi_y1 = max(0, roi_x1), max(0, roi_y1)
+            roi_x2, roi_y2 = min(w, roi_x2), min(h, roi_y2)
             
-            # Define HSV color range for brown/tan (this may need tuning)
-            lower_brown = np.array([5, 40, 40])
-            upper_brown = np.array([30, 255, 255])
-            
-            # Create a mask to isolate the stick color
-            mask = cv2.inRange(hsv_roi, lower_brown, upper_brown)
-            
-            # Find contours on the mask
-            contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-            if not contours: return None
+            roi = frame[roi_y1:roi_y2, roi_x1:roi_x2]
+            if roi.size == 0: return None, None
 
-            best_contour = None
-            max_aspect_ratio = 4 # A stick should be at least 4 times longer than it is wide
+            # 2. Pre-processing
+            gray_roi = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
+            blurred = cv2.GaussianBlur(gray_roi, (5, 5), 0)
+            # Adaptive thresholding can be very effective in varied lighting
+            thresh = cv2.adaptiveThreshold(blurred, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, 
+                                        cv2.THRESH_BINARY_INV, 11, 2)
+
+            # 3. Find and Filter Contours
+            contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            
+            best_stick_contour = None
+            max_length = 0
 
             for cnt in contours:
-                # Filter out small noise
-                if cv2.contourArea(cnt) < 100: continue
-                
-                # Get the minimum area rectangle around the contour
+                # Filter out tiny contours that are likely noise
+                if cv2.contourArea(cnt) < 200:
+                    continue
+
+                # Get the minimum area rectangle, which handles rotation
                 rect = cv2.minAreaRect(cnt)
                 (cx, cy), (width, height), angle = rect
-                
-                # Ensure width is the smaller dimension
+
+                # Ensure width is always the smaller dimension
                 if width > height:
                     width, height = height, width
                 
-                if width > 0:
+                # Filter based on aspect ratio: a stick is very long and thin
+                if width > 0 and height > 0:
                     aspect_ratio = height / width
-                    if aspect_ratio > max_aspect_ratio:
-                        max_aspect_ratio = aspect_ratio
-                        best_contour = cnt
+                    # A good stick aspect ratio is > 5 (5x longer than it is wide)
+                    if aspect_ratio > 5 and height > max_length:
+                        max_length = height
+                        best_stick_contour = cnt
             
-            if best_contour is not None:
-                # Recalculate the final rectangle for the best contour
-                final_rect = cv2.minAreaRect(best_contour)
-                box = cv2.boxPoints(final_rect)
-                box = np.int0(box)
+            if best_stick_contour is not None:
+                # 4. Extract Bounding Box and Keypoints
+                final_rect = cv2.minAreaRect(best_stick_contour)
+                
+                # Get the bounding box of the contour in ROI coordinates
+                stick_roi_bbox = cv2.boundingRect(best_stick_contour)
+                sx, sy, sw, sh = stick_roi_bbox
+                
+                # Convert stick bbox to full frame coordinates
+                stick_frame_bbox = (sx + roi_x1, sy + roi_y1, sw, sh)
 
-                # Find the two endpoints of the stick's longest axis
+                # Get the endpoints (keypoints) from the rotated rectangle
+                box = cv2.boxPoints(final_rect)
+                
                 side1_len = np.linalg.norm(box[0] - box[1])
                 side2_len = np.linalg.norm(box[1] - box[2])
                 
@@ -154,13 +165,17 @@ class PoseAnalyzer:
                 else:
                     pt1 = (box[0] + box[1]) // 2
                     pt2 = (box[2] + box[3]) // 2
+
+                # Translate endpoints to full frame coordinates
+                endpoint1 = (int(pt1[0] + roi_x1), int(pt1[1] + roi_y1))
+                endpoint2 = (int(pt2[0] + roi_x1), int(pt2[1] + roi_y1))
                 
-                # Translate endpoints from ROI coordinates back to full frame coordinates
-                return (pt1[0] + x1, pt1[1] + y1), (pt2[0] + x1, pt2[1] + y1)
+                return (endpoint1, endpoint2), stick_frame_bbox
 
         except Exception:
-            return None
-        return None
+            return None, None
+            
+        return None, None
 
     def _calculate_angle_2d(self, a, b, c):
         a, b, c = np.array(a), np.array(b), np.array(c)

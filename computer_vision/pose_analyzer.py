@@ -73,19 +73,31 @@ class PoseAnalyzer:
         boxBArea = (boxB[2] - boxB[0]) * (boxB[3] - boxB[1])
         return interArea / float(boxAArea + boxBArea - interArea)
 
-    def _detect_stick_by_shape(self, frame, landmarks_2d, frame_shape):
+    def _detect_stick_by_shape(self, frame, landmarks_2d, frame_shape, person_bbox=None):
 
         h, w = frame_shape
         try:
             r_wrist = landmarks_2d[self.mp_pose.PoseLandmark.RIGHT_WRIST]
             r_elbow = landmarks_2d[self.mp_pose.PoseLandmark.RIGHT_ELBOW]
             r_shoulder = landmarks_2d[self.mp_pose.PoseLandmark.RIGHT_SHOULDER]
-            x_coords = [r_wrist.x, r_elbow.x, r_shoulder.x]
-            y_coords = [r_wrist.y, r_elbow.y, r_shoulder.y]
-            roi_x1 = int(min(x_coords) * w) - 80; roi_y1 = int(min(y_coords) * h) - 80
-            roi_x2 = int(max(x_coords) * w) + 80; roi_y2 = int(max(y_coords) * h) + 80
-            roi_x1, roi_y1 = max(0, roi_x1), max(0, roi_y1)
-            roi_x2, roi_y2 = min(w, roi_x2), min(h, roi_y2)
+            r_knee = landmarks_2d[self.mp_pose.PoseLandmark.RIGHT_KNEE]
+            
+            # Create a large ROI around the entire right side to capture stick in any orientation
+            wrist_x, wrist_y = int(r_wrist.x * w), int(r_wrist.y * h)
+            elbow_x, elbow_y = int(r_elbow.x * w), int(r_elbow.y * h)
+            shoulder_x, shoulder_y = int(r_shoulder.x * w), int(r_shoulder.y * h)
+            knee_x, knee_y = int(r_knee.x * w), int(r_knee.y * h)
+            
+            # Get bounding box of right arm + generous padding for stick
+            x_coords = [wrist_x, elbow_x, shoulder_x, knee_x]
+            y_coords = [wrist_y, elbow_y, shoulder_y, knee_y]
+            
+            # Large padding to ensure stick is captured regardless of pose orientation
+            padding = 200
+            roi_x1 = max(0, min(x_coords) - padding)
+            roi_y1 = max(0, min(y_coords) - padding)
+            roi_x2 = min(w, max(x_coords) + padding)
+            roi_y2 = min(h, max(y_coords) + padding)
             roi = frame[roi_y1:roi_y2, roi_x1:roi_x2]
             if roi.size == 0: return None, None
 
@@ -125,35 +137,50 @@ class PoseAnalyzer:
                 sx, sy, sw, sh = stick_roi_bbox
                 stick_frame_bbox = (sx + roi_x1, sy + roi_y1, sw, sh)
                 
-                box = cv2.boxPoints(final_rect)
-                side1_len = np.linalg.norm(box[0] - box[1])
-                side2_len = np.linalg.norm(box[1] - box[2])
-                pt1, pt2 = ((box[1] + box[2]) // 2, (box[0] + box[3]) // 2) if side1_len > side2_len else ((box[0] + box[1]) // 2, (box[2] + box[3]) // 2)
+                # Get angle from detected contour
+                (cx, cy), (w_rect, h_rect), angle = final_rect
+                angle_rad = np.deg2rad(angle)
+                if w_rect > h_rect:
+                    angle_rad += np.pi / 2
                 
-                # Convert to frame coordinates
-                endpoint1_frame = (int(pt1[0] + roi_x1), int(pt1[1] + roi_y1))
-                endpoint2_frame = (int(pt2[0] + roi_x1), int(pt2[1] + roi_y1))
+                # Use wrist as anchor and calculate stick length from body proportions
+                wrist_x, wrist_y = int(r_wrist.x * w), int(r_wrist.y * h)
+                shoulder_x, shoulder_y = int(r_shoulder.x * w), int(r_shoulder.y * h)
+                knee_x, knee_y = int(r_knee.x * w), int(r_knee.y * h)
+                shoulder_knee_dist = np.sqrt((shoulder_x - knee_x)**2 + (shoulder_y - knee_y)**2)
                 
-                # Extend the stick line to make it longer (moderate extension)
-                dx = endpoint2_frame[0] - endpoint1_frame[0]
-                dy = endpoint2_frame[1] - endpoint1_frame[1]
-                length = np.sqrt(dx*dx + dy*dy)
+                # Calculate elbow-to-wrist direction to determine which way stick extends
+                elbow_x, elbow_y = int(r_elbow.x * w), int(r_elbow.y * h)
+                arm_dx = wrist_x - elbow_x
+                arm_dy = wrist_y - elbow_y
+                arm_angle = np.arctan2(arm_dy, arm_dx)
                 
-                if length > 0:
-                    # Normalize direction
-                    dx_norm = dx / length
-                    dy_norm = dy / length
-                    
-                    # Extend by 80 pixels from detected portion
-                    extension = 80
-                    extended_pt1 = (int(endpoint1_frame[0] - dx_norm * extension), 
-                                   int(endpoint1_frame[1] - dy_norm * extension))
-                    extended_pt2 = (int(endpoint2_frame[0] + dx_norm * extension), 
-                                   int(endpoint2_frame[1] + dy_norm * extension))
-                    
-                    return (extended_pt1, extended_pt2), stick_frame_bbox
-                else:
-                    return (endpoint1_frame, endpoint2_frame), stick_frame_bbox
+                # Calculate stick direction from detected angle
+                stick_dx = np.cos(angle_rad)
+                stick_dy = np.sin(angle_rad)
+                
+                # Determine which direction the stick extends (away from elbow)
+                # Check if detected angle aligns with arm direction or opposite
+                angle_diff1 = abs(angle_rad - arm_angle)
+                angle_diff2 = abs((angle_rad + np.pi) - arm_angle)
+                
+                # Normalize angle differences to [0, pi]
+                angle_diff1 = min(angle_diff1, 2*np.pi - angle_diff1)
+                angle_diff2 = min(angle_diff2, 2*np.pi - angle_diff2)
+                
+                # If opposite direction is closer to arm direction, flip the stick
+                if angle_diff2 < angle_diff1:
+                    stick_dx = -stick_dx
+                    stick_dy = -stick_dy
+                
+                # Draw stick: small part before wrist (grip), large part after (stick extends away from elbow)
+                stick_length = int(shoulder_knee_dist)
+                endpoint1 = (int(wrist_x - stick_dx * 30),
+                           int(wrist_y - stick_dy * 30))
+                endpoint2 = (int(wrist_x + stick_dx * stick_length),
+                           int(wrist_y + stick_dy * stick_length))
+                
+                return (endpoint1, endpoint2), stick_frame_bbox
             else:
                 print(f"[DEBUG] No stick contour found. Checked {len(contours)} contours, {candidates} candidates (aspect > 3)")
         except Exception as e:
@@ -201,7 +228,8 @@ class PoseAnalyzer:
             
             if best_match_id != -1 and best_iou > 0.3:
                 # 5. Detect stick, merge bounding box, and create aligned keypoints
-                stick_endpoints, stick_bbox = self._detect_stick_by_shape(frame, landmarks_2d, (h, w))
+                person_bbox = analysis_results[best_match_id]['bbox']
+                stick_endpoints, stick_bbox = self._detect_stick_by_shape(frame, landmarks_2d, (h, w), person_bbox)
                 if stick_endpoints:
                     analysis_results[best_match_id]['stick_endpoints'] = stick_endpoints
                     user_x1, user_y1, user_x2, user_y2 = analysis_results[best_match_id]['bbox']

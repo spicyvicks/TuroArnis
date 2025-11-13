@@ -2,6 +2,7 @@ import sys
 import cv2
 import threading
 import time
+import re
 from PIL import Image, ImageTk
 import ttkbootstrap as ttk
 from ttkbootstrap.constants import *
@@ -143,6 +144,8 @@ class TuroArnisGUI:
             if self.last_known_results:
                 result = self.last_known_results[0]
                 predicted_class = result['predicted_class']
+                # Strip numbered prefixes like "1. ", "10. " etc.
+                predicted_class = re.sub(r'^\d+\.\s*', '', predicted_class)
                 confidence = result['confidence']
                 pretty_class_name = predicted_class.replace('_correct', '').replace('_', ' ').title()
                 keras_status_text = f"Keras: {pretty_class_name} ({confidence:.2f})"
@@ -162,6 +165,8 @@ class TuroArnisGUI:
 
                 if self.target_form:
                     predicted_class = result['predicted_class']
+                    # Strip numbered prefixes like "1. ", "10. " etc.
+                    predicted_class = re.sub(r'^\d+\.\s*', '', predicted_class)
                     confidence = result['confidence']
                     live_angles = result['live_angles']
                     

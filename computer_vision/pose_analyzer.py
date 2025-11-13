@@ -149,7 +149,7 @@ class PoseAnalyzer:
                 knee_x, knee_y = int(r_knee.x * w), int(r_knee.y * h)
                 shoulder_knee_dist = np.sqrt((shoulder_x - knee_x)**2 + (shoulder_y - knee_y)**2)
                 
-                # Calculate elbow-to-wrist direction to determine which way stick extends
+                # Calculate elbow-to-wrist direction
                 elbow_x, elbow_y = int(r_elbow.x * w), int(r_elbow.y * h)
                 arm_dx = wrist_x - elbow_x
                 arm_dy = wrist_y - elbow_y
@@ -159,21 +159,20 @@ class PoseAnalyzer:
                 stick_dx = np.cos(angle_rad)
                 stick_dy = np.sin(angle_rad)
                 
-                # Determine which direction the stick extends (away from elbow)
-                # Check if detected angle aligns with arm direction or opposite
+                # Determine which direction the stick extends
                 angle_diff1 = abs(angle_rad - arm_angle)
                 angle_diff2 = abs((angle_rad + np.pi) - arm_angle)
                 
-                # Normalize angle differences to [0, pi]
+                # Normalize to [0, pi]
                 angle_diff1 = min(angle_diff1, 2*np.pi - angle_diff1)
                 angle_diff2 = min(angle_diff2, 2*np.pi - angle_diff2)
                 
-                # If opposite direction is closer to arm direction, flip the stick
+                # Flip if opposite direction aligns better with arm
                 if angle_diff2 < angle_diff1:
                     stick_dx = -stick_dx
                     stick_dy = -stick_dy
                 
-                # Draw stick: small part before wrist (grip), large part after (stick extends away from elbow)
+                # Draw stick with body-proportional length
                 stick_length = int(shoulder_knee_dist)
                 endpoint1 = (int(wrist_x - stick_dx * 30),
                            int(wrist_y - stick_dy * 30))
@@ -182,7 +181,34 @@ class PoseAnalyzer:
                 
                 return (endpoint1, endpoint2), stick_frame_bbox
             else:
-                print(f"[DEBUG] No stick contour found. Checked {len(contours)} contours, {candidates} candidates (aspect > 3)")
+                # Fallback: No stick detected - use arm direction as estimate
+                wrist_x, wrist_y = int(r_wrist.x * w), int(r_wrist.y * h)
+                elbow_x, elbow_y = int(r_elbow.x * w), int(r_elbow.y * h)
+                shoulder_x, shoulder_y = int(r_shoulder.x * w), int(r_shoulder.y * h)
+                knee_x, knee_y = int(r_knee.x * w), int(r_knee.y * h)
+                
+                # Calculate arm direction
+                arm_dx = wrist_x - elbow_x
+                arm_dy = wrist_y - elbow_y
+                arm_length = np.sqrt(arm_dx*arm_dx + arm_dy*arm_dy)
+                
+                if arm_length > 0:
+                    arm_dx_norm = arm_dx / arm_length
+                    arm_dy_norm = arm_dy / arm_length
+                    
+                    # Stick extends in arm direction
+                    shoulder_knee_dist = np.sqrt((shoulder_x - knee_x)**2 + (shoulder_y - knee_y)**2)
+                    stick_length = int(shoulder_knee_dist)
+                    
+                    endpoint1 = (int(wrist_x - arm_dx_norm * 30),
+                               int(wrist_y - arm_dy_norm * 30))
+                    endpoint2 = (int(wrist_x + arm_dx_norm * stick_length),
+                               int(wrist_y + arm_dy_norm * stick_length))
+                    
+                    return (endpoint1, endpoint2), None
+                
+                return None, None
+                
         except Exception as e:
             print(f"[ERROR] Stick detection failed: {e}")
         return None, None

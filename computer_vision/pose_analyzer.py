@@ -96,16 +96,20 @@ class PoseAnalyzer:
             contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
             best_stick_contour = None
             max_length = 0
+            candidates = 0
 
             for cnt in contours:
-                if cv2.contourArea(cnt) < 200: continue
+                area = cv2.contourArea(cnt)
+                if area < 100: continue  # Reduced from 200
+                
                 rect = cv2.minAreaRect(cnt)
                 (cx, cy), (width, height), angle = rect
                 if width > height: width, height = height, width
                 
                 if width > 0 and height > 0:
                     aspect_ratio = height / width
-                    if aspect_ratio > 5 and height > max_length:
+                    if aspect_ratio > 3 and height > max_length:  # Reduced from 5 to 3
+                        candidates += 1
                         max_length = height
                         best_stick_contour = cnt
             
@@ -120,11 +124,34 @@ class PoseAnalyzer:
                 side2_len = np.linalg.norm(box[1] - box[2])
                 pt1, pt2 = ((box[1] + box[2]) // 2, (box[0] + box[3]) // 2) if side1_len > side2_len else ((box[0] + box[1]) // 2, (box[2] + box[3]) // 2)
                 
-                endpoint1 = (int(pt1[0] + roi_x1), int(pt1[1] + roi_y1))
-                endpoint2 = (int(pt2[0] + roi_x1), int(pt2[1] + roi_y1))
-                return (endpoint1, endpoint2), stick_frame_bbox
+                # Convert to frame coordinates
+                endpoint1_frame = (int(pt1[0] + roi_x1), int(pt1[1] + roi_y1))
+                endpoint2_frame = (int(pt2[0] + roi_x1), int(pt2[1] + roi_y1))
+                
+                # Extend the stick line to make it longer (moderate extension)
+                dx = endpoint2_frame[0] - endpoint1_frame[0]
+                dy = endpoint2_frame[1] - endpoint1_frame[1]
+                length = np.sqrt(dx*dx + dy*dy)
+                
+                if length > 0:
+                    # Normalize direction
+                    dx_norm = dx / length
+                    dy_norm = dy / length
+                    
+                    # Extend by 80 pixels from detected portion
+                    extension = 80
+                    extended_pt1 = (int(endpoint1_frame[0] - dx_norm * extension), 
+                                   int(endpoint1_frame[1] - dy_norm * extension))
+                    extended_pt2 = (int(endpoint2_frame[0] + dx_norm * extension), 
+                                   int(endpoint2_frame[1] + dy_norm * extension))
+                    
+                    return (extended_pt1, extended_pt2), stick_frame_bbox
+                else:
+                    return (endpoint1_frame, endpoint2_frame), stick_frame_bbox
+            else:
+                print(f"[DEBUG] No stick contour found. Checked {len(contours)} contours, {candidates} candidates (aspect > 3)")
         except Exception as e:
-            pass
+            print(f"[ERROR] Stick detection failed: {e}")
         return None, None
 
     def process_frame(self, frame):

@@ -52,7 +52,7 @@ class TuroArnisGUI:
         self.controls_panel.grid(row=0, column=0, sticky="nsew")
         self.controls_panel.grid_propagate(False) 
         
-        ttk.Label(self.controls_panel, text="Controls", font=("-size 14 -weight bold"), bootstyle="inverse-dark").pack(pady=(0, 10), anchor=W)
+        ttk.Label(self.controls_panel, text="Controls", font="Arial 14 bold", bootstyle="inverse-dark").pack(pady=(0, 10), anchor=W)
         self.user_button = ttk.Menubutton(self.controls_panel, text=self.current_user, bootstyle="secondary")
         self.user_button.pack(fill=X, pady=5)
         self.user_menu = ttk.Menu(self.user_button)
@@ -77,11 +77,15 @@ class TuroArnisGUI:
         self.form_button["menu"] = self.form_menu
         
         ttk.Separator(self.controls_panel, orient=HORIZONTAL).pack(fill=X, pady=15)
-        self.status_label = ttk.Label(self.controls_panel, text="Status: Select a form", font="-size 12", wraplength=220, bootstyle="inverse-dark")
+        self.status_label = ttk.Label(self.controls_panel, text="Status: Select a form", font="Arial 12", wraplength=220, bootstyle="inverse-dark")
         self.status_label.pack(fill=X, pady=5, anchor=W)
         
-        self.keras_status_label = ttk.Label(self.controls_panel, text="Keras: N/A (0.00)", font="-size 10", bootstyle="warning")
+        self.keras_status_label = ttk.Label(self.controls_panel, text="Keras: N/A (0.00)", font="Arial 10", bootstyle="warning")
         self.keras_status_label.pack(fill=X, pady=5, anchor=W)
+        
+        # Feedback label for pose corrections
+        self.feedback_label = ttk.Label(self.controls_panel, text="", font="Arial 9", wraplength=220, bootstyle="inverse-dark", justify=LEFT)
+        self.feedback_label.pack(fill=X, pady=5, anchor=W)
         
         self.view_all_results_button = ttk.Button(self.controls_panel, text="View All Results", command=self.open_results_window, bootstyle="info")
         self.view_all_results_button.pack(fill=X, pady=10, side=BOTTOM)
@@ -135,11 +139,12 @@ class TuroArnisGUI:
             frame = self.static_image_original.copy()
             processing_frame = cv2.resize(frame, (640, 480))
             analysis_results = self.analyzer.process_frame(processing_frame)
-            feedback_x = processing_frame.shape[1] - 270; feedback_y = 30
             
             if analysis_results: self.last_known_results = analysis_results
 
             keras_status_text = "Keras: N/A (0.00)"
+            feedback_text = ""
+            
             if self.last_known_results and len(self.last_known_results) > 0:
                 result = self.last_known_results[0] 
                 predicted_class = result['predicted_class']
@@ -156,7 +161,9 @@ class TuroArnisGUI:
                 x1, y1, x2, y2 = result['bbox']
                 person_id = result['id']
                 
-                draw_color = COLOR_ERROR; box_color = COLOR_DEFAULT; is_correct = False
+                draw_color = COLOR_DEFAULT
+                box_color = COLOR_DEFAULT
+                is_correct = False
                 error_messages = []
 
                 if self.target_form:
@@ -164,8 +171,16 @@ class TuroArnisGUI:
                     confidence = result['confidence']
                     live_angles = result['live_angles']
                     
-                    # Use .strip() for more robust comparison
-                    if predicted_class.strip() == self.target_form.strip() and confidence > 0.60:
+                    import re
+                    predicted_normalized = re.sub(r'^\d+\.\s*', '', predicted_class.strip())
+                    target_normalized = re.sub(r'^\d+\.\s*', '', self.target_form.strip())
+                    
+                    print(f"[DEBUG] Predicted: '{predicted_class}' -> '{predicted_normalized}'")
+                    print(f"[DEBUG] Target: '{self.target_form}' -> '{target_normalized}'")
+                    print(f"[DEBUG] Match: {predicted_normalized == target_normalized} | Confidence: {confidence:.2f}")
+                    
+                    # Check if prediction matches target with acceptable confidence
+                    if predicted_normalized == target_normalized and confidence > 0.60:
                         ideal_pose = POSE_LIBRARY.get(self.target_form)
                         pose_is_perfect = True
                         
@@ -177,11 +192,34 @@ class TuroArnisGUI:
                                     if not (min_angle <= live_angle <= max_angle):
                                         pose_is_perfect = False
                                         feedback = "too bent" if live_angle < min_angle else "too straight"
-                                        error_messages.append(f"{joint.replace('_', ' ').title()} {feedback}")
+                                        error_messages.append(f"{joint.replace('_', ' ').title()}: {feedback}")
+                        else:
+                            # If no ideal pose defined in POSE_LIBRARY, trust the model prediction
+                            print(f"[DEBUG] No ideal pose in POSE_LIBRARY, trusting model")
+                            pose_is_perfect = True
                         
                         if pose_is_perfect:
                             is_correct = True
                             draw_color = COLOR_CORRECT
+                            feedback_text = "✓ Perfect Form!"
+                            print(f"[DEBUG] Setting GREEN color")
+                        else:
+                            draw_color = COLOR_ERROR
+                            feedback_text = "Adjustments:\n" + "\n".join(error_messages[:3])
+                            print(f"[DEBUG] Setting RED color - {len(error_messages)} errors")
+                    else:
+                        draw_color = COLOR_ERROR
+                        if confidence <= 0.60:
+                            feedback_text = "Low confidence - adjust pose"
+                        else:
+                            feedback_text = f"Wrong pose detected"
+                        print(f"[DEBUG] No match or low confidence - RED")
+                else:
+                    feedback_text = "Select a target form"
+                
+                # Update feedback label
+                self.feedback_label.config(text=feedback_text)
+                print(f"[DEBUG] Feedback: {feedback_text}")
                 
                 cv2.rectangle(processing_frame, (x1, y1), (x2, y2), box_color, 2)
                 
@@ -189,34 +227,12 @@ class TuroArnisGUI:
                     pt1, pt2 = result['stick_endpoints']
                     cv2.line(processing_frame, pt1, pt2, COLOR_PROMPT, 4)
 
-                self.draw_text_with_bg(img=processing_frame, text=f"User {person_id}", pos=(x1, y1 - 10), font_face=cv2.FONT_HERSHEY_SIMPLEX, font_scale=0.9, text_color=COLOR_BLACK, bg_color=COLOR_WHITE, thickness=2)
+                self.draw_text_with_bg(img=processing_frame, text=f"User {person_id}", pos=(x1, y1 - 10), font_face=cv2.FONT_HERSHEY_SIMPLEX, font_scale=0.6, text_color=COLOR_BLACK, bg_color=COLOR_WHITE, thickness=2)
 
                 if result['landmarks']:
                     landmark_spec = self.analyzer.mp_drawing.DrawingSpec(color=draw_color, thickness=2, circle_radius=2)
                     connection_spec = self.analyzer.mp_drawing.DrawingSpec(color=draw_color, thickness=2, circle_radius=2)
                     self.analyzer.mp_drawing.draw_landmarks(processing_frame, result['landmarks'], self.analyzer.mp_pose.POSE_CONNECTIONS, landmark_drawing_spec=landmark_spec, connection_drawing_spec=connection_spec)
-
-                if self.target_form:
-                    overlay = processing_frame.copy()
-                    feedback_height = 150 + len(error_messages) * 25
-                    cv2.rectangle(overlay, (feedback_x - 10, feedback_y - 20), (processing_frame.shape[1] - 10, feedback_y + feedback_height), COLOR_BG_TRANSPARENT, -1)
-                    alpha = 0.6
-                    processing_frame = cv2.addWeighted(overlay, alpha, processing_frame, 1 - alpha, 0)
-                    
-                    if is_correct:
-                        cv2.putText(processing_frame, "Perfect Form!", (feedback_x, feedback_y), cv2.FONT_HERSHEY_SIMPLEX, 0.7, COLOR_CORRECT, 2)
-                    else:
-                        if error_messages:
-                            cv2.putText(processing_frame, "Adjustments Needed:", (feedback_x, feedback_y), cv2.FONT_HERSHEY_SIMPLEX, 0.6, COLOR_PROMPT, 2)
-                            y_offset = feedback_y + 25
-                            for msg in error_messages[:5]:
-                                cv2.putText(processing_frame, f"- {msg}", (feedback_x, y_offset), cv2.FONT_HERSHEY_SIMPLEX, 0.5, COLOR_WHITE, 1)
-                                y_offset += 25
-                        else:
-                            pretty_form_name = self.form_button.cget('text')
-                            if pretty_form_name != "Choose Arnis Form":
-                                cv2.putText(processing_frame, f"Target Form:", (feedback_x, feedback_y), cv2.FONT_HERSHEY_SIMPLEX, 0.7, COLOR_PROMPT, 2)
-                                cv2.putText(processing_frame, pretty_form_name, (feedback_x, feedback_y + 30), cv2.FONT_HERSHEY_SIMPLEX, 0.6, COLOR_WHITE, 2)
             
             canvas_width = self.video_canvas.winfo_width(); canvas_height = self.video_canvas.winfo_height()
             final_frame = self.resize_and_pad(processing_frame, size=(canvas_width, canvas_height))

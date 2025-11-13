@@ -27,7 +27,7 @@ class TuroArnisGUI:
         self.processing_interval = 3
         self.last_known_results = []
 
-        self.analyzer = PoseAnalyzer(detection_interval=self.processing_interval, enable_stick_detection=False)
+        self.analyzer = PoseAnalyzer(detection_interval=self.processing_interval)
         
         self.static_image_original = cv2.imread(TEST_IMAGE_PATH)
         if self.static_image_original is None:
@@ -62,12 +62,12 @@ class TuroArnisGUI:
         self.user_button["menu"] = self.user_menu
         
         self.practice_stances = {
-            "Crown Thrust": "12. crown_thrust_correct", "Left Chest Thrust": "6. left_chest_thrust_correct",
-            "Left Elbow Block": "3. left_elbow_block_correct", "Left Eye Thrust": "10. left_eye_thrust_correct",
-            "Left Knee Block": "8. left_knee_block_correct", "Left Temple Block": "1. left_temple_block_correct",
-            "Right Chest Thrust": "7. right_chest_thrust_correct", "Right Elbow Block": "4. right_elbow_block_correct",
-            "Right Eye Thrust": "11. right_eye_thrust_correct", "Right Knee Block": "9. right_knee_block_correct",
-            "Right Temple Block": "2. right_temple_block_correct", "Solar Plexus Thrust": "5. solar_plexus_thrust_correct"
+            "Crown Thrust": "crown_thrust_correct", "Left Chest Thrust": "left_chest_thrust_correct",
+            "Left Elbow Block": "left_elbow_block_correct", "Left Eye Thrust": "left_eye_thrust_correct",
+            "Left Knee Block": "left_knee_block_correct", "Left Temple Block": "left_temple_block_correct",
+            "Right Chest Thrust": "right_chest_thrust_correct", "Right Elbow Block": "right_elbow_block_correct",
+            "Right Eye Thrust": "right_eye_thrust_correct", "Right Knee Block": "right_knee_block_correct",
+            "Right Temple Block": "right_temple_block_correct", "Solar Plexus Thrust": "solar_plexus_thrust_correct"
         }
         self.form_button = ttk.Menubutton(self.controls_panel, text="Choose Arnis Form", bootstyle="primary")
         self.form_button.pack(fill=X, pady=5)
@@ -89,8 +89,8 @@ class TuroArnisGUI:
         if DEFAULT_TEST_POSE_PRETTY_NAME in self.practice_stances:
             self.target_form = self.practice_stances[DEFAULT_TEST_POSE_PRETTY_NAME]
             self.form_button.config(text=DEFAULT_TEST_POSE_PRETTY_NAME)
-            self.status_label.config(text=f"Status: Analyzing '{DEFAULT_TEST_POSE_PRETTY_NAME}' (Test Default)")
-            print(f"targeting model class: '{self.target_form}'")
+            self.status_label.config(text=f"Status: Analyzing '{DEFAULT_TEST_POSE_PRETTY_NAME}' (Image Test)")
+            print(f"[INFO] Targeting model class: '{self.target_form}'")
 
         self.is_running = True
         self.thread = threading.Thread(target=self.video_loop, daemon=True)
@@ -155,18 +155,40 @@ class TuroArnisGUI:
                 result = self.last_known_results[0] 
                 x1, y1, x2, y2 = result['bbox']
                 person_id = result['id']
-                draw_color = COLOR_ERROR; box_color = COLOR_DEFAULT; is_correct = False
                 
+                draw_color = COLOR_ERROR; box_color = COLOR_DEFAULT; is_correct = False
+                error_messages = []
+
                 if self.target_form:
                     predicted_class = result['predicted_class']
                     confidence = result['confidence']
+                    live_angles = result['live_angles']
                     
-                    # --- FINAL FIX: Use .strip() for robust string comparison ---
+                    # Use .strip() for more robust comparison
                     if predicted_class.strip() == self.target_form.strip() and confidence > 0.60:
-                        is_correct = True
-                        draw_color = COLOR_CORRECT
-                    
+                        ideal_pose = POSE_LIBRARY.get(self.target_form)
+                        pose_is_perfect = True
+                        
+                        if ideal_pose and live_angles:
+                            for joint, ideal_range in ideal_pose.items():
+                                live_angle = live_angles.get(joint)
+                                if live_angle is not None:
+                                    min_angle, max_angle = ideal_range
+                                    if not (min_angle <= live_angle <= max_angle):
+                                        pose_is_perfect = False
+                                        feedback = "too bent" if live_angle < min_angle else "too straight"
+                                        error_messages.append(f"{joint.replace('_', ' ').title()} {feedback}")
+                        
+                        if pose_is_perfect:
+                            is_correct = True
+                            draw_color = COLOR_CORRECT
+                
                 cv2.rectangle(processing_frame, (x1, y1), (x2, y2), box_color, 2)
+                
+                if result['stick_endpoints']:
+                    pt1, pt2 = result['stick_endpoints']
+                    cv2.line(processing_frame, pt1, pt2, COLOR_PROMPT, 4)
+
                 self.draw_text_with_bg(img=processing_frame, text=f"User {person_id}", pos=(x1, y1 - 10), font_face=cv2.FONT_HERSHEY_SIMPLEX, font_scale=0.9, text_color=COLOR_BLACK, bg_color=COLOR_WHITE, thickness=2)
 
                 if result['landmarks']:
@@ -176,17 +198,25 @@ class TuroArnisGUI:
 
                 if self.target_form:
                     overlay = processing_frame.copy()
-                    cv2.rectangle(overlay, (feedback_x - 10, feedback_y - 20), (processing_frame.shape[1] - 10, feedback_y + 150), COLOR_BG_TRANSPARENT, -1)
+                    feedback_height = 150 + len(error_messages) * 25
+                    cv2.rectangle(overlay, (feedback_x - 10, feedback_y - 20), (processing_frame.shape[1] - 10, feedback_y + feedback_height), COLOR_BG_TRANSPARENT, -1)
                     alpha = 0.6
                     processing_frame = cv2.addWeighted(overlay, alpha, processing_frame, 1 - alpha, 0)
                     
                     if is_correct:
-                        cv2.putText(processing_frame, "Correct!", (feedback_x, feedback_y), cv2.FONT_HERSHEY_SIMPLEX, 0.7, COLOR_CORRECT, 2)
+                        cv2.putText(processing_frame, "Perfect Form!", (feedback_x, feedback_y), cv2.FONT_HERSHEY_SIMPLEX, 0.7, COLOR_CORRECT, 2)
                     else:
-                        pretty_form_name = self.form_button.cget('text')
-                        if pretty_form_name != "Choose Arnis Form":
-                            cv2.putText(processing_frame, f"Adjust to Form:", (feedback_x, feedback_y), cv2.FONT_HERSHEY_SIMPLEX, 0.7, COLOR_PROMPT, 2)
-                            cv2.putText(processing_frame, pretty_form_name, (feedback_x, feedback_y + 30), cv2.FONT_HERSHEY_SIMPLEX, 0.6, COLOR_WHITE, 2)
+                        if error_messages:
+                            cv2.putText(processing_frame, "Adjustments Needed:", (feedback_x, feedback_y), cv2.FONT_HERSHEY_SIMPLEX, 0.6, COLOR_PROMPT, 2)
+                            y_offset = feedback_y + 25
+                            for msg in error_messages[:5]:
+                                cv2.putText(processing_frame, f"- {msg}", (feedback_x, y_offset), cv2.FONT_HERSHEY_SIMPLEX, 0.5, COLOR_WHITE, 1)
+                                y_offset += 25
+                        else:
+                            pretty_form_name = self.form_button.cget('text')
+                            if pretty_form_name != "Choose Arnis Form":
+                                cv2.putText(processing_frame, f"Target Form:", (feedback_x, feedback_y), cv2.FONT_HERSHEY_SIMPLEX, 0.7, COLOR_PROMPT, 2)
+                                cv2.putText(processing_frame, pretty_form_name, (feedback_x, feedback_y + 30), cv2.FONT_HERSHEY_SIMPLEX, 0.6, COLOR_WHITE, 2)
             
             canvas_width = self.video_canvas.winfo_width(); canvas_height = self.video_canvas.winfo_height()
             final_frame = self.resize_and_pad(processing_frame, size=(canvas_width, canvas_height))
@@ -213,12 +243,12 @@ class TuroArnisGUI:
         self.target_form = self.practice_stances[pretty_name]
         self.form_button.config(text=pretty_name)
         self.status_label.config(text=f"Status: Analyzing '{pretty_name}'")
-        print(f"targeting model class: '{self.target_form}'")
+        print(f"[INFO] Targeting model class: '{self.target_form}'")
     
     def open_results_window(self): ResultsWindow(self.window)
     
     def on_closing(self):
-        print("closing application...")
+        print("[INFO] Closing application...")
         self.is_running = False
         time.sleep(0.5)
         self.analyzer.close()
@@ -227,7 +257,7 @@ class TuroArnisGUI:
     def on_user_selected(self, username):
         self.current_user = username
         self.user_button.config(text=username)
-        print(f"current user set to: {username}")
+        print(f"[INFO] Current user set to: {username}")
     
     def reset_feedback(self):
         self.target_form = None

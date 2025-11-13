@@ -91,9 +91,14 @@ class PoseAnalyzer:
 
             gray_roi = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
             blurred = cv2.GaussianBlur(gray_roi, (5, 5), 0)
-            thresh = cv2.adaptiveThreshold(blurred, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY_INV, 11, 2)
-
-            contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            
+            # Use Canny edge detection for better stick outline
+            edges = cv2.Canny(blurred, 50, 150)
+            # Dilate edges to connect broken lines
+            kernel = np.ones((3, 3), np.uint8)
+            edges = cv2.dilate(edges, kernel, iterations=1)
+            
+            contours, _ = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
             best_stick_contour = None
             max_length = 0
             candidates = 0
@@ -108,7 +113,8 @@ class PoseAnalyzer:
                 
                 if width > 0 and height > 0:
                     aspect_ratio = height / width
-                    if aspect_ratio > 3 and height > max_length:  # Reduced from 5 to 3
+                    # Reduced aspect ratio from 3 to 2 for better detection
+                    if aspect_ratio > 2 and height > max_length:
                         candidates += 1
                         max_length = height
                         best_stick_contour = cnt

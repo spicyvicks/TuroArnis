@@ -1,292 +1,604 @@
-# Auto-generated pose definitions
+# Auto-generated pose library with joint angles and stick patterns
 
 POSE_LIBRARY = {
-    'crown block_left_correct': {
-        'left_elbow': [159.2, 179.2],
-        'left_shoulder': [86.7, 106.7],
-        'right_elbow': [99.5, 119.5],
-        'right_shoulder': [35.1, 55.1],
-        'right_hip': [127.0, 147.0],
-        'right_knee': [133.1, 153.1],
-        'right_ankle': [85.7, 105.7],
-        'left_hip': [162.4, 180.0],
-        'left_knee': [147.9, 167.9],
-        'left_ankle': [110.1, 130.1],
+    "1. left_temple_block": {
+        "joint_angles": {
+            "right_elbow": [
+                108.82844448636227,
+                128.8284444863623
+            ],
+            "right_shoulder": [
+                108.53261105894137,
+                128.53261105894137
+            ],
+            "left_elbow": [
+                59.84279101800263,
+                79.84279101800263
+            ],
+            "left_shoulder": [
+                70.39076129643813,
+                90.39076129643813
+            ],
+            "right_knee": [
+                160.8155831558861,
+                180.8155831558861
+            ],
+            "right_hip": [
+                158.66818996735782,
+                178.66818996735782
+            ],
+            "left_knee": [
+                162.19627989476146,
+                182.19627989476146
+            ],
+            "left_hip": [
+                162.84184811900553,
+                182.84184811900553
+            ],
+            "right_ankle": [
+                122.11969731153229,
+                142.1196973115323
+            ],
+            "left_ankle": [
+                120.50081791165701,
+                140.500817911657
+            ]
+        },
+        "stick_pattern": {
+            "hand": "right",
+            "stick_arm_angle_degrees": -19.070791056075326,
+            "stick_length_ratio": 1.6924229848312016
+        },
+        "sample_count": 352
     },
-    'left chest thrust_left_correct': {
-        'left_elbow': [104.2, 124.2],
-        'left_shoulder': [67.2, 87.2],
-        'right_elbow': [62.7, 82.7],
-        'right_shoulder': [20.2, 40.2],
-        'right_hip': [160.7, 180.0],
-        'right_knee': [147.4, 167.4],
-        'right_ankle': [90.8, 110.8],
-        'left_hip': [133.6, 153.6],
-        'left_knee': [142.4, 162.4],
-        'left_ankle': [97.3, 117.3],
+    "10. left_eye_thrust": {
+        "joint_angles": {
+            "right_elbow": [
+                147.6752410218183,
+                167.6752410218183
+            ],
+            "right_shoulder": [
+                120.343910345057,
+                140.343910345057
+            ],
+            "left_elbow": [
+                49.9168808266691,
+                69.9168808266691
+            ],
+            "left_shoulder": [
+                85.7278485551517,
+                105.7278485551517
+            ],
+            "right_knee": [
+                158.22807975952657,
+                178.22807975952657
+            ],
+            "right_hip": [
+                164.32248947691556,
+                184.32248947691556
+            ],
+            "left_knee": [
+                163.00673303705562,
+                183.00673303705562
+            ],
+            "left_hip": [
+                159.3010677655567,
+                179.3010677655567
+            ],
+            "right_ankle": [
+                122.1081392173212,
+                142.1081392173212
+            ],
+            "left_ankle": [
+                122.30408964951326,
+                142.30408964951326
+            ]
+        },
+        "stick_pattern": {
+            "hand": "left",
+            "stick_arm_angle_degrees": -59.51294971985137,
+            "stick_length_ratio": 1.7207737954263767
+        },
+        "sample_count": 336
     },
-    'left elbow block_left_correct': {
-        'left_elbow': [155.7, 175.7],
-        'left_shoulder': [79.8, 99.8],
-        'right_elbow': [85.2, 105.2],
-        'right_shoulder': [27.1, 47.1],
-        'right_hip': [132.9, 152.9],
-        'right_knee': [136.7, 156.7],
-        'right_ankle': [89.8, 109.8],
-        'left_hip': [163.6, 180.0],
-        'left_knee': [132.4, 152.4],
-        'left_ankle': [114.1, 134.1],
+    "11. right_eye_thrust": {
+        "joint_angles": {
+            "right_shoulder": [
+                99.43705171800295,
+                119.43705171800295
+            ],
+            "left_elbow": [
+                66.96568355836027,
+                86.96568355836027
+            ],
+            "left_shoulder": [
+                76.24732973185992,
+                96.24732973185992
+            ],
+            "right_knee": [
+                160.52670351996622,
+                180.52670351996622
+            ],
+            "right_hip": [
+                155.46335203744167,
+                175.46335203744167
+            ],
+            "left_knee": [
+                162.77772794388716,
+                182.77772794388716
+            ],
+            "left_hip": [
+                159.93938513068994,
+                179.93938513068994
+            ],
+            "right_ankle": [
+                124.14621552805502,
+                144.14621552805502
+            ],
+            "left_ankle": [
+                112.31634645894302,
+                132.31634645894303
+            ],
+            "right_elbow": [
+                101.19393988559985,
+                121.19393988559985
+            ]
+        },
+        "stick_pattern": {
+            "hand": "left",
+            "stick_arm_angle_degrees": -34.43598832557229,
+            "stick_length_ratio": 1.6229044413952791
+        },
+        "sample_count": 344
     },
-    'left eye thrust_left_correct': {
-        'left_elbow': [156.4, 176.4],
-        'left_shoulder': [104.5, 124.5],
-        'right_elbow': [46.9, 66.9],
-        'right_shoulder': [39.2, 59.2],
-        'right_hip': [123.4, 143.4],
-        'right_knee': [127.8, 147.8],
-        'right_ankle': [91.6, 111.6],
-        'left_hip': [163.0, 180.0],
-        'left_knee': [145.5, 165.5],
-        'left_ankle': [112.2, 132.2],
+    "12. crown_thrust": {
+        "joint_angles": {
+            "left_elbow": [
+                70.40018299676625,
+                90.40018299676625
+            ],
+            "left_shoulder": [
+                86.29823828068399,
+                106.29823828068399
+            ],
+            "right_knee": [
+                160.4255288256956,
+                180.4255288256956
+            ],
+            "right_hip": [
+                162.577253203875,
+                182.577253203875
+            ],
+            "left_knee": [
+                162.7580128242506,
+                182.7580128242506
+            ],
+            "left_hip": [
+                158.61819728902657,
+                178.61819728902657
+            ],
+            "right_ankle": [
+                120.80850537638298,
+                140.80850537638298
+            ],
+            "left_ankle": [
+                117.1143000037244,
+                137.1143000037244
+            ],
+            "right_elbow": [
+                139.71908760042393,
+                159.71908760042393
+            ],
+            "right_shoulder": [
+                113.38617122073767,
+                133.38617122073765
+            ]
+        },
+        "stick_pattern": {
+            "hand": "left",
+            "stick_arm_angle_degrees": -21.214664019751567,
+            "stick_length_ratio": 1.7258620689675526
+        },
+        "sample_count": 344
     },
-    'left knee block_left_correct': {
-        'left_elbow': [160.9, 180.0],
-        'left_shoulder': [58.0, 78.0],
-        'right_elbow': [74.6, 94.6],
-        'right_shoulder': [18.1, 38.1],
-        'right_hip': [121.0, 141.0],
-        'right_knee': [133.2, 153.2],
-        'right_ankle': [100.2, 120.2],
-        'left_hip': [161.4, 180.0],
-        'left_knee': [148.6, 168.6],
-        'left_ankle': [102.9, 122.9],
+    "2. right_temple_block": {
+        "joint_angles": {
+            "right_elbow": [
+                114.24231607539411,
+                134.24231607539411
+            ],
+            "right_shoulder": [
+                121.984151461999,
+                141.984151461999
+            ],
+            "left_elbow": [
+                74.71097988489366,
+                94.71097988489366
+            ],
+            "left_shoulder": [
+                74.01945011282884,
+                94.01945011282884
+            ],
+            "right_knee": [
+                159.76756522761448,
+                179.76756522761448
+            ],
+            "right_hip": [
+                160.3416720300806,
+                180.3416720300806
+            ],
+            "left_knee": [
+                160.87290608426127,
+                180.87290608426127
+            ],
+            "left_hip": [
+                161.57878736252468,
+                181.57878736252468
+            ],
+            "right_ankle": [
+                126.69112204083919,
+                146.6911220408392
+            ],
+            "left_ankle": [
+                117.77106870194163,
+                137.77106870194163
+            ]
+        },
+        "stick_pattern": {
+            "hand": "right",
+            "stick_arm_angle_degrees": -25.831292105590865,
+            "stick_length_ratio": 1.6743940307092644
+        },
+        "sample_count": 344
     },
-    'left temple block_left_correct': {
-        'left_elbow': [159.1, 179.1],
-        'left_shoulder': [97.1, 117.1],
-        'right_elbow': [81.9, 101.9],
-        'right_shoulder': [31.6, 51.6],
-        'right_hip': [127.9, 147.9],
-        'right_knee': [139.2, 159.2],
-        'right_ankle': [94.7, 114.7],
-        'left_hip': [166.6, 180.0],
-        'left_knee': [142.2, 162.2],
-        'left_ankle': [114.1, 134.1],
+    "3. left_elbow_block": {
+        "joint_angles": {
+            "right_elbow": [
+                133.59110631824007,
+                153.59110631824007
+            ],
+            "right_shoulder": [
+                109.75494779426505,
+                129.75494779426504
+            ],
+            "left_elbow": [
+                56.987936914303205,
+                76.9879369143032
+            ],
+            "left_shoulder": [
+                77.56751058204568,
+                97.56751058204568
+            ],
+            "right_knee": [
+                158.28478119295147,
+                178.28478119295147
+            ],
+            "right_hip": [
+                161.0941246512772,
+                181.0941246512772
+            ],
+            "left_knee": [
+                161.98776319941405,
+                181.98776319941405
+            ],
+            "left_hip": [
+                160.91662261308738,
+                180.91662261308738
+            ],
+            "right_ankle": [
+                123.9392551420934,
+                143.9392551420934
+            ],
+            "left_ankle": [
+                121.13361446203089,
+                141.1336144620309
+            ]
+        },
+        "stick_pattern": {
+            "hand": "left",
+            "stick_arm_angle_degrees": -19.953450275349773,
+            "stick_length_ratio": 1.6719084125807664
+        },
+        "sample_count": 336
     },
-    'right chest thrust_left_correct': {
-        'left_elbow': [133.1, 153.1],
-        'left_shoulder': [88.1, 108.1],
-        'right_elbow': [36.5, 56.5],
-        'right_shoulder': [25.4, 45.4],
-        'right_hip': [129.5, 149.5],
-        'right_knee': [139.3, 159.3],
-        'right_ankle': [91.2, 111.2],
-        'left_hip': [163.2, 180.0],
-        'left_knee': [142.6, 162.6],
-        'left_ankle': [115.4, 135.4],
+    "4. right_elbow_block": {
+        "joint_angles": {
+            "right_elbow": [
+                120.65385733985872,
+                140.65385733985872
+            ],
+            "right_shoulder": [
+                120.24748128221495,
+                140.24748128221495
+            ],
+            "left_elbow": [
+                64.013838109117,
+                84.013838109117
+            ],
+            "left_shoulder": [
+                68.58116666723495,
+                88.58116666723495
+            ],
+            "right_knee": [
+                161.23286682411563,
+                181.23286682411563
+            ],
+            "right_hip": [
+                159.25641555527864,
+                179.25641555527864
+            ],
+            "left_knee": [
+                161.75367884101126,
+                181.75367884101126
+            ],
+            "left_hip": [
+                161.08574813664686,
+                181.08574813664686
+            ],
+            "right_ankle": [
+                126.0381226197158,
+                146.0381226197158
+            ],
+            "left_ankle": [
+                115.25240318665949,
+                135.25240318665948
+            ]
+        },
+        "stick_pattern": {
+            "hand": "right",
+            "stick_arm_angle_degrees": -26.240372134236527,
+            "stick_length_ratio": 1.5729043033202026
+        },
+        "sample_count": 320
     },
-    'right elbow block_left_correct': {
-        'left_elbow': [148.1, 168.1],
-        'left_shoulder': [65.7, 85.7],
-        'right_elbow': [65.2, 85.2],
-        'right_shoulder': [29.7, 49.7],
-        'right_hip': [163.9, 180.0],
-        'right_knee': [146.4, 166.4],
-        'right_ankle': [91.2, 111.2],
-        'left_hip': [140.8, 160.8],
-        'left_knee': [150.4, 170.4],
-        'left_ankle': [100.5, 120.5],
+    "5. solar_plexus_thrust": {
+        "joint_angles": {
+            "right_elbow": [
+                144.75662834506122,
+                164.75662834506122
+            ],
+            "right_shoulder": [
+                115.88131235616451,
+                135.88131235616453
+            ],
+            "left_elbow": [
+                80.10361212089519,
+                100.10361212089519
+            ],
+            "left_shoulder": [
+                65.28077278157338,
+                85.28077278157338
+            ],
+            "right_knee": [
+                160.4751578534238,
+                180.4751578534238
+            ],
+            "right_hip": [
+                155.72781760092582,
+                175.72781760092582
+            ],
+            "left_knee": [
+                159.06620171215127,
+                179.06620171215127
+            ],
+            "left_hip": [
+                164.0174264223307,
+                184.0174264223307
+            ],
+            "right_ankle": [
+                126.9622081299905,
+                146.9622081299905
+            ],
+            "left_ankle": [
+                109.56527326074232,
+                129.56527326074232
+            ]
+        },
+        "stick_pattern": {
+            "hand": "right",
+            "stick_arm_angle_degrees": 29.802113629817406,
+            "stick_length_ratio": 1.7307385073037713
+        },
+        "sample_count": 344
     },
-    'right eye thrust_left_correct': {
-        'left_elbow': [132.8, 152.8],
-        'left_shoulder': [85.4, 105.4],
-        'right_elbow': [79.1, 99.1],
-        'right_shoulder': [31.7, 51.7],
-        'right_hip': [159.4, 179.4],
-        'right_knee': [150.3, 170.3],
-        'right_ankle': [91.0, 111.0],
-        'left_hip': [129.4, 149.4],
-        'left_knee': [138.9, 158.9],
-        'left_ankle': [81.4, 101.4],
+    "6. left_chest_thrust": {
+        "joint_angles": {
+            "right_elbow": [
+                102.67077581808901,
+                122.67077581808901
+            ],
+            "right_shoulder": [
+                104.51608552598735,
+                124.51608552598735
+            ],
+            "left_elbow": [
+                57.55107249914691,
+                77.55107249914691
+            ],
+            "left_shoulder": [
+                79.43955934488025,
+                99.43955934488025
+            ],
+            "right_knee": [
+                161.6147003301362,
+                181.6147003301362
+            ],
+            "right_hip": [
+                160.10016186407256,
+                180.10016186407256
+            ],
+            "left_knee": [
+                161.8829202783942,
+                181.8829202783942
+            ],
+            "left_hip": [
+                159.15684918135955,
+                179.15684918135955
+            ],
+            "right_ankle": [
+                127.59128416453493,
+                147.59128416453493
+            ],
+            "left_ankle": [
+                118.89006717666902,
+                138.89006717666902
+            ]
+        },
+        "stick_pattern": {
+            "hand": "left",
+            "stick_arm_angle_degrees": -52.74815462847963,
+            "stick_length_ratio": 1.6695203686041704
+        },
+        "sample_count": 328
     },
-    'right knee block_left_correct': {
-        'left_elbow': [161.1, 180.0],
-        'left_shoulder': [38.6, 58.6],
-        'right_elbow': [124.6, 144.6],
-        'right_shoulder': [25.5, 45.5],
-        'right_hip': [157.8, 177.8],
-        'right_knee': [150.2, 170.2],
-        'right_ankle': [95.2, 115.2],
-        'left_hip': [123.1, 143.1],
-        'left_knee': [149.1, 169.1],
-        'left_ankle': [89.8, 109.8],
+    "7. right_chest_thrust": {
+        "joint_angles": {
+            "right_elbow": [
+                109.93921935501814,
+                129.93921935501814
+            ],
+            "right_shoulder": [
+                109.18255684504335,
+                129.18255684504334
+            ],
+            "left_elbow": [
+                63.737621821793525,
+                83.73762182179352
+            ],
+            "left_shoulder": [
+                79.35490297735996,
+                99.35490297735996
+            ],
+            "right_knee": [
+                158.12903039832577,
+                178.12903039832577
+            ],
+            "right_hip": [
+                158.6308911203319,
+                178.6308911203319
+            ],
+            "left_knee": [
+                163.4383701437225,
+                183.4383701437225
+            ],
+            "left_hip": [
+                160.64838016725298,
+                180.64838016725298
+            ],
+            "right_ankle": [
+                119.438151038612,
+                139.438151038612
+            ],
+            "left_ankle": [
+                118.84226192264683,
+                138.84226192264683
+            ]
+        },
+        "stick_pattern": {
+            "hand": "left",
+            "stick_arm_angle_degrees": -32.881787438659494,
+            "stick_length_ratio": 1.5261858204553245
+        },
+        "sample_count": 336
     },
-    'right temple block_left_correct': {
-        'left_elbow': [156.7, 176.7],
-        'left_shoulder': [81.8, 101.8],
-        'right_elbow': [80.5, 100.5],
-        'right_shoulder': [45.8, 65.8],
-        'right_hip': [158.0, 178.0],
-        'right_knee': [138.5, 158.5],
-        'right_ankle': [93.5, 113.5],
-        'left_hip': [140.6, 160.6],
-        'left_knee': [145.9, 165.9],
-        'left_ankle': [101.8, 121.8],
+    "8. left_knee_block": {
+        "joint_angles": {
+            "right_elbow": [
+                157.2486592689432,
+                177.2486592689432
+            ],
+            "right_shoulder": [
+                103.78577467270173,
+                123.78577467270173
+            ],
+            "left_elbow": [
+                73.79440394080903,
+                93.79440394080903
+            ],
+            "left_shoulder": [
+                80.2487292735116,
+                100.2487292735116
+            ],
+            "right_knee": [
+                156.892734752295,
+                176.892734752295
+            ],
+            "right_hip": [
+                162.43629038037997,
+                182.43629038037997
+            ],
+            "left_knee": [
+                160.18411474694125,
+                180.18411474694125
+            ],
+            "left_hip": [
+                157.31246829153903,
+                177.31246829153903
+            ],
+            "right_ankle": [
+                119.65898722973424,
+                139.65898722973424
+            ],
+            "left_ankle": [
+                121.15043981534905,
+                141.15043981534905
+            ]
+        },
+        "stick_pattern": {
+            "hand": "right",
+            "stick_arm_angle_degrees": 5.356879595910325,
+            "stick_length_ratio": 1.7335245583257142
+        },
+        "sample_count": 344
     },
-    'solar plexus thrust_left_correct': {
-        'left_elbow': [143.6, 163.6],
-        'left_shoulder': [33.4, 53.4],
-        'right_elbow': [138.7, 158.7],
-        'right_shoulder': [29.7, 49.7],
-        'right_hip': [159.0, 179.0],
-        'right_knee': [136.8, 156.8],
-        'right_ankle': [76.1, 96.1],
-        'left_hip': [133.8, 153.8],
-        'left_knee': [153.2, 173.2],
-        'left_ankle': [93.9, 113.9],
-    },
-    'crown block_front_correct': {
-        'left_elbow': [82.4, 102.4],
-        'left_shoulder': [36.5, 56.5],
-        'right_elbow': [129.8, 149.8],
-        'right_shoulder': [43.7, 63.7],
-        'right_hip': [138.8, 158.8],
-        'right_knee': [139.8, 159.8],
-        'right_ankle': [85.9, 105.9],
-        'left_hip': [131.0, 151.0],
-        'left_knee': [142.6, 162.6],
-        'left_ankle': [106.9, 126.9],
-    },
-    'left chest thrust_front_correct': {
-        'left_elbow': [89.7, 109.7],
-        'left_shoulder': [43.3, 63.3],
-        'right_elbow': [99.8, 119.8],
-        'right_shoulder': [56.7, 76.7],
-        'right_hip': [131.9, 151.9],
-        'right_knee': [153.8, 173.8],
-        'right_ankle': [92.5, 112.5],
-        'left_hip': [132.2, 152.2],
-        'left_knee': [150.8, 170.8],
-        'left_ankle': [125.0, 145.0],
-    },
-    'left elbow block_front_correct': {
-        'left_elbow': [89.0, 109.0],
-        'left_shoulder': [43.9, 63.9],
-        'right_elbow': [117.8, 137.8],
-        'right_shoulder': [23.2, 43.2],
-        'right_hip': [150.4, 170.4],
-        'right_knee': [152.8, 172.8],
-        'right_ankle': [102.3, 122.3],
-        'left_hip': [151.8, 171.8],
-        'left_knee': [135.4, 155.4],
-        'left_ankle': [134.2, 154.2],
-    },
-    'left eye thrust_front_correct': {
-        'left_elbow': [77.9, 97.9],
-        'left_shoulder': [34.9, 54.9],
-        'right_elbow': [73.4, 93.4],
-        'right_shoulder': [37.9, 57.9],
-        'right_hip': [142.3, 162.3],
-        'right_knee': [137.2, 157.2],
-        'right_ankle': [102.6, 122.6],
-        'left_hip': [129.4, 149.4],
-        'left_knee': [138.7, 158.7],
-        'left_ankle': [122.8, 142.8],
-    },
-    'left knee block_front_correct': {
-        'left_elbow': [79.4, 99.4],
-        'left_shoulder': [12.0, 32.0],
-        'right_elbow': [153.4, 173.4],
-        'right_shoulder': [0.0, 14.1],
-        'right_hip': [145.8, 165.8],
-        'right_knee': [132.0, 152.0],
-        'right_ankle': [88.0, 108.0],
-        'left_hip': [143.0, 163.0],
-        'left_knee': [143.9, 163.9],
-        'left_ankle': [120.9, 140.9],
-    },
-    'left temple block_front_correct': {
-        'left_elbow': [91.2, 111.2],
-        'left_shoulder': [48.5, 68.5],
-        'right_elbow': [140.0, 160.0],
-        'right_shoulder': [78.4, 98.4],
-        'right_hip': [151.1, 171.1],
-        'right_knee': [152.0, 172.0],
-        'right_ankle': [97.5, 117.5],
-        'left_hip': [150.5, 170.5],
-        'left_knee': [135.8, 155.8],
-        'left_ankle': [135.6, 155.6],
-    },
-    'right chest thrust_front_correct': {
-        'left_elbow': [77.1, 97.1],
-        'left_shoulder': [25.3, 45.3],
-        'right_elbow': [81.5, 101.5],
-        'right_shoulder': [35.8, 55.8],
-        'right_hip': [150.1, 170.1],
-        'right_knee': [149.6, 169.6],
-        'right_ankle': [105.8, 125.8],
-        'left_hip': [150.8, 170.8],
-        'left_knee': [135.7, 155.7],
-        'left_ankle': [147.6, 167.6],
-    },
-    'right elbow block_front_correct': {
-        'left_elbow': [76.4, 96.4],
-        'left_shoulder': [26.0, 46.0],
-        'right_elbow': [140.6, 160.6],
-        'right_shoulder': [49.0, 69.0],
-        'right_hip': [144.4, 164.4],
-        'right_knee': [142.9, 162.9],
-        'right_ankle': [86.8, 106.8],
-        'left_hip': [139.4, 159.4],
-        'left_knee': [151.2, 171.2],
-        'left_ankle': [115.0, 135.0],
-    },
-    'right eye thrust_front_correct': {
-        'left_elbow': [76.5, 96.5],
-        'left_shoulder': [33.2, 53.2],
-        'right_elbow': [82.2, 102.2],
-        'right_shoulder': [45.5, 65.5],
-        'right_hip': [148.1, 168.1],
-        'right_knee': [147.1, 167.1],
-        'right_ankle': [109.5, 129.5],
-        'left_hip': [149.4, 169.4],
-        'left_knee': [139.2, 159.2],
-        'left_ankle': [145.2, 165.2],
-    },
-    'right knee block_front_correct': {
-        'left_elbow': [91.1, 111.1],
-        'left_shoulder': [26.8, 46.8],
-        'right_elbow': [138.8, 158.8],
-        'right_shoulder': [0.0, 14.2],
-        'right_hip': [150.3, 170.3],
-        'right_knee': [149.3, 169.3],
-        'right_ankle': [97.8, 117.8],
-        'left_hip': [152.7, 172.7],
-        'left_knee': [130.3, 150.3],
-        'left_ankle': [131.0, 151.0],
-    },
-    'right temple block_front_correct': {
-        'left_elbow': [72.2, 92.2],
-        'left_shoulder': [34.4, 54.4],
-        'right_elbow': [104.2, 124.2],
-        'right_shoulder': [56.2, 76.2],
-        'right_hip': [145.5, 165.5],
-        'right_knee': [138.7, 158.7],
-        'right_ankle': [102.2, 122.2],
-        'left_hip': [133.4, 153.4],
-        'left_knee': [148.6, 168.6],
-        'left_ankle': [118.0, 138.0],
-    },
-    'solar plexus thrust_front_correct': {
-        'left_elbow': [85.2, 105.2],
-        'left_shoulder': [26.8, 46.8],
-        'right_elbow': [140.7, 160.7],
-        'right_shoulder': [0.0, 14.1],
-        'right_hip': [143.9, 163.9],
-        'right_knee': [146.5, 166.5],
-        'right_ankle': [97.7, 117.7],
-        'left_hip': [145.4, 165.4],
-        'left_knee': [131.6, 151.6],
-        'left_ankle': [135.8, 155.8],
-    },
+    "9. right_knee_block": {
+        "joint_angles": {
+            "right_elbow": [
+                151.7967610875479,
+                171.7967610875479
+            ],
+            "right_shoulder": [
+                109.40904221397707,
+                129.40904221397707
+            ],
+            "left_elbow": [
+                91.13906066107246,
+                111.13906066107246
+            ],
+            "left_shoulder": [
+                63.67540873864935,
+                83.67540873864935
+            ],
+            "right_knee": [
+                159.74506163954183,
+                179.74506163954183
+            ],
+            "right_hip": [
+                152.2040301561425,
+                172.2040301561425
+            ],
+            "left_knee": [
+                160.02949022064962,
+                180.02949022064962
+            ],
+            "left_hip": [
+                162.68649481153952,
+                182.68649481153952
+            ],
+            "right_ankle": [
+                122.43920098860184,
+                142.43920098860184
+            ],
+            "left_ankle": [
+                112.61274383429252,
+                132.61274383429253
+            ]
+        },
+        "stick_pattern": {
+            "hand": "right",
+            "stick_arm_angle_degrees": 52.91684558753453,
+            "stick_length_ratio": 1.6190856277248638
+        },
+        "sample_count": 336
+    }
 }

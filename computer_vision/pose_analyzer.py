@@ -62,6 +62,7 @@ class PoseAnalyzer:
         self.detection_interval = detection_interval
         self.frame_count = 0
         self.last_detections = []
+        self.preferred_hand = None  # Track which hand is holding the stick
         print("[info] computer vision components ready.")
 
     def _calculate_iou(self, boxA, boxB):
@@ -77,61 +78,109 @@ class PoseAnalyzer:
 
         h, w = frame_shape
         try:
+            # Check both hands - detect which one is holding the stick
             r_wrist = landmarks_2d[self.mp_pose.PoseLandmark.RIGHT_WRIST]
             r_elbow = landmarks_2d[self.mp_pose.PoseLandmark.RIGHT_ELBOW]
             r_shoulder = landmarks_2d[self.mp_pose.PoseLandmark.RIGHT_SHOULDER]
             r_knee = landmarks_2d[self.mp_pose.PoseLandmark.RIGHT_KNEE]
             
-            # Create a large ROI around the entire right side to capture stick in any orientation
-            wrist_x, wrist_y = int(r_wrist.x * w), int(r_wrist.y * h)
-            elbow_x, elbow_y = int(r_elbow.x * w), int(r_elbow.y * h)
-            shoulder_x, shoulder_y = int(r_shoulder.x * w), int(r_shoulder.y * h)
-            knee_x, knee_y = int(r_knee.x * w), int(r_knee.y * h)
+            l_wrist = landmarks_2d[self.mp_pose.PoseLandmark.LEFT_WRIST]
+            l_elbow = landmarks_2d[self.mp_pose.PoseLandmark.LEFT_ELBOW]
+            l_shoulder = landmarks_2d[self.mp_pose.PoseLandmark.LEFT_SHOULDER]
+            l_knee = landmarks_2d[self.mp_pose.PoseLandmark.LEFT_KNEE]
             
-            # Get bounding box of right arm + generous padding for stick
-            x_coords = [wrist_x, elbow_x, shoulder_x, knee_x]
-            y_coords = [wrist_y, elbow_y, shoulder_y, knee_y]
+            # Try detecting stick for both hands and use the one with better detection
+            best_result = None
+            best_candidates = 0
             
-            # Large padding to ensure stick is captured regardless of pose orientation
-            padding = 200
-            roi_x1 = max(0, min(x_coords) - padding)
-            roi_y1 = max(0, min(y_coords) - padding)
-            roi_x2 = min(w, max(x_coords) + padding)
-            roi_y2 = min(h, max(y_coords) + padding)
-            roi = frame[roi_y1:roi_y2, roi_x1:roi_x2]
-            if roi.size == 0: return None, None
-
-            gray_roi = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
-            blurred = cv2.GaussianBlur(gray_roi, (5, 5), 0)
+            # If we have a preferred hand from previous detections, bias towards it
+            hands_to_check = ['right', 'left']
+            if self.preferred_hand:
+                # Check preferred hand first
+                hands_to_check = [self.preferred_hand] + [h for h in hands_to_check if h != self.preferred_hand]
             
-            # Use Canny edge detection for better stick outline
-            edges = cv2.Canny(blurred, 50, 150)
-            # Dilate edges to connect broken lines
-            kernel = np.ones((3, 3), np.uint8)
-            edges = cv2.dilate(edges, kernel, iterations=1)
-            
-            contours, _ = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-            best_stick_contour = None
-            max_length = 0
-            candidates = 0
-
-            for cnt in contours:
-                area = cv2.contourArea(cnt)
-                if area < 100: continue  # Reduced from 200
+            for hand_side in hands_to_check:
+                if hand_side == 'right':
+                    wrist, elbow, shoulder, knee = r_wrist, r_elbow, r_shoulder, r_knee
+                else:
+                    wrist, elbow, shoulder, knee = l_wrist, l_elbow, l_shoulder, l_knee
                 
-                rect = cv2.minAreaRect(cnt)
-                (cx, cy), (width, height), angle = rect
-                if width > height: width, height = height, width
+                wrist_x, wrist_y = int(wrist.x * w), int(wrist.y * h)
+                elbow_x, elbow_y = int(elbow.x * w), int(elbow.y * h)
+                shoulder_x, shoulder_y = int(shoulder.x * w), int(shoulder.y * h)
+                knee_x, knee_y = int(knee.x * w), int(knee.y * h)
                 
-                if width > 0 and height > 0:
-                    aspect_ratio = height / width
-                    # Reduced aspect ratio from 3 to 2 for better detection
-                    if aspect_ratio > 2 and height > max_length:
-                        candidates += 1
-                        max_length = height
-                        best_stick_contour = cnt
+                # Create a large ROI around the arm to capture stick in any orientation
+                x_coords = [wrist_x, elbow_x, shoulder_x, knee_x]
+                y_coords = [wrist_y, elbow_y, shoulder_y, knee_y]
+                
+                # Large padding to ensure stick is captured regardless of pose orientation
+                padding = 200
+                roi_x1 = max(0, min(x_coords) - padding)
+                roi_y1 = max(0, min(y_coords) - padding)
+                roi_x2 = min(w, max(x_coords) + padding)
+                roi_y2 = min(h, max(y_coords) + padding)
+                
+                roi = frame[roi_y1:roi_y2, roi_x1:roi_x2]
+                if roi.size == 0: continue
+                
+                gray_roi = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
+                blurred = cv2.GaussianBlur(gray_roi, (5, 5), 0)
+                
+                # Use Canny edge detection for better stick outline
+                edges = cv2.Canny(blurred, 50, 150)
+                # Dilate edges to connect broken lines
+                kernel = np.ones((3, 3), np.uint8)
+                edges = cv2.dilate(edges, kernel, iterations=1)
+                
+                contours, _ = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+                best_stick_contour = None
+                max_length = 0
+                candidates = 0
+                
+                for cnt in contours:
+                    area = cv2.contourArea(cnt)
+                    if area < 100: continue
+                    
+                    rect = cv2.minAreaRect(cnt)
+                    (cx, cy), (width, height), angle = rect
+                    if width > height: width, height = height, width
+                    
+                    if width > 0 and height > 0:
+                        aspect_ratio = height / width
+                        # Reduced aspect ratio from 3 to 2 for better detection
+                        if aspect_ratio > 2 and height > max_length:
+                            candidates += 1
+                            max_length = height
+                            best_stick_contour = cnt
+                
+                # Store result if this hand has better stick detection
+                # Require significantly better detection (2x candidates) to switch hands
+                threshold_multiplier = 2 if self.preferred_hand and self.preferred_hand != hand_side else 1
+                if candidates > best_candidates * threshold_multiplier:
+                    best_candidates = candidates
+                    best_result = {
+                        'contour': best_stick_contour,
+                        'roi_offset': (roi_x1, roi_y1),
+                        'wrist': (wrist_x, wrist_y),
+                        'elbow': (elbow_x, elbow_y),
+                        'shoulder': (shoulder_x, shoulder_y),
+                        'knee': (knee_x, knee_y),
+                        'hand_side': hand_side
+                    }
             
-            if best_stick_contour is not None:
+            # Use the best detection result
+            if best_result and best_result['contour'] is not None:
+                # Update preferred hand
+                self.preferred_hand = best_result['hand_side']
+                
+                best_stick_contour = best_result['contour']
+                roi_x1, roi_y1 = best_result['roi_offset']
+                wrist_x, wrist_y = best_result['wrist']
+                elbow_x, elbow_y = best_result['elbow']
+                shoulder_x, shoulder_y = best_result['shoulder']
+                knee_x, knee_y = best_result['knee']
+                
                 final_rect = cv2.minAreaRect(best_stick_contour)
                 stick_roi_bbox = cv2.boundingRect(best_stick_contour)
                 sx, sy, sw, sh = stick_roi_bbox
@@ -144,9 +193,6 @@ class PoseAnalyzer:
                     angle_rad += np.pi / 2
                 
                 # Use wrist as anchor and calculate stick length from body proportions
-                wrist_x, wrist_y = int(r_wrist.x * w), int(r_wrist.y * h)
-                shoulder_x, shoulder_y = int(r_shoulder.x * w), int(r_shoulder.y * h)
-                knee_x, knee_y = int(r_knee.x * w), int(r_knee.y * h)
                 shoulder_knee_dist = np.sqrt((shoulder_x - knee_x)**2 + (shoulder_y - knee_y)**2)
                 
                 # Calculate elbow-to-wrist direction
@@ -181,11 +227,30 @@ class PoseAnalyzer:
                 
                 return (endpoint1, endpoint2), stick_frame_bbox
             else:
-                # Fallback: No stick detected - use arm direction as estimate
-                wrist_x, wrist_y = int(r_wrist.x * w), int(r_wrist.y * h)
-                elbow_x, elbow_y = int(r_elbow.x * w), int(r_elbow.y * h)
-                shoulder_x, shoulder_y = int(r_shoulder.x * w), int(r_shoulder.y * h)
-                knee_x, knee_y = int(r_knee.x * w), int(r_knee.y * h)
+                # Fallback: No stick detected - try both hands and use arm direction as estimate
+                r_wrist = landmarks_2d[self.mp_pose.PoseLandmark.RIGHT_WRIST]
+                r_elbow = landmarks_2d[self.mp_pose.PoseLandmark.RIGHT_ELBOW]
+                r_shoulder = landmarks_2d[self.mp_pose.PoseLandmark.RIGHT_SHOULDER]
+                r_knee = landmarks_2d[self.mp_pose.PoseLandmark.RIGHT_KNEE]
+                
+                l_wrist = landmarks_2d[self.mp_pose.PoseLandmark.LEFT_WRIST]
+                l_elbow = landmarks_2d[self.mp_pose.PoseLandmark.LEFT_ELBOW]
+                l_shoulder = landmarks_2d[self.mp_pose.PoseLandmark.LEFT_SHOULDER]
+                l_knee = landmarks_2d[self.mp_pose.PoseLandmark.LEFT_KNEE]
+                
+                # Use the hand with longer arm extension (more likely holding stick)
+                r_arm_length = np.sqrt((r_wrist.x*w - r_elbow.x*w)**2 + (r_wrist.y*h - r_elbow.y*h)**2)
+                l_arm_length = np.sqrt((l_wrist.x*w - l_elbow.x*w)**2 + (l_wrist.y*h - l_elbow.y*h)**2)
+                
+                if r_arm_length > l_arm_length:
+                    wrist, elbow, shoulder, knee = r_wrist, r_elbow, r_shoulder, r_knee
+                else:
+                    wrist, elbow, shoulder, knee = l_wrist, l_elbow, l_shoulder, l_knee
+                
+                wrist_x, wrist_y = int(wrist.x * w), int(wrist.y * h)
+                elbow_x, elbow_y = int(elbow.x * w), int(elbow.y * h)
+                shoulder_x, shoulder_y = int(shoulder.x * w), int(shoulder.y * h)
+                knee_x, knee_y = int(knee.x * w), int(knee.y * h)
                 
                 # Calculate arm direction
                 arm_dx = wrist_x - elbow_x
@@ -335,3 +400,29 @@ class PoseAnalyzer:
     def close(self):
         self.pose.close()
         print("[info] pose analyzer closed.")
+    
+    def _get_stick_from_pattern(self, predicted_class, landmarks):
+        if predicted_class not in STICK_PATTERNS:
+            return None
+        
+        pattern = STICK_PATTERNS[predicted_class]
+        hand = pattern['hand']  # 'right' or 'left'
+        angle_offset = pattern['stick_arm_angle']
+        
+        # Get appropriate hand landmarks
+        wrist = landmarks[WRIST_LANDMARK[hand]]
+        elbow = landmarks[ELBOW_LANDMARK[hand]]
+        
+        # Calculate arm direction
+        arm_vector = np.array([wrist.x - elbow.x, wrist.y - elbow.y])
+        arm_angle = np.arctan2(arm_vector[1], arm_vector[0])
+        
+        # Apply learned angle offset
+        stick_angle = arm_angle + angle_offset
+        
+        # Draw stick
+        stick_length = calculate_body_proportional_length(landmarks)
+        endpoint1 = wrist + 30 * (-cos(stick_angle), -sin(stick_angle))
+        endpoint2 = wrist + stick_length * (cos(stick_angle), sin(stick_angle))
+        
+        return (endpoint1, endpoint2)

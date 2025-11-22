@@ -1,4 +1,5 @@
 import sys
+import os
 import cv2
 import threading
 import time
@@ -26,7 +27,12 @@ class TuroArnisGUI:
         self.processing_interval = 3  # Process every 3rd frame
         self.last_known_results = []
 
-        self.analyzer = PoseAnalyzer(detection_interval=self.processing_interval)
+        # Initialize PoseAnalyzer with optional stick detector model
+        stick_model_path = 'runs/pose/arnis_stick_detector/weights/best.pt'
+        self.analyzer = PoseAnalyzer(
+            detection_interval=self.processing_interval,
+            stick_model_path=stick_model_path if os.path.exists(stick_model_path) else None
+        )
         self.cap = cv2.VideoCapture(0)
         
         self.queue = queue.Queue(maxsize=1)

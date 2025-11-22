@@ -24,9 +24,18 @@ class CustomInputLayer(InputLayer):
         super().__init__(**kwargs)
 
 class PoseAnalyzer:
-    def __init__(self, detection_interval=3):
+    def __init__(self, detection_interval=3, stick_model_path=None):
         print("[info] initializing computer vision components...")
         self.yolo_model = YOLO('yolov8n.pt')
+        
+        # Load stick detector model if provided
+        self.stick_detector = None
+        if stick_model_path and os.path.exists(stick_model_path):
+            try:
+                self.stick_detector = YOLO(stick_model_path)
+                print(f"[info] Stick detector model loaded from {stick_model_path}")
+            except Exception as e:
+                print(f"[warning] Could not load stick detector: {e}")
         
         self.tracker = Sort(max_age=90, min_hits=3, iou_threshold=0.3)
         
@@ -62,7 +71,6 @@ class PoseAnalyzer:
         self.detection_interval = detection_interval
         self.frame_count = 0
         self.last_detections = []
-        self.preferred_hand = None  # Track which hand is holding the stick
         print("[info] computer vision components ready.")
 
     def _calculate_iou(self, boxA, boxB):
@@ -74,209 +82,48 @@ class PoseAnalyzer:
         boxBArea = (boxB[2] - boxB[0]) * (boxB[3] - boxB[1])
         return interArea / float(boxAArea + boxBArea - interArea)
 
-    def _detect_stick_by_shape(self, frame, landmarks_2d, frame_shape, person_bbox=None):
-
-        h, w = frame_shape
+    def _detect_stick_with_yolo(self, frame, person_bbox=None):
+        """
+        Detect stick using YOLOv8-pose model with keypoints.
+        Returns stick keypoints (grip and tip) from the trained model.
+        """
+        if self.stick_detector is None:
+            return None, None
+        
         try:
-            # Check both hands - detect which one is holding the stick
-            r_wrist = landmarks_2d[self.mp_pose.PoseLandmark.RIGHT_WRIST]
-            r_elbow = landmarks_2d[self.mp_pose.PoseLandmark.RIGHT_ELBOW]
-            r_shoulder = landmarks_2d[self.mp_pose.PoseLandmark.RIGHT_SHOULDER]
-            r_knee = landmarks_2d[self.mp_pose.PoseLandmark.RIGHT_KNEE]
+            # Run stick detection
+            results = self.stick_detector(frame, verbose=False, conf=0.5)
             
-            l_wrist = landmarks_2d[self.mp_pose.PoseLandmark.LEFT_WRIST]
-            l_elbow = landmarks_2d[self.mp_pose.PoseLandmark.LEFT_ELBOW]
-            l_shoulder = landmarks_2d[self.mp_pose.PoseLandmark.LEFT_SHOULDER]
-            l_knee = landmarks_2d[self.mp_pose.PoseLandmark.LEFT_KNEE]
-            
-            # Try detecting stick for both hands and use the one with better detection
-            best_result = None
-            best_candidates = 0
-            
-            # If we have a preferred hand from previous detections, bias towards it
-            hands_to_check = ['right', 'left']
-            if self.preferred_hand:
-                # Check preferred hand first
-                hands_to_check = [self.preferred_hand] + [h for h in hands_to_check if h != self.preferred_hand]
-            
-            for hand_side in hands_to_check:
-                if hand_side == 'right':
-                    wrist, elbow, shoulder, knee = r_wrist, r_elbow, r_shoulder, r_knee
-                else:
-                    wrist, elbow, shoulder, knee = l_wrist, l_elbow, l_shoulder, l_knee
-                
-                wrist_x, wrist_y = int(wrist.x * w), int(wrist.y * h)
-                elbow_x, elbow_y = int(elbow.x * w), int(elbow.y * h)
-                shoulder_x, shoulder_y = int(shoulder.x * w), int(shoulder.y * h)
-                knee_x, knee_y = int(knee.x * w), int(knee.y * h)
-                
-                # Create a large ROI around the arm to capture stick in any orientation
-                x_coords = [wrist_x, elbow_x, shoulder_x, knee_x]
-                y_coords = [wrist_y, elbow_y, shoulder_y, knee_y]
-                
-                # Large padding to ensure stick is captured regardless of pose orientation
-                padding = 200
-                roi_x1 = max(0, min(x_coords) - padding)
-                roi_y1 = max(0, min(y_coords) - padding)
-                roi_x2 = min(w, max(x_coords) + padding)
-                roi_y2 = min(h, max(y_coords) + padding)
-                
-                roi = frame[roi_y1:roi_y2, roi_x1:roi_x2]
-                if roi.size == 0: continue
-                
-                gray_roi = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
-                blurred = cv2.GaussianBlur(gray_roi, (5, 5), 0)
-                
-                # Use Canny edge detection for better stick outline
-                edges = cv2.Canny(blurred, 50, 150)
-                # Dilate edges to connect broken lines
-                kernel = np.ones((3, 3), np.uint8)
-                edges = cv2.dilate(edges, kernel, iterations=1)
-                
-                contours, _ = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-                best_stick_contour = None
-                max_length = 0
-                candidates = 0
-                
-                for cnt in contours:
-                    area = cv2.contourArea(cnt)
-                    if area < 100: continue
-                    
-                    rect = cv2.minAreaRect(cnt)
-                    (cx, cy), (width, height), angle = rect
-                    if width > height: width, height = height, width
-                    
-                    if width > 0 and height > 0:
-                        aspect_ratio = height / width
-                        # Reduced aspect ratio from 3 to 2 for better detection
-                        if aspect_ratio > 2 and height > max_length:
-                            candidates += 1
-                            max_length = height
-                            best_stick_contour = cnt
-                
-                # Store result if this hand has better stick detection
-                # Require significantly better detection (2x candidates) to switch hands
-                threshold_multiplier = 2 if self.preferred_hand and self.preferred_hand != hand_side else 1
-                if candidates > best_candidates * threshold_multiplier:
-                    best_candidates = candidates
-                    best_result = {
-                        'contour': best_stick_contour,
-                        'roi_offset': (roi_x1, roi_y1),
-                        'wrist': (wrist_x, wrist_y),
-                        'elbow': (elbow_x, elbow_y),
-                        'shoulder': (shoulder_x, shoulder_y),
-                        'knee': (knee_x, knee_y),
-                        'hand_side': hand_side
-                    }
-            
-            # Use the best detection result
-            if best_result and best_result['contour'] is not None:
-                # Update preferred hand
-                self.preferred_hand = best_result['hand_side']
-                
-                best_stick_contour = best_result['contour']
-                roi_x1, roi_y1 = best_result['roi_offset']
-                wrist_x, wrist_y = best_result['wrist']
-                elbow_x, elbow_y = best_result['elbow']
-                shoulder_x, shoulder_y = best_result['shoulder']
-                knee_x, knee_y = best_result['knee']
-                
-                final_rect = cv2.minAreaRect(best_stick_contour)
-                stick_roi_bbox = cv2.boundingRect(best_stick_contour)
-                sx, sy, sw, sh = stick_roi_bbox
-                stick_frame_bbox = (sx + roi_x1, sy + roi_y1, sw, sh)
-                
-                # Get angle from detected contour
-                (cx, cy), (w_rect, h_rect), angle = final_rect
-                angle_rad = np.deg2rad(angle)
-                if w_rect > h_rect:
-                    angle_rad += np.pi / 2
-                
-                # Use wrist as anchor and calculate stick length from body proportions
-                shoulder_knee_dist = np.sqrt((shoulder_x - knee_x)**2 + (shoulder_y - knee_y)**2)
-                
-                # Calculate elbow-to-wrist direction
-                elbow_x, elbow_y = int(r_elbow.x * w), int(r_elbow.y * h)
-                arm_dx = wrist_x - elbow_x
-                arm_dy = wrist_y - elbow_y
-                arm_angle = np.arctan2(arm_dy, arm_dx)
-                
-                # Calculate stick direction from detected angle
-                stick_dx = np.cos(angle_rad)
-                stick_dy = np.sin(angle_rad)
-                
-                # Determine which direction the stick extends
-                angle_diff1 = abs(angle_rad - arm_angle)
-                angle_diff2 = abs((angle_rad + np.pi) - arm_angle)
-                
-                # Normalize to [0, pi]
-                angle_diff1 = min(angle_diff1, 2*np.pi - angle_diff1)
-                angle_diff2 = min(angle_diff2, 2*np.pi - angle_diff2)
-                
-                # Flip if opposite direction aligns better with arm
-                if angle_diff2 < angle_diff1:
-                    stick_dx = -stick_dx
-                    stick_dy = -stick_dy
-                
-                # Draw stick with body-proportional length
-                stick_length = int(shoulder_knee_dist)
-                endpoint1 = (int(wrist_x - stick_dx * 30),
-                           int(wrist_y - stick_dy * 30))
-                endpoint2 = (int(wrist_x + stick_dx * stick_length),
-                           int(wrist_y + stick_dy * stick_length))
-                
-                return (endpoint1, endpoint2), stick_frame_bbox
-            else:
-                # Fallback: No stick detected - try both hands and use arm direction as estimate
-                r_wrist = landmarks_2d[self.mp_pose.PoseLandmark.RIGHT_WRIST]
-                r_elbow = landmarks_2d[self.mp_pose.PoseLandmark.RIGHT_ELBOW]
-                r_shoulder = landmarks_2d[self.mp_pose.PoseLandmark.RIGHT_SHOULDER]
-                r_knee = landmarks_2d[self.mp_pose.PoseLandmark.RIGHT_KNEE]
-                
-                l_wrist = landmarks_2d[self.mp_pose.PoseLandmark.LEFT_WRIST]
-                l_elbow = landmarks_2d[self.mp_pose.PoseLandmark.LEFT_ELBOW]
-                l_shoulder = landmarks_2d[self.mp_pose.PoseLandmark.LEFT_SHOULDER]
-                l_knee = landmarks_2d[self.mp_pose.PoseLandmark.LEFT_KNEE]
-                
-                # Use the hand with longer arm extension (more likely holding stick)
-                r_arm_length = np.sqrt((r_wrist.x*w - r_elbow.x*w)**2 + (r_wrist.y*h - r_elbow.y*h)**2)
-                l_arm_length = np.sqrt((l_wrist.x*w - l_elbow.x*w)**2 + (l_wrist.y*h - l_elbow.y*h)**2)
-                
-                if r_arm_length > l_arm_length:
-                    wrist, elbow, shoulder, knee = r_wrist, r_elbow, r_shoulder, r_knee
-                else:
-                    wrist, elbow, shoulder, knee = l_wrist, l_elbow, l_shoulder, l_knee
-                
-                wrist_x, wrist_y = int(wrist.x * w), int(wrist.y * h)
-                elbow_x, elbow_y = int(elbow.x * w), int(elbow.y * h)
-                shoulder_x, shoulder_y = int(shoulder.x * w), int(shoulder.y * h)
-                knee_x, knee_y = int(knee.x * w), int(knee.y * h)
-                
-                # Calculate arm direction
-                arm_dx = wrist_x - elbow_x
-                arm_dy = wrist_y - elbow_y
-                arm_length = np.sqrt(arm_dx*arm_dx + arm_dy*arm_dy)
-                
-                if arm_length > 0:
-                    arm_dx_norm = arm_dx / arm_length
-                    arm_dy_norm = arm_dy / arm_length
-                    
-                    # Stick extends in arm direction
-                    shoulder_knee_dist = np.sqrt((shoulder_x - knee_x)**2 + (shoulder_y - knee_y)**2)
-                    stick_length = int(shoulder_knee_dist)
-                    
-                    endpoint1 = (int(wrist_x - arm_dx_norm * 30),
-                               int(wrist_y - arm_dy_norm * 30))
-                    endpoint2 = (int(wrist_x + arm_dx_norm * stick_length),
-                               int(wrist_y + arm_dy_norm * stick_length))
-                    
-                    return (endpoint1, endpoint2), None
-                
+            if len(results) == 0 or results[0].keypoints is None:
                 return None, None
+            
+            # Get the first detection (highest confidence stick)
+            result = results[0]
+            
+            if len(result.boxes) == 0:
+                return None, None
+            
+            # Get stick bounding box
+            stick_box = result.boxes[0]
+            stick_bbox = tuple(map(int, stick_box.xyxy[0].tolist()))
+            
+            # Get stick keypoints (grip and tip)
+            if result.keypoints is not None and len(result.keypoints) > 0:
+                kpts = result.keypoints[0].data[0]  # First detection's keypoints
                 
+                # Keypoints: [grip_point, tip_point]
+                # Each keypoint: [x, y, confidence]
+                grip_point = (int(kpts[0][0]), int(kpts[0][1]))
+                tip_point = (int(kpts[1][0]), int(kpts[1][1]))
+                
+                # Return as stick_endpoints format and bbox
+                return (grip_point, tip_point), stick_bbox
+            
+            return None, None
+            
         except Exception as e:
-            print(f"[ERROR] Stick detection failed: {e}")
-        return None, None
+            print(f"[ERROR] YOLO stick detection failed: {e}")
+            return None, None
 
     def process_frame(self, frame):
         h, w, _ = frame.shape
@@ -318,27 +165,46 @@ class PoseAnalyzer:
                 if iou > best_iou: best_iou, best_match_id = iou, person_id
             
             if best_match_id != -1 and best_iou > 0.3:
-                # 5. Detect stick, merge bounding box, and create aligned keypoints
+                # 5. Detect stick using YOLOv8 model with keypoints
                 person_bbox = analysis_results[best_match_id]['bbox']
-                stick_endpoints, stick_bbox = self._detect_stick_by_shape(frame, landmarks_2d, (h, w), person_bbox)
+                stick_endpoints, stick_bbox = self._detect_stick_with_yolo(frame, person_bbox)
                 if stick_endpoints:
                     analysis_results[best_match_id]['stick_endpoints'] = stick_endpoints
-                    user_x1, user_y1, user_x2, user_y2 = analysis_results[best_match_id]['bbox']
-                    stick_x, stick_y, stick_w, stick_h = stick_bbox
-                    combined_x1 = min(user_x1, stick_x)
-                    combined_y1 = min(user_y1, stick_y)
-                    combined_x2 = max(user_x2, stick_x + stick_w)
-                    combined_y2 = max(user_y2, stick_y + stick_h)
-                    analysis_results[best_match_id]['bbox'] = (combined_x1, combined_y1, combined_x2, combined_y2)
-
-                    r_wrist_lm = landmarks_2d[self.mp_pose.PoseLandmark.RIGHT_WRIST]
-                    wrist_pt = np.array([int(r_wrist_lm.x * w), int(r_wrist_lm.y * h)])
-                    pt1, pt2 = np.array(stick_endpoints[0]), np.array(stick_endpoints[1])
-                    grip_pt, tip_pt = (tuple(pt1), tuple(pt2)) if np.linalg.norm(pt1 - wrist_pt) < np.linalg.norm(pt2 - wrist_pt) else (tuple(pt2), tuple(pt1))
+                    
+                    # Merge stick bbox with person bbox if stick_bbox is available
+                    if stick_bbox:
+                        user_x1, user_y1, user_x2, user_y2 = analysis_results[best_match_id]['bbox']
+                        stick_x1, stick_y1, stick_x2, stick_y2 = stick_bbox
+                        combined_x1 = min(user_x1, stick_x1)
+                        combined_y1 = min(user_y1, stick_y1)
+                        combined_x2 = max(user_x2, stick_x2)
+                        combined_y2 = max(user_y2, stick_y2)
+                        analysis_results[best_match_id]['bbox'] = (combined_x1, combined_y1, combined_x2, combined_y2)
+                    
+                    # Store stick keypoints directly from YOLO (already in grip, tip order)
+                    grip_pt, tip_pt = stick_endpoints
                     analysis_results[best_match_id]['stick_keypoints'] = {'grip': grip_pt, 'tip': tip_pt}
 
-                    r_shoulder_lm = landmarks_2d[self.mp_pose.PoseLandmark.RIGHT_SHOULDER]
-                    shoulder_pt = (int(r_shoulder_lm.x * w), int(r_shoulder_lm.y * h))
+                    # Calculate grip angle using detected keypoints
+                    # Find closest wrist to grip point to determine which hand
+                    r_wrist_lm = landmarks_2d[self.mp_pose.PoseLandmark.RIGHT_WRIST]
+                    l_wrist_lm = landmarks_2d[self.mp_pose.PoseLandmark.LEFT_WRIST]
+                    r_wrist_pt = np.array([int(r_wrist_lm.x * w), int(r_wrist_lm.y * h)])
+                    l_wrist_pt = np.array([int(l_wrist_lm.x * w), int(l_wrist_lm.y * h)])
+                    
+                    grip_array = np.array(grip_pt)
+                    r_dist = np.linalg.norm(grip_array - r_wrist_pt)
+                    l_dist = np.linalg.norm(grip_array - l_wrist_pt)
+                    
+                    # Use the closest wrist's shoulder for angle calculation
+                    if r_dist < l_dist:
+                        shoulder_lm = landmarks_2d[self.mp_pose.PoseLandmark.RIGHT_SHOULDER]
+                        wrist_pt = r_wrist_pt
+                    else:
+                        shoulder_lm = landmarks_2d[self.mp_pose.PoseLandmark.LEFT_SHOULDER]
+                        wrist_pt = l_wrist_pt
+                    
+                    shoulder_pt = (int(shoulder_lm.x * w), int(shoulder_lm.y * h))
                     analysis_results[best_match_id]['grip_angle'] = self._calculate_angle_2d(shoulder_pt, wrist_pt, tip_pt)
                 
                 # 6. Predict pose with Keras model using 3D landmarks

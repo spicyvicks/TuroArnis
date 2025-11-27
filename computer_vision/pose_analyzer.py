@@ -24,18 +24,28 @@ class CustomInputLayer(InputLayer):
         super().__init__(**kwargs)
 
 class PoseAnalyzer:
-    def __init__(self, detection_interval=3, stick_model_path=None):
+    def __init__(self, detection_interval=3, stick_model_path=None, debug_stick=False):
         print("[info] initializing computer vision components...")
         self.yolo_model = YOLO('yolov8n.pt')
         
-        # Load stick detector model if provided
         self.stick_detector = None
+        self.debug_stick = debug_stick  
+        print(f"[DEBUG-INIT] Stick model path provided: {stick_model_path}")
+        print(f"[DEBUG-INIT] Path exists: {os.path.exists(stick_model_path) if stick_model_path else 'N/A'}")
+        print(f"[DEBUG-INIT] Debug stick enabled: {debug_stick}")
+        
         if stick_model_path and os.path.exists(stick_model_path):
             try:
                 self.stick_detector = YOLO(stick_model_path)
                 print(f"[info] Stick detector model loaded from {stick_model_path}")
+                print(f"[DEBUG-INIT] Stick detector type: {type(self.stick_detector)}")
+                print(f"[DEBUG-INIT] Stick detector model names: {self.stick_detector.names if hasattr(self.stick_detector, 'names') else 'N/A'}")
             except Exception as e:
                 print(f"[warning] Could not load stick detector: {e}")
+                import traceback
+                traceback.print_exc()
+        else:
+            print(f"[DEBUG-INIT] Stick detector NOT loaded - path is None or doesn't exist")
         
         self.tracker = Sort(max_age=90, min_hits=3, iou_threshold=0.3)
         
@@ -82,47 +92,100 @@ class PoseAnalyzer:
         boxBArea = (boxB[2] - boxB[0]) * (boxB[3] - boxB[1])
         return interArea / float(boxAArea + boxBArea - interArea)
 
-    def _detect_stick_with_yolo(self, frame, person_bbox=None):
-        """
-        Detect stick using YOLOv8-pose model with keypoints.
-        Returns stick keypoints (grip and tip) from the trained model.
-        """
+    def _detect_stick_with_yolo(self, frame, person_bbox=None, debug=False):
+        if debug:
+            print(f"[DEBUG-STICK] _detect_stick_with_yolo called")
+            print(f"[DEBUG-STICK] Frame shape: {frame.shape}")
+            print(f"[DEBUG-STICK] Person bbox: {person_bbox}")
+            print(f"[DEBUG-STICK] Stick detector is None: {self.stick_detector is None}")
+        
         if self.stick_detector is None:
+            if debug:
+                print("[DEBUG-STICK] EXITING: Stick detector not loaded")
             return None, None
         
         try:
+            if debug:
+                print(f"[DEBUG-STICK] Running stick detector on frame...")
+            
             # Run stick detection
             results = self.stick_detector(frame, verbose=False, conf=0.5)
             
-            if len(results) == 0 or results[0].keypoints is None:
+            if debug:
+                print(f"[DEBUG-STICK] Results returned: {len(results)} detections")
+                print(f"[DEBUG-STICK] Results type: {type(results)}")
+            
+            if len(results) == 0:
+                if debug:
+                    print("[DEBUG-STICK] EXITING: No results from detector")
                 return None, None
             
-            # Get the first detection (highest confidence stick)
+            if results[0].keypoints is None:
+                if debug:
+                    print("[DEBUG-STICK] EXITING: Results[0] has no keypoints")
+                    print(f"[DEBUG-STICK] Results[0] boxes count: {len(results[0].boxes) if results[0].boxes is not None else 'None'}")
+                return None, None
+            
             result = results[0]
             
+            if debug:
+                print(f"[DEBUG-STICK] First result obtained")
+                print(f"[DEBUG-STICK] Boxes: {len(result.boxes) if result.boxes is not None else 'None'}")
+            
             if len(result.boxes) == 0:
+                if debug:
+                    print("[DEBUG-STICK] EXITING: No bounding boxes found")
                 return None, None
             
             # Get stick bounding box
             stick_box = result.boxes[0]
             stick_bbox = tuple(map(int, stick_box.xyxy[0].tolist()))
+            confidence = stick_box.conf.item()
+            
+            if debug:
+                print(f"[DEBUG-STICK] ✓ Stick detected - Confidence: {confidence:.3f}")
+                print(f"[DEBUG-STICK] Stick bbox: {stick_bbox}")
+                print(f"[DEBUG-STICK] Stick box class: {stick_box.cls.item() if stick_box.cls is not None else 'None'}")
             
             # Get stick keypoints (grip and tip)
             if result.keypoints is not None and len(result.keypoints) > 0:
+                if debug:
+                    print(f"[DEBUG-STICK] Keypoints object exists, length: {len(result.keypoints)}")
+                    print(f"[DEBUG-STICK] Keypoints type: {type(result.keypoints)}")
+                
                 kpts = result.keypoints[0].data[0]  # First detection's keypoints
                 
-                # Keypoints: [grip_point, tip_point]
-                # Each keypoint: [x, y, confidence]
+                if debug:
+                    print(f"[DEBUG-STICK] Keypoints data shape: {kpts.shape if hasattr(kpts, 'shape') else 'N/A'}")
+                    print(f"[DEBUG-STICK] Keypoints data: {kpts}")
+                
                 grip_point = (int(kpts[0][0]), int(kpts[0][1]))
                 tip_point = (int(kpts[1][0]), int(kpts[1][1]))
+                grip_conf = kpts[0][2].item()
+                tip_conf = kpts[1][2].item()
                 
-                # Return as stick_endpoints format and bbox
+                if debug:
+                    print(f"[DEBUG-STICK] ✓ Grip keypoint: {grip_point} (conf: {grip_conf:.3f})")
+                    print(f"[DEBUG-STICK] ✓ Tip keypoint: {tip_point} (conf: {tip_conf:.3f})")
+                    stick_length = np.sqrt((tip_point[0] - grip_point[0])**2 + 
+                                         (tip_point[1] - grip_point[1])**2)
+                    print(f"[DEBUG-STICK] ✓ Stick length: {stick_length:.1f} pixels")
+                    print(f"[DEBUG-STICK] ✓ RETURNING stick_endpoints and bbox")
+                
                 return (grip_point, tip_point), stick_bbox
+            else:
+                if debug:
+                    print(f"[DEBUG-STICK] EXITING: Keypoints is None or empty")
             
             return None, None
             
         except Exception as e:
-            print(f"[ERROR] YOLO stick detection failed: {e}")
+            print(f"[ERROR-STICK] YOLO stick detection failed: {e}")
+            if debug:
+                print(f"[DEBUG-STICK] Exception type: {type(e)}")
+                print(f"[DEBUG-STICK] Exception args: {e.args}")
+                import traceback
+                traceback.print_exc()
             return None, None
 
     def process_frame(self, frame):
@@ -165,13 +228,27 @@ class PoseAnalyzer:
                 if iou > best_iou: best_iou, best_match_id = iou, person_id
             
             if best_match_id != -1 and best_iou > 0.3:
-                # 5. Detect stick using YOLOv8 model with keypoints
                 person_bbox = analysis_results[best_match_id]['bbox']
-                stick_endpoints, stick_bbox = self._detect_stick_with_yolo(frame, person_bbox)
+                
+                if self.debug_stick:
+                    print(f"[DEBUG-PROCESS] Calling stick detection for person {best_match_id}")
+                    print(f"[DEBUG-PROCESS] Person bbox: {person_bbox}")
+                
+                stick_endpoints, stick_bbox = self._detect_stick_with_yolo(frame, person_bbox, debug=self.debug_stick)
+                
+                if self.debug_stick:
+                    print(f"[DEBUG-PROCESS] Stick detection returned:")
+                    print(f"[DEBUG-PROCESS]   stick_endpoints: {stick_endpoints}")
+                    print(f"[DEBUG-PROCESS]   stick_bbox: {stick_bbox}")
+                
                 if stick_endpoints:
+                    if self.debug_stick:
+                        print(f"[DEBUG-PROCESS] ✓ Setting stick_endpoints for person {best_match_id}")
                     analysis_results[best_match_id]['stick_endpoints'] = stick_endpoints
+                else:
+                    if self.debug_stick:
+                        print(f"[DEBUG-PROCESS] ✗ No stick_endpoints detected")
                     
-                    # Merge stick bbox with person bbox if stick_bbox is available
                     if stick_bbox:
                         user_x1, user_y1, user_x2, user_y2 = analysis_results[best_match_id]['bbox']
                         stick_x1, stick_y1, stick_x2, stick_y2 = stick_bbox
@@ -181,12 +258,9 @@ class PoseAnalyzer:
                         combined_y2 = max(user_y2, stick_y2)
                         analysis_results[best_match_id]['bbox'] = (combined_x1, combined_y1, combined_x2, combined_y2)
                     
-                    # Store stick keypoints directly from YOLO (already in grip, tip order)
                     grip_pt, tip_pt = stick_endpoints
                     analysis_results[best_match_id]['stick_keypoints'] = {'grip': grip_pt, 'tip': tip_pt}
 
-                    # Calculate grip angle using detected keypoints
-                    # Find closest wrist to grip point to determine which hand
                     r_wrist_lm = landmarks_2d[self.mp_pose.PoseLandmark.RIGHT_WRIST]
                     l_wrist_lm = landmarks_2d[self.mp_pose.PoseLandmark.LEFT_WRIST]
                     r_wrist_pt = np.array([int(r_wrist_lm.x * w), int(r_wrist_lm.y * h)])
@@ -196,7 +270,6 @@ class PoseAnalyzer:
                     r_dist = np.linalg.norm(grip_array - r_wrist_pt)
                     l_dist = np.linalg.norm(grip_array - l_wrist_pt)
                     
-                    # Use the closest wrist's shoulder for angle calculation
                     if r_dist < l_dist:
                         shoulder_lm = landmarks_2d[self.mp_pose.PoseLandmark.RIGHT_SHOULDER]
                         wrist_pt = r_wrist_pt
@@ -207,7 +280,6 @@ class PoseAnalyzer:
                     shoulder_pt = (int(shoulder_lm.x * w), int(shoulder_lm.y * h))
                     analysis_results[best_match_id]['grip_angle'] = self._calculate_angle_2d(shoulder_pt, wrist_pt, tip_pt)
                 
-                # 6. Predict pose with Keras model using 3D landmarks
                 predicted_class, confidence = "N/A", 0.0
                 if self.pose_classifier_model and self.label_encoder:
                     try:
@@ -220,10 +292,8 @@ class PoseAnalyzer:
                         confidence = pred_proba[pred_index]
                         predicted_class = self.label_encoder.inverse_transform([pred_index])[0]
                     except Exception as e:
-                        # print(f"Keras prediction failed: {e}")
                         pass
                 
-                # 7. Calculate all 3D joint angles for detailed feedback
                 live_angles = self._calculate_all_angles_3d(pose_results.pose_world_landmarks)
                 analysis_results[best_match_id].update({
                     'landmarks': pose_results.pose_landmarks, 
@@ -275,18 +345,14 @@ class PoseAnalyzer:
         hand = pattern['hand']  # 'right' or 'left'
         angle_offset = pattern['stick_arm_angle']
         
-        # Get appropriate hand landmarks
         wrist = landmarks[WRIST_LANDMARK[hand]]
         elbow = landmarks[ELBOW_LANDMARK[hand]]
         
-        # Calculate arm direction
         arm_vector = np.array([wrist.x - elbow.x, wrist.y - elbow.y])
         arm_angle = np.arctan2(arm_vector[1], arm_vector[0])
         
-        # Apply learned angle offset
         stick_angle = arm_angle + angle_offset
         
-        # Draw stick
         stick_length = calculate_body_proportional_length(landmarks)
         endpoint1 = wrist + 30 * (-cos(stick_angle), -sin(stick_angle))
         endpoint2 = wrist + stick_length * (cos(stick_angle), sin(stick_angle))

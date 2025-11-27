@@ -35,7 +35,7 @@ def train_stick_detector(data_yaml_path, epochs=100, img_size=640, batch_size=16
         name='arnis_stick_detector',
         patience=20,  # Early stopping patience
         save=True,
-        device=0,  # Use GPU if available (set to 'cpu' if no GPU)
+        device='cpu',  # Use CPU (change to 0 for GPU if available)
         workers=4,
         pretrained=True,
         optimizer='auto',

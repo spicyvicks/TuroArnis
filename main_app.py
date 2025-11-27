@@ -10,7 +10,6 @@ from ttkbootstrap.constants import *
 import queue
 import numpy as np
 
-# Assuming these are in their respective project folders
 from gui.results_window import ResultsWindow
 from computer_vision.pose_analyzer import PoseAnalyzer
 from pose_definitions import POSE_LIBRARY
@@ -24,14 +23,13 @@ class TuroArnisGUI:
         self.screen_height = self.window.winfo_screenheight()
 
         self.frame_counter = 0
-        self.processing_interval = 3  # Process every 3rd frame
+        self.processing_interval = 3  
         self.last_known_results = []
 
-        # Initialize PoseAnalyzer with optional stick detector model
         stick_model_path = 'runs/pose/arnis_stick_detector/weights/best.pt'
         self.analyzer = PoseAnalyzer(
             detection_interval=self.processing_interval,
-            stick_model_path=stick_model_path if os.path.exists(stick_model_path) else None
+            stick_model_path=stick_model_path if os.path.exists(stick_model_path) else None,
         )
         self.cap = cv2.VideoCapture(0)
         
@@ -39,18 +37,15 @@ class TuroArnisGUI:
         self.target_form = None
         self.current_user = "Default User"
         
-        # --- CHANGE: Using grid layout for responsive UI ---
         self.window.grid_rowconfigure(0, weight=1)
         self.window.grid_columnconfigure(0, weight=0) 
         self.window.grid_columnconfigure(1, weight=1) 
 
-        # --- CHANGE: Using a Canvas for better video rendering ---
         self.video_canvas = ttk.Canvas(self.window, background='black')
         self.video_canvas.grid(row=0, column=1, sticky="nsew")
         self.video_canvas.bind('<Configure>', self.on_canvas_resize)
         self.tk_image = None 
 
-        # --- CHANGE: Control panel configured with grid ---
         self.controls_panel = ttk.Frame(self.window, padding=15, bootstyle="dark", width=250)
         self.controls_panel.grid(row=0, column=0, sticky="nsew")
         self.controls_panel.grid_propagate(False) 
@@ -83,7 +78,6 @@ class TuroArnisGUI:
         self.status_label = ttk.Label(self.controls_panel, text="Status: Select a form", font="-size 12", wraplength=220, bootstyle="inverse-dark")
         self.status_label.pack(fill=X, pady=5, anchor=W)
         
-        # --- NEW: Keras status label from image_test script ---
         self.keras_status_label = ttk.Label(self.controls_panel, text="Keras: N/A (0.00)", font="-size 10", bootstyle="warning")
         self.keras_status_label.pack(fill=X, pady=5, anchor=W)
         
@@ -97,7 +91,6 @@ class TuroArnisGUI:
         self.window.protocol("WM_DELETE_WINDOW", self.on_closing)
         self.process_queue()
         
-        # --- CHANGE: Set initial window size instead of forced zoom ---
         self.window.geometry(f"{int(self.screen_width * 0.8)}x{int(self.screen_height * 0.8)}")
         self.window.mainloop()
 
@@ -108,7 +101,6 @@ class TuroArnisGUI:
         cv2.rectangle(img, top_left, bottom_right, bg_color, cv2.FILLED)
         cv2.putText(img, text, (pos[0], pos[1]), font_face, font_scale, text_color, thickness)
 
-    # --- CHANGE: Using more robust resize/pad function from image_test ---
     def resize_and_pad(self, img, size, pad_color=0):
         h, w, _ = img.shape; sw, sh = size
         if w == 0 or h == 0 or sw == 0 or sh == 0: return np.zeros((sh, sw, 3), dtype=np.uint8)
@@ -145,12 +137,10 @@ class TuroArnisGUI:
 
             feedback_x = processing_frame.shape[1] - 270; feedback_y = 30
             
-            # --- NEW: Keras status update logic ---
             keras_status_text = "Keras: N/A (0.00)"
             if self.last_known_results:
                 result = self.last_known_results[0]
                 predicted_class = result['predicted_class']
-                # Strip numbered prefixes like "1. ", "10. " etc.
                 predicted_class = re.sub(r'^\d+\.\s*', '', predicted_class)
                 confidence = result['confidence']
                 pretty_class_name = predicted_class.replace('_correct', '').replace('_', ' ').title()
@@ -160,7 +150,6 @@ class TuroArnisGUI:
                 else: self.keras_status_label.config(bootstyle="danger")
             self.keras_status_label.config(text=keras_status_text)
             
-            # --- EXISTING: Detailed feedback logic (retained) ---
             if self.last_known_results:
                 result = self.last_known_results[0]
                 x1, y1, x2, y2 = result['bbox']
@@ -171,12 +160,10 @@ class TuroArnisGUI:
 
                 if self.target_form:
                     predicted_class = result['predicted_class']
-                    # Strip numbered prefixes like "1. ", "10. " etc.
                     predicted_class = re.sub(r'^\d+\.\s*', '', predicted_class)
                     confidence = result['confidence']
                     live_angles = result['live_angles']
                     
-                    # Use .strip() for more robust comparison
                     if predicted_class.strip() == self.target_form.strip() and confidence > 0.60:
                         ideal_pose = POSE_LIBRARY.get(self.target_form)
                         pose_is_perfect = True
@@ -242,9 +229,7 @@ class TuroArnisGUI:
                 try: self.queue.get_nowait()
                 except queue.Empty: pass
             self.queue.put(final_frame)
-            time.sleep(0.01) # Small sleep to prevent busy-waiting
-
-    # --- CHANGE: New process_queue for rendering on a Canvas ---
+            time.sleep(0.01) 
     def process_queue(self):
         try:
             frame = self.queue.get_nowait()
@@ -256,7 +241,6 @@ class TuroArnisGUI:
         except queue.Empty: pass
         finally: self.window.after(30, self.process_queue)
     
-    # --- NEW: Function to handle canvas resizing ---
     def on_canvas_resize(self, event): 
         self.process_queue() 
 

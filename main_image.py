@@ -1,4 +1,5 @@
 import sys
+import os
 import cv2
 import threading
 import time
@@ -27,7 +28,12 @@ class TuroArnisGUI:
         self.processing_interval = 3
         self.last_known_results = []
 
-        self.analyzer = PoseAnalyzer(detection_interval=self.processing_interval)
+        stick_model_path = 'runs/pose/arnis_stick_detector/weights/best.pt'
+        self.analyzer = PoseAnalyzer(
+            detection_interval=self.processing_interval,
+            stick_model_path=stick_model_path if os.path.exists(stick_model_path) else None,
+            debug_stick=True  
+        )
         
         self.static_image_original = cv2.imread(TEST_IMAGE_PATH)
         if self.static_image_original is None:
@@ -83,7 +89,6 @@ class TuroArnisGUI:
         self.keras_status_label = ttk.Label(self.controls_panel, text="Keras: N/A (0.00)", font="Arial 10", bootstyle="warning")
         self.keras_status_label.pack(fill=X, pady=5, anchor=W)
         
-        # Feedback label for pose corrections
         self.feedback_label = ttk.Label(self.controls_panel, text="", font="Arial 9", wraplength=220, bootstyle="inverse-dark", justify=LEFT)
         self.feedback_label.pack(fill=X, pady=5, anchor=W)
         
@@ -140,7 +145,11 @@ class TuroArnisGUI:
             processing_frame = cv2.resize(frame, (640, 480))
             analysis_results = self.analyzer.process_frame(processing_frame)
             
-            if analysis_results: self.last_known_results = analysis_results
+            if analysis_results:
+                self.last_known_results = analysis_results
+                if analysis_results and len(analysis_results) > 0:
+                    result = analysis_results[0]
+                    print(f"[DEBUG-MAIN] Analysis result stick_endpoints: {result.get('stick_endpoints')}")
 
             keras_status_text = "Keras: N/A (0.00)"
             feedback_text = ""
@@ -179,7 +188,6 @@ class TuroArnisGUI:
                     print(f"[DEBUG] Target: '{self.target_form}' -> '{target_normalized}'")
                     print(f"[DEBUG] Match: {predicted_normalized == target_normalized} | Confidence: {confidence:.2f}")
                     
-                    # Check if prediction matches target with acceptable confidence
                     if predicted_normalized == target_normalized and confidence > 0.60:
                         ideal_pose = POSE_LIBRARY.get(self.target_form)
                         pose_is_perfect = True
@@ -194,7 +202,6 @@ class TuroArnisGUI:
                                         feedback = "too bent" if live_angle < min_angle else "too straight"
                                         error_messages.append(f"{joint.replace('_', ' ').title()}: {feedback}")
                         else:
-                            # If no ideal pose defined in POSE_LIBRARY, trust the model prediction
                             print(f"[DEBUG] No ideal pose in POSE_LIBRARY, trusting model")
                             pose_is_perfect = True
                         
@@ -217,15 +224,18 @@ class TuroArnisGUI:
                 else:
                     feedback_text = "Select a target form"
                 
-                # Update feedback label
                 self.feedback_label.config(text=feedback_text)
                 print(f"[DEBUG] Feedback: {feedback_text}")
                 
                 cv2.rectangle(processing_frame, (x1, y1), (x2, y2), box_color, 2)
                 
+                print(f"[DEBUG-DRAW] Checking stick_endpoints: {result.get('stick_endpoints')}")
                 if result['stick_endpoints']:
                     pt1, pt2 = result['stick_endpoints']
+                    print(f"[DEBUG-DRAW] ✓ Drawing stick line from {pt1} to {pt2}")
                     cv2.line(processing_frame, pt1, pt2, COLOR_PROMPT, 4)
+                else:
+                    print(f"[DEBUG-DRAW] ✗ No stick to draw")
 
                 self.draw_text_with_bg(img=processing_frame, text=f"User {person_id}", pos=(x1, y1 - 10), font_face=cv2.FONT_HERSHEY_SIMPLEX, font_scale=0.6, text_color=COLOR_BLACK, bg_color=COLOR_WHITE, thickness=2)
 

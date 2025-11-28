@@ -30,6 +30,7 @@ class TuroArnisGUI:
         self.analyzer = PoseAnalyzer(
             detection_interval=self.processing_interval,
             stick_model_path=stick_model_path if os.path.exists(stick_model_path) else None,
+            debug_stick=True  # Set to True to enable stick detection debug prints
         )
         self.cap = cv2.VideoCapture(0)
         
@@ -133,7 +134,12 @@ class TuroArnisGUI:
             processing_frame = cv2.resize(frame, (640, 480))
             
             analysis_results = self.analyzer.process_frame(processing_frame)
-            if analysis_results: self.last_known_results = analysis_results
+            if analysis_results:
+                self.last_known_results = analysis_results
+                # Debug: Check if stick was detected
+                if analysis_results and len(analysis_results) > 0:
+                    result = analysis_results[0]
+                    print(f"[DEBUG-MAIN] Analysis result stick_endpoints: {result.get('stick_endpoints')}")
 
             feedback_x = processing_frame.shape[1] - 270; feedback_y = 30
             
@@ -184,9 +190,13 @@ class TuroArnisGUI:
                 
                 cv2.rectangle(processing_frame, (x1, y1), (x2, y2), box_color, 2)
                 
+                print(f"[DEBUG-DRAW] Checking stick_endpoints: {result.get('stick_endpoints')}")
                 if result['stick_endpoints']:
                     pt1, pt2 = result['stick_endpoints']
+                    print(f"[DEBUG-DRAW] ✓ Drawing stick line from {pt1} to {pt2}")
                     cv2.line(processing_frame, pt1, pt2, COLOR_PROMPT, 4)
+                else:
+                    print(f"[DEBUG-DRAW] ✗ No stick to draw")
 
                 self.draw_text_with_bg(img=processing_frame, text=f"User {person_id}", pos=(x1, y1 - 10), font_face=cv2.FONT_HERSHEY_SIMPLEX, font_scale=0.9, text_color=COLOR_BLACK, bg_color=COLOR_WHITE, thickness=2)
 

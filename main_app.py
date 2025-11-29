@@ -11,8 +11,10 @@ import queue
 import numpy as np
 
 from gui.results_window import ResultsWindow
+from gui.user_dialog import show_user_dialog
 from computer_vision.pose_analyzer import PoseAnalyzer
 from pose_definitions import POSE_LIBRARY
+from database.db_manager import DatabaseManager
 
 class TuroArnisGUI:
     def __init__(self, window, window_title):
@@ -22,6 +24,19 @@ class TuroArnisGUI:
         self.screen_width = self.window.winfo_screenwidth()
         self.screen_height = self.window.winfo_screenheight()
 
+        # Initialize database
+        self.db = DatabaseManager('turaarnis.db')
+        
+        # Show user selection dialog
+        self.current_user = None
+        self.current_session_id = None
+        self.show_user_selection()
+        
+        if not self.current_user:
+            print("[INFO] No user selected, exiting...")
+            self.window.destroy()
+            return
+
         self.frame_counter = 0
         self.processing_interval = 3  
         self.last_known_results = []
@@ -30,13 +45,12 @@ class TuroArnisGUI:
         self.analyzer = PoseAnalyzer(
             detection_interval=self.processing_interval,
             stick_model_path=stick_model_path if os.path.exists(stick_model_path) else None,
-            debug_stick=True  # Set to True to enable stick detection debug prints
+            debug_stick=False  # Set to True to enable stick detection debug prints
         )
         self.cap = cv2.VideoCapture(0)
         
         self.queue = queue.Queue(maxsize=1)
         self.target_form = None
-        self.current_user = "Default User"
         
         self.window.grid_rowconfigure(0, weight=1)
         self.window.grid_columnconfigure(0, weight=0) 
@@ -52,13 +66,30 @@ class TuroArnisGUI:
         self.controls_panel.grid_propagate(False) 
         
         ttk.Label(self.controls_panel, text="Controls", font=("-size 14 -weight bold"), bootstyle="inverse-dark").pack(pady=(0, 10), anchor=W)
-        self.user_button = ttk.Menubutton(self.controls_panel, text=self.current_user, bootstyle="secondary")
-        self.user_button.pack(fill=X, pady=5)
-        self.user_menu = ttk.Menu(self.user_button)
-        users = ["Default User", "John Doe", "Jane Smith"]
-        for user_text in users:
-            self.user_menu.add_command(label=user_text, command=lambda u=user_text: self.on_user_selected(u))
-        self.user_button["menu"] = self.user_menu
+        
+        # User info display
+        user_frame = ttk.Labelframe(self.controls_panel, text="Current User", padding=10)
+        user_frame.pack(fill=X, pady=5)
+        ttk.Label(user_frame, text=self.current_user['name'], font=("-size 12 -weight bold"), bootstyle="success").pack(anchor=W)
+        ttk.Label(user_frame, text=f"ID: {self.current_user['id']}", font=("-size 9"), bootstyle="secondary").pack(anchor=W)
+        
+        # Session controls
+        session_frame = ttk.Labelframe(self.controls_panel, text="Session", padding=10)
+        session_frame.pack(fill=X, pady=5)
+        
+        self.session_status_label = ttk.Label(session_frame, text="No active session", font=("-size 9"), bootstyle="warning")
+        self.session_status_label.pack(anchor=W, pady=2)
+        
+        session_btn_frame = ttk.Frame(session_frame)
+        session_btn_frame.pack(fill=X, pady=5)
+        
+        self.start_session_btn = ttk.Button(session_btn_frame, text="Start", command=self.manual_start_session, bootstyle="success", width=10)
+        self.start_session_btn.pack(side=LEFT, padx=2)
+        
+        self.end_session_btn = ttk.Button(session_btn_frame, text="End", command=self.end_session, bootstyle="danger", width=10, state=DISABLED)
+        self.end_session_btn.pack(side=LEFT, padx=2)
+        
+        ttk.Separator(self.controls_panel, orient=HORIZONTAL).pack(fill=X, pady=10)
         
         self.practice_stances = {
             "Crown Thrust": "crown_thrust_correct", "Left Chest Thrust": "left_chest_thrust_correct",
@@ -187,6 +218,16 @@ class TuroArnisGUI:
                         if pose_is_perfect:
                             is_correct = True
                             draw_color = COLOR_CORRECT
+                            box_color = COLOR_CORRECT
+                            
+                            # Save correct performance to database
+                            if self.current_session_id and self.frame_counter % 30 == 0:  # Save every 30 frames (~1 sec)
+                                self.save_performance(result, is_correct=True)
+                        else:
+                            is_correct = False
+                            # Save incorrect attempt to database (less frequently)
+                            if self.current_session_id and self.frame_counter % 60 == 0:  # Save every 60 frames (~2 sec)
+                                self.save_performance(result, is_correct=False)
                 
                 cv2.rectangle(processing_frame, (x1, y1), (x2, y2), box_color, 2)
                 
@@ -259,21 +300,114 @@ class TuroArnisGUI:
         self.form_button.config(text=pretty_name)
         self.status_label.config(text=f"Status: Analyzing '{pretty_name}'")
         print(f"targeting model class: '{self.target_form}'")
+        
+        # Start a new session when target form is selected
+        if self.current_user and not self.current_session_id:
+            self.start_session()
     
-    def open_results_window(self): ResultsWindow(self.window)
+    def show_user_selection(self):
+        """Show user selection dialog at startup"""
+        selected = show_user_dialog(self.window, self.db)
+        if selected:
+            self.current_user = selected
+            print(f"[INFO] User selected: {self.current_user['name']}")
+        else:
+            self.current_user = None
+    
+    def start_session(self):
+        """Start a new practice session"""
+        if not self.current_user:
+            return
+        
+        self.current_session_id = self.db.start_session(
+            user_id=self.current_user['id'],
+            target_pose=self.target_form
+        )
+        print(f"[INFO] Started session {self.current_session_id} for {self.current_user['name']}")
+        
+        # Update UI
+        self.session_status_label.config(text=f"Session #{self.current_session_id} - Active", bootstyle="success")
+        self.start_session_btn.config(state=DISABLED)
+        self.end_session_btn.config(state=NORMAL)
+    
+    def manual_start_session(self):
+        """Manually start session from button"""
+        if not self.target_form:
+            from ttkbootstrap.dialogs import Messagebox
+            Messagebox.show_error("Please select a target form first", "No Form Selected")
+            return
+        self.start_session()
+    
+    def end_session(self):
+        """End the current practice session"""
+        if self.current_session_id:
+            self.db.end_session(self.current_session_id)
+            print(f"[INFO] Ended session {self.current_session_id}")
+            
+            # Show summary
+            summary = self.db.get_session_summary(self.current_session_id)
+            from ttkbootstrap.dialogs import Messagebox
+            msg = f"Session Complete!\n\n"
+            msg += f"Total Attempts: {summary['total_attempts']}\n"
+            msg += f"Correct: {summary['correct_attempts']}\n"
+            msg += f"Accuracy: {summary['correct_attempts']/summary['total_attempts']*100:.1f}%\n" if summary['total_attempts'] > 0 else "Accuracy: 0%\n"
+            msg += f"Avg Confidence: {summary['avg_confidence']:.2f}\n" if summary['avg_confidence'] else "Avg Confidence: N/A\n"
+            Messagebox.show_info(msg, "Session Summary")
+            
+            self.current_session_id = None
+            
+            # Update UI
+            self.session_status_label.config(text="No active session", bootstyle="warning")
+            self.start_session_btn.config(state=NORMAL)
+            self.end_session_btn.config(state=DISABLED)
+    
+    def save_performance(self, result, is_correct):
+        """Save a performance record to database"""
+        if not self.current_session_id or not self.current_user:
+            return
+        
+        # Extract data from result
+        predicted_class = result.get('predicted_class', 'N/A')
+        predicted_class = re.sub(r'^\d+\.\s*', '', predicted_class)
+        confidence = result.get('confidence', 0.0)
+        joint_angles = result.get('live_angles')
+        grip_angle = result.get('grip_angle')
+        stick_detected = result.get('stick_endpoints') is not None
+        
+        # Save to database
+        self.db.save_performance(
+            session_id=self.current_session_id,
+            user_id=self.current_user['id'],
+            pose_detected=predicted_class,
+            confidence=float(confidence),
+            is_correct=is_correct,
+            joint_angles=joint_angles,
+            grip_angle=float(grip_angle) if grip_angle else None,
+            stick_detected=stick_detected
+        )
+    
+    def open_results_window(self):
+        """Open results window with user and session data"""
+        ResultsWindow(self.window, db_manager=self.db, current_user=self.current_user)
     
     def on_closing(self):
-        print("closing application...")
+        print("[INFO] Closing application...")
         self.is_running = False
         time.sleep(0.5)
+        
+        # End active session if exists
+        self.end_session()
+        
+        # Close database
+        self.db.close()
+        
         self.analyzer.close()
         self.cap.release()
         self.window.destroy()
     
     def on_user_selected(self, username):
-        self.current_user = username
-        self.user_button.config(text=username)
-        print(f"current user set to: {username}")
+        """Deprecated - keeping for UI compatibility"""
+        pass
     
     def reset_feedback(self):
         self.target_form = None

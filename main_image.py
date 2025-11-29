@@ -16,7 +16,7 @@ from pose_definitions import POSE_LIBRARY
 TEST_IMAGE_PATH = 'Left Temple Block.jpg' 
 DEFAULT_TEST_POSE_PRETTY_NAME = "Left Temple Block" 
 
-class TuroArnisGUI:
+class TuroArnisGUI: 
     def __init__(self, window, window_title):
         self.window = window
         self.window.title(window_title)

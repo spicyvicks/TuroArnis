@@ -32,27 +32,27 @@ class TuroArnisGUI:
         self.analyzer = PoseAnalyzer(
             detection_interval=self.processing_interval,
             stick_model_path=stick_model_path if os.path.exists(stick_model_path) else None,
-            debug_stick=True  
+            debug_stick=True
         )
         
         self.static_image_original = cv2.imread(TEST_IMAGE_PATH)
         if self.static_image_original is None:
             print(f"[CRITICAL ERROR] Could not load image at: {TEST_IMAGE_PATH}. Please check the path.")
             sys.exit(1)
-        self.cap = None 
-        
+        self.cap = None
+
         self.queue = queue.Queue(maxsize=1)
         self.target_form = None
         self.current_user = "Default User"
         
         self.window.grid_rowconfigure(0, weight=1)
-        self.window.grid_columnconfigure(0, weight=0) 
+        self.window.grid_columnconfigure(0, weight=0)
         self.window.grid_columnconfigure(1, weight=1) 
 
         self.video_canvas = ttk.Canvas(self.window, background='black')
         self.video_canvas.grid(row=0, column=1, sticky="nsew")
         self.video_canvas.bind('<Configure>', self.on_canvas_resize)
-        self.tk_image = None 
+        self.tk_image = None
 
         self.controls_panel = ttk.Frame(self.window, padding=15, bootstyle="dark", width=250)
         self.controls_panel.grid(row=0, column=0, sticky="nsew")
@@ -250,7 +250,7 @@ class TuroArnisGUI:
                 try: self.queue.get_nowait()
                 except queue.Empty: pass
             self.queue.put(final_frame)
-            time.sleep(0.1) 
+            time.sleep(0.1)
 
     def process_queue(self):
         try:
@@ -262,7 +262,7 @@ class TuroArnisGUI:
             self.tk_image = imgtk
         except queue.Empty: pass
         finally: self.window.after(30, self.process_queue)
-    
+
     def on_canvas_resize(self, event): self.process_queue() 
 
     def on_action_selected(self, pretty_name):

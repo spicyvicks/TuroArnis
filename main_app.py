@@ -24,10 +24,7 @@ class TuroArnisGUI:
         self.screen_width = self.window.winfo_screenwidth()
         self.screen_height = self.window.winfo_screenheight()
 
-        # Initialize database
         self.db = DatabaseManager('turaarnis.db')
-        
-        # Show user selection dialog
         self.current_user = None
         self.current_session_id = None
         self.show_user_selection()
@@ -38,14 +35,14 @@ class TuroArnisGUI:
             return
 
         self.frame_counter = 0
-        self.processing_interval = 3  
+        self.processing_interval = 3
         self.last_known_results = []
 
         stick_model_path = 'runs/pose/arnis_stick_detector/weights/best.pt'
         self.analyzer = PoseAnalyzer(
             detection_interval=self.processing_interval,
             stick_model_path=stick_model_path if os.path.exists(stick_model_path) else None,
-            debug_stick=False  # Set to True to enable stick detection debug prints
+            debug_stick=False
         )
         self.cap = cv2.VideoCapture(0)
         
@@ -53,27 +50,25 @@ class TuroArnisGUI:
         self.target_form = None
         
         self.window.grid_rowconfigure(0, weight=1)
-        self.window.grid_columnconfigure(0, weight=0) 
+        self.window.grid_columnconfigure(0, weight=0)
         self.window.grid_columnconfigure(1, weight=1) 
 
         self.video_canvas = ttk.Canvas(self.window, background='black')
         self.video_canvas.grid(row=0, column=1, sticky="nsew")
         self.video_canvas.bind('<Configure>', self.on_canvas_resize)
-        self.tk_image = None 
+        self.tk_image = None
 
         self.controls_panel = ttk.Frame(self.window, padding=15, bootstyle="dark", width=250)
         self.controls_panel.grid(row=0, column=0, sticky="nsew")
         self.controls_panel.grid_propagate(False) 
         
         ttk.Label(self.controls_panel, text="Controls", font=("-size 14 -weight bold"), bootstyle="inverse-dark").pack(pady=(0, 10), anchor=W)
-        
-        # User info display
+
         user_frame = ttk.Labelframe(self.controls_panel, text="Current User", padding=10)
         user_frame.pack(fill=X, pady=5)
         ttk.Label(user_frame, text=self.current_user['name'], font=("-size 12 -weight bold"), bootstyle="success").pack(anchor=W)
         ttk.Label(user_frame, text=f"ID: {self.current_user['id']}", font=("-size 9"), bootstyle="secondary").pack(anchor=W)
-        
-        # Session controls
+
         session_frame = ttk.Labelframe(self.controls_panel, text="Session", padding=10)
         session_frame.pack(fill=X, pady=5)
         
@@ -153,7 +148,7 @@ class TuroArnisGUI:
     def video_loop(self):
         COLOR_DEFAULT = (255, 0, 0); COLOR_CORRECT = (0, 255, 0); COLOR_ERROR = (0, 0, 255)
         COLOR_PROMPT = (0, 255, 255); COLOR_WHITE = (255, 255, 255); COLOR_BLACK = (0, 0, 0)
-        COLOR_BG_TRANSPARENT = (0, 0, 0) 
+        COLOR_BG_TRANSPARENT = (0, 0, 0)
 
         while self.is_running:
             ret, frame = self.cap.read()
@@ -167,7 +162,6 @@ class TuroArnisGUI:
             analysis_results = self.analyzer.process_frame(processing_frame)
             if analysis_results:
                 self.last_known_results = analysis_results
-                # Debug: Check if stick was detected
                 if analysis_results and len(analysis_results) > 0:
                     result = analysis_results[0]
                     print(f"[DEBUG-MAIN] Analysis result stick_endpoints: {result.get('stick_endpoints')}")
@@ -219,14 +213,12 @@ class TuroArnisGUI:
                             is_correct = True
                             draw_color = COLOR_CORRECT
                             box_color = COLOR_CORRECT
-                            
-                            # Save correct performance to database
-                            if self.current_session_id and self.frame_counter % 30 == 0:  # Save every 30 frames (~1 sec)
+
+                            if self.current_session_id and self.frame_counter % 30 == 0:
                                 self.save_performance(result, is_correct=True)
                         else:
                             is_correct = False
-                            # Save incorrect attempt to database (less frequently)
-                            if self.current_session_id and self.frame_counter % 60 == 0:  # Save every 60 frames (~2 sec)
+                            if self.current_session_id and self.frame_counter % 60 == 0:
                                 self.save_performance(result, is_correct=False)
                 
                 cv2.rectangle(processing_frame, (x1, y1), (x2, y2), box_color, 2)
@@ -280,7 +272,8 @@ class TuroArnisGUI:
                 try: self.queue.get_nowait()
                 except queue.Empty: pass
             self.queue.put(final_frame)
-            time.sleep(0.01) 
+            time.sleep(0.01)
+
     def process_queue(self):
         try:
             frame = self.queue.get_nowait()
@@ -291,8 +284,8 @@ class TuroArnisGUI:
             self.tk_image = imgtk
         except queue.Empty: pass
         finally: self.window.after(30, self.process_queue)
-    
-    def on_canvas_resize(self, event): 
+
+    def on_canvas_resize(self, event):
         self.process_queue() 
 
     def on_action_selected(self, pretty_name):
@@ -300,13 +293,11 @@ class TuroArnisGUI:
         self.form_button.config(text=pretty_name)
         self.status_label.config(text=f"Status: Analyzing '{pretty_name}'")
         print(f"targeting model class: '{self.target_form}'")
-        
-        # Start a new session when target form is selected
+
         if self.current_user and not self.current_session_id:
             self.start_session()
     
     def show_user_selection(self):
-        """Show user selection dialog at startup"""
         selected = show_user_dialog(self.window, self.db)
         if selected:
             self.current_user = selected
@@ -315,7 +306,6 @@ class TuroArnisGUI:
             self.current_user = None
     
     def start_session(self):
-        """Start a new practice session"""
         if not self.current_user:
             return
         
@@ -324,14 +314,12 @@ class TuroArnisGUI:
             target_pose=self.target_form
         )
         print(f"[INFO] Started session {self.current_session_id} for {self.current_user['name']}")
-        
-        # Update UI
+
         self.session_status_label.config(text=f"Session #{self.current_session_id} - Active", bootstyle="success")
         self.start_session_btn.config(state=DISABLED)
         self.end_session_btn.config(state=NORMAL)
     
     def manual_start_session(self):
-        """Manually start session from button"""
         if not self.target_form:
             from ttkbootstrap.dialogs import Messagebox
             Messagebox.show_error("Please select a target form first", "No Form Selected")
@@ -339,12 +327,10 @@ class TuroArnisGUI:
         self.start_session()
     
     def end_session(self):
-        """End the current practice session"""
         if self.current_session_id:
             self.db.end_session(self.current_session_id)
             print(f"[INFO] Ended session {self.current_session_id}")
-            
-            # Show summary
+
             summary = self.db.get_session_summary(self.current_session_id)
             from ttkbootstrap.dialogs import Messagebox
             msg = f"Session Complete!\n\n"
@@ -353,17 +339,15 @@ class TuroArnisGUI:
             msg += f"Accuracy: {summary['correct_attempts']/summary['total_attempts']*100:.1f}%\n" if summary['total_attempts'] > 0 else "Accuracy: 0%\n"
             msg += f"Avg Confidence: {summary['avg_confidence']:.2f}\n" if summary['avg_confidence'] else "Avg Confidence: N/A\n"
             Messagebox.show_info(msg, "Session Summary")
-            
+
             self.current_session_id = None
-            
-            # Update UI
+
             self.session_status_label.config(text="No active session", bootstyle="warning")
             self.start_session_btn.config(state=NORMAL)
             self.end_session_btn.config(state=DISABLED)
     
     def save_performance(self, result, is_correct):
-        """Save a performance record to database"""
-        if not self.current_session_id or not self.current_user:
+        if not self.current_session_id or not self.current_session_id:
             return
         
         # Extract data from result
@@ -373,8 +357,7 @@ class TuroArnisGUI:
         joint_angles = result.get('live_angles')
         grip_angle = result.get('grip_angle')
         stick_detected = result.get('stick_endpoints') is not None
-        
-        # Save to database
+
         self.db.save_performance(
             session_id=self.current_session_id,
             user_id=self.current_user['id'],
@@ -387,18 +370,15 @@ class TuroArnisGUI:
         )
     
     def open_results_window(self):
-        """Open results window with user and session data"""
         ResultsWindow(self.window, db_manager=self.db, current_user=self.current_user)
     
     def on_closing(self):
         print("[INFO] Closing application...")
         self.is_running = False
         time.sleep(0.5)
-        
-        # End active session if exists
+
         self.end_session()
-        
-        # Close database
+
         self.db.close()
         
         self.analyzer.close()
@@ -406,7 +386,6 @@ class TuroArnisGUI:
         self.window.destroy()
     
     def on_user_selected(self, username):
-        """Deprecated - keeping for UI compatibility"""
         pass
     
     def reset_feedback(self):

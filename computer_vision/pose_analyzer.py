@@ -245,19 +245,8 @@ class PoseAnalyzer:
                     if self.debug_stick:
                         print(f"[DEBUG-PROCESS] ✓ Setting stick_endpoints for person {best_match_id}")
                     analysis_results[best_match_id]['stick_endpoints'] = stick_endpoints
-                else:
-                    if self.debug_stick:
-                        print(f"[DEBUG-PROCESS] ✗ No stick_endpoints detected")
                     
-                    if stick_bbox:
-                        user_x1, user_y1, user_x2, user_y2 = analysis_results[best_match_id]['bbox']
-                        stick_x1, stick_y1, stick_x2, stick_y2 = stick_bbox
-                        combined_x1 = min(user_x1, stick_x1)
-                        combined_y1 = min(user_y1, stick_y1)
-                        combined_x2 = max(user_x2, stick_x2)
-                        combined_y2 = max(user_y2, stick_y2)
-                        analysis_results[best_match_id]['bbox'] = (combined_x1, combined_y1, combined_x2, combined_y2)
-                    
+                    # Process stick keypoints and grip angle
                     grip_pt, tip_pt = stick_endpoints
                     analysis_results[best_match_id]['stick_keypoints'] = {'grip': grip_pt, 'tip': tip_pt}
 
@@ -278,7 +267,21 @@ class PoseAnalyzer:
                         wrist_pt = l_wrist_pt
                     
                     shoulder_pt = (int(shoulder_lm.x * w), int(shoulder_lm.y * h))
-                    analysis_results[best_match_id]['grip_angle'] = self._calculate_angle_2d(shoulder_pt, wrist_pt, tip_pt)
+                    stick_vec = np.array(tip_pt) - np.array(grip_pt)
+                    arm_vec = np.array(wrist_pt) - np.array(shoulder_pt)
+                    
+                    dot = np.dot(stick_vec, arm_vec)
+                    norm_stick = np.linalg.norm(stick_vec)
+                    norm_arm = np.linalg.norm(arm_vec)
+                    
+                    if norm_stick > 0 and norm_arm > 0:
+                        cos_angle = dot / (norm_stick * norm_arm)
+                        cos_angle = np.clip(cos_angle, -1.0, 1.0)
+                        angle_deg = np.degrees(np.arccos(cos_angle))
+                        analysis_results[best_match_id]['grip_angle'] = angle_deg
+                else:
+                    if self.debug_stick:
+                        print(f"[DEBUG-PROCESS] ✗ No stick_endpoints detected")
                 
                 predicted_class, confidence = "N/A", 0.0
                 if self.pose_classifier_model and self.label_encoder:

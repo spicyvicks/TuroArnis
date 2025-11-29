@@ -13,8 +13,8 @@ from gui.results_window import ResultsWindow
 from computer_vision.pose_analyzer import PoseAnalyzer
 from pose_definitions import POSE_LIBRARY
 
-TEST_IMAGE_PATH = 'Left Temple Block.jpg' 
-DEFAULT_TEST_POSE_PRETTY_NAME = "Left Temple Block" 
+TEST_IMAGE_PATH = 'Right Eye Thrust.jpg' 
+DEFAULT_TEST_POSE_PRETTY_NAME = "Right Eye Thrust" 
 
 class TuroArnisGUI: 
     def __init__(self, window, window_title):
@@ -54,11 +54,11 @@ class TuroArnisGUI:
         self.video_canvas.bind('<Configure>', self.on_canvas_resize)
         self.tk_image = None
 
-        self.controls_panel = ttk.Frame(self.window, padding=15, bootstyle="dark", width=250)
+        self.controls_panel = ttk.Frame(self.window, padding=15, bootstyle="light", width=250)
         self.controls_panel.grid(row=0, column=0, sticky="nsew")
         self.controls_panel.grid_propagate(False) 
         
-        ttk.Label(self.controls_panel, text="Controls", font="Arial 14 bold", bootstyle="inverse-dark").pack(pady=(0, 10), anchor=W)
+        ttk.Label(self.controls_panel, text="Controls", font="Arial 14 bold", bootstyle="dark").pack(pady=(0, 10), anchor=W)
         self.user_button = ttk.Menubutton(self.controls_panel, text=self.current_user, bootstyle="secondary")
         self.user_button.pack(fill=X, pady=5)
         self.user_menu = ttk.Menu(self.user_button)
@@ -83,13 +83,13 @@ class TuroArnisGUI:
         self.form_button["menu"] = self.form_menu
         
         ttk.Separator(self.controls_panel, orient=HORIZONTAL).pack(fill=X, pady=15)
-        self.status_label = ttk.Label(self.controls_panel, text="Status: Select a form", font="Arial 12", wraplength=220, bootstyle="inverse-dark")
+        self.status_label = ttk.Label(self.controls_panel, text="Status: Select a form", font="Arial 12", wraplength=220, bootstyle="dark")
         self.status_label.pack(fill=X, pady=5, anchor=W)
         
         self.keras_status_label = ttk.Label(self.controls_panel, text="Keras: N/A (0.00)", font="Arial 10", bootstyle="warning")
         self.keras_status_label.pack(fill=X, pady=5, anchor=W)
         
-        self.feedback_label = ttk.Label(self.controls_panel, text="", font="Arial 9", wraplength=220, bootstyle="inverse-dark", justify=LEFT)
+        self.feedback_label = ttk.Label(self.controls_panel, text="", font="Arial 9", wraplength=220, bootstyle="dark", justify=LEFT)
         self.feedback_label.pack(fill=X, pady=5, anchor=W)
         
         self.view_all_results_button = ttk.Button(self.controls_panel, text="View All Results", command=self.open_results_window, bootstyle="info")
@@ -291,5 +291,5 @@ class TuroArnisGUI:
         self.status_label.config(text="Status: Select a form")
 
 if __name__ == "__main__":
-    root = ttk.Window(themename="superhero")
+    root = ttk.Window(themename="flatly")
     app = TuroArnisGUI(root, "TuroArnis - Arnis Form Correction (Image Test)")

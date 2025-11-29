@@ -47,7 +47,13 @@ class PoseAnalyzer:
         else:
             print(f"[DEBUG-INIT] Stick detector NOT loaded - path is None or doesn't exist")
         
-        self.tracker = Sort(max_age=90, min_hits=3, iou_threshold=0.3)
+        self.tracker = Sort(
+            max_age=120,
+            min_hits=2,
+            iou_threshold=0.25
+        )
+        self.id_mapping = {}
+        self.next_stable_id = 1
         
         self.mp_drawing = mp.solutions.drawing_utils
         self.mp_pose = mp.solutions.pose
@@ -191,15 +197,27 @@ class PoseAnalyzer:
     def process_frame(self, frame):
         h, w, _ = frame.shape
 
-        results_yolo = self.yolo_model(frame, stream=True, verbose=False, classes=[0], conf=0.5, imgsz=320)
+        results_yolo = self.yolo_model(frame, stream=True, verbose=False, classes=[0], conf=0.3, imgsz=320)
         detections = np.empty((0, 5))
         for r in results_yolo:
             for box in r.boxes:
-                if box.conf[0] >= 0.5:
+                if box.conf[0] >= 0.3:
                     x1, y1, x2, y2 = map(int, box.xyxy[0])
                     detections = np.vstack((detections, np.array([x1, y1, x2, y2, box.conf[0]])))
         
         tracked_persons = self.tracker.update(detections)
+        
+        stable_tracked = []
+        for person in tracked_persons:
+            tracker_id = int(person[4])
+            if tracker_id not in self.id_mapping:
+                self.id_mapping[tracker_id] = self.next_stable_id
+                self.next_stable_id += 1
+            stable_id = self.id_mapping[tracker_id]
+            stable_person = np.array([person[0], person[1], person[2], person[3], stable_id])
+            stable_tracked.append(stable_person)
+        
+        tracked_persons = np.array(stable_tracked) if stable_tracked else np.empty((0, 5))
         
         analysis_results = { 
             int(p[4]): {
@@ -210,31 +228,57 @@ class PoseAnalyzer:
             } for p in tracked_persons 
         }
         
-        image_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        pose_results = self.pose.process(image_rgb)
-
-        if pose_results.pose_landmarks and len(tracked_persons) > 0:
-            landmarks_2d = pose_results.pose_landmarks.landmark
-            min_x, max_x = w, 0; min_y, max_y = h, 0
-            for lm in landmarks_2d:
-                px, py = int(lm.x * w), int(lm.y * h)
-                min_x, max_x = min(min_x, px), max(max_x, px)
-                min_y, max_y = min(min_y, py), max(max_y, py)
-            mp_box = (min_x, min_y, max_x, max_y)
+        for person in tracked_persons:
+            person_id = int(person[4])
+            x1, y1, x2, y2 = map(int, person[:4])
             
-            best_iou, best_match_id = 0.0, -1
-            for person_id, data in analysis_results.items():
-                iou = self._calculate_iou(mp_box, data['bbox'])
-                if iou > best_iou: best_iou, best_match_id = iou, person_id
+            x1_pad = max(0, x1 - 20)
+            y1_pad = max(0, y1 - 20)
+            x2_pad = min(w, x2 + 20)
+            y2_pad = min(h, y2 + 20)
             
-            if best_match_id != -1 and best_iou > 0.3:
-                person_bbox = analysis_results[best_match_id]['bbox']
+            person_crop = frame[y1_pad:y2_pad, x1_pad:x2_pad]
+            
+            if person_crop.size == 0:
+                continue
+            
+            crop_rgb = cv2.cvtColor(person_crop, cv2.COLOR_BGR2RGB)
+            pose_results = self.pose.process(crop_rgb)
+            
+            if pose_results.pose_landmarks:
+                landmarks_2d = pose_results.pose_landmarks.landmark
+                
+                offset_x = x1_pad
+                offset_y = y1_pad
+                crop_h, crop_w = person_crop.shape[:2]
+                
+                abs_landmarks = []
+                for lm in landmarks_2d:
+                    abs_x = int(lm.x * crop_w) + offset_x
+                    abs_y = int(lm.y * crop_h) + offset_y
+                    abs_landmarks.append((abs_x, abs_y, lm.z))
+                
+                live_angles = self._calculate_all_angles_3d(pose_results.pose_world_landmarks)
+                
+                predicted_class, confidence = "N/A", 0.0
+                if self.pose_classifier_model and self.label_encoder and live_angles:
+                    try:
+                        world_landmarks = pose_results.pose_world_landmarks.landmark
+                        landmarks_np = np.array([[lm.x, lm.y, lm.z] for lm in world_landmarks])
+                        hip_center = (landmarks_np[23] + landmarks_np[24]) / 2.0
+                        coords = (landmarks_np - hip_center).flatten()
+                        pred_proba = self.pose_classifier_model.predict(np.expand_dims(coords, axis=0), verbose=0)[0]
+                        pred_index = np.argmax(pred_proba)
+                        confidence = pred_proba[pred_index]
+                        predicted_class = self.label_encoder.inverse_transform([pred_index])[0]
+                    except Exception:
+                        pass
                 
                 if self.debug_stick:
-                    print(f"[DEBUG-PROCESS] Calling stick detection for person {best_match_id}")
-                    print(f"[DEBUG-PROCESS] Person bbox: {person_bbox}")
+                    print(f"[DEBUG-PROCESS] Calling stick detection for person {person_id}")
+                    print(f"[DEBUG-PROCESS] Person bbox: {(x1, y1, x2, y2)}")
                 
-                stick_endpoints, stick_bbox = self._detect_stick_with_yolo(frame, person_bbox, debug=self.debug_stick)
+                stick_endpoints, stick_bbox = self._detect_stick_with_yolo(frame, (x1, y1, x2, y2), debug=self.debug_stick)
                 
                 if self.debug_stick:
                     print(f"[DEBUG-PROCESS] Stick detection returned:")
@@ -243,17 +287,16 @@ class PoseAnalyzer:
                 
                 if stick_endpoints:
                     if self.debug_stick:
-                        print(f"[DEBUG-PROCESS] ✓ Setting stick_endpoints for person {best_match_id}")
-                    analysis_results[best_match_id]['stick_endpoints'] = stick_endpoints
+                        print(f"[DEBUG-PROCESS] ✓ Setting stick_endpoints for person {person_id}")
+                    analysis_results[person_id]['stick_endpoints'] = stick_endpoints
                     
-                    # Process stick keypoints and grip angle
                     grip_pt, tip_pt = stick_endpoints
-                    analysis_results[best_match_id]['stick_keypoints'] = {'grip': grip_pt, 'tip': tip_pt}
+                    analysis_results[person_id]['stick_keypoints'] = {'grip': grip_pt, 'tip': tip_pt}
 
                     r_wrist_lm = landmarks_2d[self.mp_pose.PoseLandmark.RIGHT_WRIST]
                     l_wrist_lm = landmarks_2d[self.mp_pose.PoseLandmark.LEFT_WRIST]
-                    r_wrist_pt = np.array([int(r_wrist_lm.x * w), int(r_wrist_lm.y * h)])
-                    l_wrist_pt = np.array([int(l_wrist_lm.x * w), int(l_wrist_lm.y * h)])
+                    r_wrist_pt = np.array([int(r_wrist_lm.x * crop_w) + offset_x, int(r_wrist_lm.y * crop_h) + offset_y])
+                    l_wrist_pt = np.array([int(l_wrist_lm.x * crop_w) + offset_x, int(l_wrist_lm.y * crop_h) + offset_y])
                     
                     grip_array = np.array(grip_pt)
                     r_dist = np.linalg.norm(grip_array - r_wrist_pt)
@@ -278,32 +321,16 @@ class PoseAnalyzer:
                         cos_angle = dot / (norm_stick * norm_arm)
                         cos_angle = np.clip(cos_angle, -1.0, 1.0)
                         angle_deg = np.degrees(np.arccos(cos_angle))
-                        analysis_results[best_match_id]['grip_angle'] = angle_deg
+                        analysis_results[person_id]['grip_angle'] = angle_deg
                 else:
                     if self.debug_stick:
                         print(f"[DEBUG-PROCESS] ✗ No stick_endpoints detected")
                 
-                predicted_class, confidence = "N/A", 0.0
-                if self.pose_classifier_model and self.label_encoder:
-                    try:
-                        world_landmarks = pose_results.pose_world_landmarks.landmark
-                        landmarks_np = np.array([[lm.x, lm.y, lm.z] for lm in world_landmarks])
-                        hip_center = (landmarks_np[23] + landmarks_np[24]) / 2.0
-                        coords = (landmarks_np - hip_center).flatten()
-                        pred_proba = self.pose_classifier_model.predict(np.expand_dims(coords, axis=0), verbose=0)[0]
-                        pred_index = np.argmax(pred_proba)
-                        confidence = pred_proba[pred_index]
-                        predicted_class = self.label_encoder.inverse_transform([pred_index])[0]
-                    except Exception as e:
-                        pass
-                
-                live_angles = self._calculate_all_angles_3d(pose_results.pose_world_landmarks)
-                analysis_results[best_match_id].update({
-                    'landmarks': pose_results.pose_landmarks, 
-                    'live_angles': live_angles, 
-                    'predicted_class': predicted_class, 
-                    'confidence': float(confidence)
-                })
+                analysis_results[person_id]['predicted_class'] = predicted_class
+                analysis_results[person_id]['confidence'] = confidence
+                analysis_results[person_id]['live_angles'] = live_angles
+                analysis_results[person_id]['landmarks'] = pose_results.pose_landmarks
+                analysis_results[person_id]['landmarks_absolute'] = abs_landmarks
 
         return list(analysis_results.values())
 
@@ -335,6 +362,16 @@ class PoseAnalyzer:
         dot_product = np.dot(ba, bc)
         magnitude = np.linalg.norm(ba) * np.linalg.norm(bc)
         return np.degrees(np.arccos(np.clip(dot_product / (magnitude + 1e-6), -1.0, 1.0)))
+
+    def reset_tracker(self):
+        self.tracker = Sort(
+            max_age=120,
+            min_hits=2,
+            iou_threshold=0.25
+        )
+        self.id_mapping.clear()
+        self.next_stable_id = 1
+        print("[info] Tracker reset - IDs reinitialized")
 
     def close(self):
         self.pose.close()

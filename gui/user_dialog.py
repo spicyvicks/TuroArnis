@@ -18,7 +18,7 @@ class UserManagementDialog:
         # Create dialog window
         self.dialog = ttk.Toplevel(parent)
         self.dialog.title("User Management")
-        self.dialog.geometry("800x600")
+        self.dialog.geometry("900x700")
         self.dialog.resizable(False, False)
         
         # Make modal
@@ -30,8 +30,8 @@ class UserManagementDialog:
         
         # Center on screen
         self.dialog.update_idletasks()
-        x = (self.dialog.winfo_screenwidth() // 2) - (800 // 2)
-        y = (self.dialog.winfo_screenheight() // 2) - (600 // 2)
+        x = (self.dialog.winfo_screenwidth() // 2) - (900 // 2)
+        y = (self.dialog.winfo_screenheight() // 2) - (700 // 2)
         self.dialog.geometry(f"+{x}+{y}")
         
         # Ensure dialog is visible and focused
@@ -118,18 +118,18 @@ class UserManagementDialog:
         
         ttk.Button(
             button_frame,
-            text="Toggle Active/Inactive",
-            command=self.toggle_user_status,
-            bootstyle=WARNING,
-            width=20
-        ).pack(side=LEFT, padx=5)
-        
-        ttk.Button(
-            button_frame,
             text="Delete User",
             command=self.delete_user,
             bootstyle=DANGER,
             width=15
+        ).pack(side=LEFT, padx=5)
+        
+        ttk.Button(
+            button_frame,
+            text="Toggle Active/Inactive",
+            command=self.toggle_user_status,
+            bootstyle=WARNING,
+            width=20
         ).pack(side=LEFT, padx=5)
         
         ttk.Button(

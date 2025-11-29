@@ -58,11 +58,11 @@ class TuroArnisGUI:
         self.video_canvas.bind('<Configure>', self.on_canvas_resize)
         self.tk_image = None
 
-        self.controls_panel = ttk.Frame(self.window, padding=15, bootstyle="dark", width=250)
+        self.controls_panel = ttk.Frame(self.window, padding=15, bootstyle="light", width=250)
         self.controls_panel.grid(row=0, column=0, sticky="nsew")
         self.controls_panel.grid_propagate(False) 
         
-        ttk.Label(self.controls_panel, text="Controls", font=("-size 14 -weight bold"), bootstyle="inverse-dark").pack(pady=(0, 10), anchor=W)
+        ttk.Label(self.controls_panel, text="Controls", font=("-size 14 -weight bold"), bootstyle="dark").pack(pady=(0, 10), anchor=W)
 
         user_frame = ttk.Labelframe(self.controls_panel, text="Current User", padding=10)
         user_frame.pack(fill=X, pady=5)
@@ -102,7 +102,7 @@ class TuroArnisGUI:
         self.form_button["menu"] = self.form_menu
         
         ttk.Separator(self.controls_panel, orient=HORIZONTAL).pack(fill=X, pady=15)
-        self.status_label = ttk.Label(self.controls_panel, text="Status: Select a form", font="-size 12", wraplength=220, bootstyle="inverse-dark")
+        self.status_label = ttk.Label(self.controls_panel, text="Status: Select a form", font="-size 12", wraplength=220, bootstyle="dark")
         self.status_label.pack(fill=X, pady=5, anchor=W)
         
         self.keras_status_label = ttk.Label(self.controls_panel, text="Keras: N/A (0.00)", font="-size 10", bootstyle="warning")
@@ -231,12 +231,22 @@ class TuroArnisGUI:
                 else:
                     print(f"[DEBUG-DRAW] ✗ No stick to draw")
 
-                self.draw_text_with_bg(img=processing_frame, text=f"User {person_id}", pos=(x1, y1 - 10), font_face=cv2.FONT_HERSHEY_SIMPLEX, font_scale=0.9, text_color=COLOR_BLACK, bg_color=COLOR_WHITE, thickness=2)
+                user_display_name = self.current_user['name'] if self.current_user else f"Person {person_id}"
+                self.draw_text_with_bg(img=processing_frame, text=user_display_name, pos=(x1, y1 - 10), font_face=cv2.FONT_HERSHEY_SIMPLEX, font_scale=0.9, text_color=COLOR_BLACK, bg_color=COLOR_WHITE, thickness=2)
 
-                if result['landmarks']:
-                    landmark_spec = self.analyzer.mp_drawing.DrawingSpec(color=draw_color, thickness=2, circle_radius=2)
-                    connection_spec = self.analyzer.mp_drawing.DrawingSpec(color=draw_color, thickness=2, circle_radius=2)
-                    self.analyzer.mp_drawing.draw_landmarks(processing_frame, result['landmarks'], self.analyzer.mp_pose.POSE_CONNECTIONS, landmark_drawing_spec=landmark_spec, connection_drawing_spec=connection_spec)
+                if result.get('landmarks_absolute'):
+                    landmarks_abs = result['landmarks_absolute']
+                    
+                    for idx, (lx, ly, lz) in enumerate(landmarks_abs):
+                        cv2.circle(processing_frame, (lx, ly), 2, draw_color, -1)
+                    
+                    pose_connections = self.analyzer.mp_pose.POSE_CONNECTIONS
+                    for connection in pose_connections:
+                        start_idx, end_idx = connection
+                        if start_idx < len(landmarks_abs) and end_idx < len(landmarks_abs):
+                            start_pt = (int(landmarks_abs[start_idx][0]), int(landmarks_abs[start_idx][1]))
+                            end_pt = (int(landmarks_abs[end_idx][0]), int(landmarks_abs[end_idx][1]))
+                            cv2.line(processing_frame, start_pt, end_pt, draw_color, 2)
 
                 if self.target_form:
                     overlay = processing_frame.copy()
@@ -394,5 +404,5 @@ class TuroArnisGUI:
         self.status_label.config(text="Status: Select a form")
 
 if __name__ == "__main__":
-    root = ttk.Window(themename="superhero")
+    root = ttk.Window(themename="flatly")
     app = TuroArnisGUI(root, "TuroArnis - Arnis Form Correction")

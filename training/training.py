@@ -7,8 +7,7 @@ import numpy as np
 import pandas as pd
 from tqdm import tqdm
 from multiprocessing import Pool, cpu_count
-from sklearn.model_selection import train_test_split
-import json 
+from sklearn.model_selection import train_test_split 
 
 worker_pose_instance = None
 
@@ -25,18 +24,16 @@ def extract_coordinates_from_image(image_path):
     if worker_pose_instance is None:
         init_worker()
         
-    start_time = cv2.getTickCount()
-    
     image = cv2.imread(image_path)
     if image is None: 
-        return None, 0
+        return None
         
     image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
     
     results = worker_pose_instance.process(image_rgb)
     
     if not results.pose_world_landmarks:
-        return None, 0
+        return None
         
     try:
         landmarks = np.array([[lm.x, lm.y, lm.z] for lm in results.pose_world_landmarks.landmark])
@@ -45,19 +42,17 @@ def extract_coordinates_from_image(image_path):
         right_hip_idx = 24
         
         if left_hip_idx >= len(landmarks) or right_hip_idx >= len(landmarks):
-            return None, 0
+            return None
             
         hip_center = (landmarks[left_hip_idx] + landmarks[right_hip_idx]) / 2.0
         
         normalized_landmarks = landmarks - hip_center
         
-        end_time = cv2.getTickCount()
-        inference_time = (end_time - start_time) / cv2.getTickFrequency()
+        coordinates = normalized_landmarks.flatten().tolist()
+        return coordinates
         
-        return normalized_landmarks.flatten().tolist(), inference_time
     except Exception:
-        return None, 0
-
+        return None
 
 def plot_training_history(history, save_path, plt):
     plt.figure(figsize=(15, 6))
@@ -165,22 +160,17 @@ if __name__ == "__main__":
             results = list(tqdm(image_coords, total=len(all_image_paths), desc="  - Extracting Coordinates"))
 
         success_count = 0
-        inference_times = []
         with open(csv_output_file, 'w', newline='') as f:
             writer = csv.writer(f)
             writer.writerow(header)
-            for i, result in enumerate(results):
-                if result and result[0] is not None:
-                    coords, inference_time = result
-                    inference_times.append(inference_time)
+            for i, coords in enumerate(results):
+                if coords:
                     image_path = all_image_paths[i]
                     class_name = path_to_class_map[image_path]
                     writer.writerow([class_name] + coords)
                     success_count += 1
         
-        avg_inference_time = np.mean(inference_times) if inference_times else 0
         print(f"\n[SUCCESS] Coordinate extraction complete. {success_count} samples saved to CSV.")
-        print(f"  - Average inference time: {avg_inference_time*1000:.2f} ms")
         print("="*50)
         
         if success_count == 0:
@@ -188,7 +178,6 @@ if __name__ == "__main__":
             sys.exit(1)
             
     else:
-        avg_inference_time = 0
         print("\n[STAGE 1] Skipping coordinate extraction. Using existing CSV.")
         if not os.path.exists(csv_output_file):
             print(f"[ERROR] Skipping extraction but CSV file not found: {csv_output_file}")
@@ -315,36 +304,12 @@ if __name__ == "__main__":
     history_plot_path = os.path.join(models_dir, 'training_history.png')
     plot_training_history(history, history_plot_path, plt)
     
-    # Save training history to JSON for comparison
-    history_json_path = os.path.join(models_dir, 'mediapipe_history.json')
-    with open(history_json_path, 'w') as f:
-        json.dump(history.history, f, indent=2)
-    print(f"[INFO] Training history saved to: {history_json_path}")
-    
     cm_plot_path = os.path.join(models_dir, 'confusion_matrix.png')
     plot_confusion_matrix(y_test, y_pred, class_names, cm_plot_path, plt, sns, confusion_matrix)
 
     print("\n[INFO] Saving final model and label encoder...")
     model.save(model_save_path)
     joblib.dump(label_encoder, encoder_path)
-    
-    # Save results for comparison
-    from sklearn.metrics import precision_recall_fscore_support, accuracy_score
-    precision, recall, f1, _ = precision_recall_fscore_support(y_test, y_pred, average='weighted', zero_division=0)
-    
-    results = {
-        'accuracy': float(val_acc),
-        'precision': float(precision),
-        'recall': float(recall),
-        'f1_score': float(f1),
-        'avg_inference_time_ms': float(avg_inference_time * 1000) if avg_inference_time > 0 else 0,
-        'fps': float(1.0 / avg_inference_time) if avg_inference_time > 0 else 0
-    }
-    
-    results_path = os.path.join(models_dir, 'mediapipe_results.json')
-    with open(results_path, 'w') as f:
-        json.dump(results, f, indent=2)
-    print(f"[INFO] Results saved to: {results_path}")
 
     print(f"\n[SUCCESS] Process complete.")
     print(f"  - Best Keras model saved to: {model_save_path}")

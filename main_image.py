@@ -13,8 +13,8 @@ from gui.results_window import ResultsWindow
 from computer_vision.pose_analyzer import PoseAnalyzer
 from pose_definitions import POSE_LIBRARY
 
-TEST_IMAGE_PATH = 'Left Temple Block.jpg' 
-DEFAULT_TEST_POSE_PRETTY_NAME = "Left Temple Block" 
+TEST_IMAGE_PATH = 'Right Eye Thrust.jpg' 
+DEFAULT_TEST_POSE_PRETTY_NAME = "Right Eye Thrust" 
 
 class TuroArnisGUI: 
     def __init__(self, window, window_title):
@@ -58,7 +58,7 @@ class TuroArnisGUI:
         self.controls_panel.grid(row=0, column=0, sticky="nsew")
         self.controls_panel.grid_propagate(False) 
         
-        ttk.Label(self.controls_panel, text="Controls", font="Arial 20 bold", bootstyle="dark").pack(pady=(0, 10), anchor=W)
+        ttk.Label(self.controls_panel, text="Controls", font="Arial 14 bold", bootstyle="dark").pack(pady=(0, 10), anchor=W)
         self.user_button = ttk.Menubutton(self.controls_panel, text=self.current_user, bootstyle="secondary")
         self.user_button.pack(fill=X, pady=5)
         self.user_menu = ttk.Menu(self.user_button)
@@ -89,7 +89,7 @@ class TuroArnisGUI:
         self.keras_status_label = ttk.Label(self.controls_panel, text="Keras: N/A (0.00)", font="Arial 10", bootstyle="warning")
         self.keras_status_label.pack(fill=X, pady=5, anchor=W)
         
-        self.feedback_label = ttk.Label(self.controls_panel, text="", font="Arial 8", wraplength=220, bootstyle="dark", justify=LEFT)
+        self.feedback_label = ttk.Label(self.controls_panel, text="", font="Arial 9", wraplength=220, bootstyle="dark", justify=LEFT)
         self.feedback_label.pack(fill=X, pady=5, anchor=W)
         
         self.view_all_results_button = ttk.Button(self.controls_panel, text="View All Results", command=self.open_results_window, bootstyle="info")
@@ -142,8 +142,7 @@ class TuroArnisGUI:
 
         while self.is_running:
             frame = self.static_image_original.copy()
-            original_h, original_w = frame.shape[:2]
-            processing_frame = frame.copy()
+            processing_frame = cv2.resize(frame, (640, 480))
             analysis_results = self.analyzer.process_frame(processing_frame)
             
             if analysis_results:
@@ -228,31 +227,22 @@ class TuroArnisGUI:
                 self.feedback_label.config(text=feedback_text)
                 print(f"[DEBUG] Feedback: {feedback_text}")
                 
-                cv2.rectangle(processing_frame, (x1, y1), (x2, y2), box_color, 12)
+                cv2.rectangle(processing_frame, (x1, y1), (x2, y2), box_color, 2)
                 
                 print(f"[DEBUG-DRAW] Checking stick_endpoints: {result.get('stick_endpoints')}")
                 if result['stick_endpoints']:
                     pt1, pt2 = result['stick_endpoints']
                     print(f"[DEBUG-DRAW] ✓ Drawing stick line from {pt1} to {pt2}")
-                    cv2.line(processing_frame, pt1, pt2, COLOR_PROMPT, 15)
+                    cv2.line(processing_frame, pt1, pt2, COLOR_PROMPT, 4)
                 else:
                     print(f"[DEBUG-DRAW] ✗ No stick to draw")
 
-                self.draw_text_with_bg(img=processing_frame, text=f"User {person_id}", pos=(x1, y1 - 10), font_face=cv2.FONT_HERSHEY_SIMPLEX, font_scale=3.0, text_color=COLOR_BLACK, bg_color=COLOR_WHITE, thickness=6)
+                self.draw_text_with_bg(img=processing_frame, text=f"User {person_id}", pos=(x1, y1 - 10), font_face=cv2.FONT_HERSHEY_SIMPLEX, font_scale=0.6, text_color=COLOR_BLACK, bg_color=COLOR_WHITE, thickness=2)
 
-                if result.get('landmarks_absolute'):
-                    landmarks_abs = result['landmarks_absolute']
-                    
-                    for idx, (lx, ly, lz) in enumerate(landmarks_abs):
-                        cv2.circle(processing_frame, (lx, ly), 12, draw_color, -1)
-                    
-                    pose_connections = self.analyzer.mp_pose.POSE_CONNECTIONS
-                    for connection in pose_connections:
-                        start_idx, end_idx = connection
-                        if start_idx < len(landmarks_abs) and end_idx < len(landmarks_abs):
-                            start_pt = (int(landmarks_abs[start_idx][0]), int(landmarks_abs[start_idx][1]))
-                            end_pt = (int(landmarks_abs[end_idx][0]), int(landmarks_abs[end_idx][1]))
-                            cv2.line(processing_frame, start_pt, end_pt, draw_color, 10)
+                if result['landmarks']:
+                    landmark_spec = self.analyzer.mp_drawing.DrawingSpec(color=draw_color, thickness=2, circle_radius=2)
+                    connection_spec = self.analyzer.mp_drawing.DrawingSpec(color=draw_color, thickness=2, circle_radius=2)
+                    self.analyzer.mp_drawing.draw_landmarks(processing_frame, result['landmarks'], self.analyzer.mp_pose.POSE_CONNECTIONS, landmark_drawing_spec=landmark_spec, connection_drawing_spec=connection_spec)
             
             canvas_width = self.video_canvas.winfo_width(); canvas_height = self.video_canvas.winfo_height()
             final_frame = self.resize_and_pad(processing_frame, size=(canvas_width, canvas_height))

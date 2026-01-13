@@ -106,6 +106,7 @@ if __name__ == "__main__":
     from sklearn.preprocessing import LabelEncoder
     from sklearn.metrics import classification_report, confusion_matrix
     import matplotlib.pyplot as plt
+    from experiment_manager import CustomExperimentManager
 
     current_dir = os.path.dirname(os.path.abspath(__file__))
     project_root = os.path.dirname(current_dir)
@@ -118,6 +119,13 @@ if __name__ == "__main__":
     encoder_path = os.path.join(models_dir, 'label_encoder.joblib')
 
     os.makedirs(models_dir, exist_ok=True)
+    
+    # Initialize experiment tracking
+    exp = CustomExperimentManager(
+        experiment_name="pose_classifier",
+        description="Training pose classifier with current architecture",
+        base_dir=os.path.join(project_root, 'experiments')
+    )
     
     RUN_FEATURE_EXTRACTION = True 
 
@@ -222,6 +230,27 @@ if __name__ == "__main__":
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
     print(f"  - Data split: {len(X_train)} for training, {len(X_test)} for testing.")
 
+    # Log experiment configuration
+    exp.log_config({
+        "model_architecture": "Dense Neural Network",
+        "learning_rate": 0.001,
+        "batch_size": 16,
+        "epochs": 500,
+        "optimizer": "Adam",
+        "weight_decay": 1e-5,
+        "dense_layers": [256, 128, 64, 32],
+        "dropout_rates": [0.4, 0.3, 0.2, 0.1],
+        "activation": "LeakyReLU(0.1)",
+        "regularization": "L2(1e-4)",
+        "early_stopping_patience": 50,
+        "reduce_lr_patience": 20,
+        "dataset": "arnis_poses_coordinates.csv",
+        "num_classes": num_classes,
+        "num_features": num_features,
+        "train_samples": len(X_train),
+        "test_samples": len(X_test)
+    })
+
     optimizer = tf.keras.optimizers.Adam(
         learning_rate=0.001,  
         beta_1=0.9, 
@@ -277,13 +306,31 @@ if __name__ == "__main__":
         mode='min'
     )
     
+    # Custom callback to log metrics to experiment
+    class ExperimentLoggerCallback(tf.keras.callbacks.Callback):
+        def __init__(self, experiment_manager):
+            super().__init__()
+            self.exp = experiment_manager
+            
+        def on_epoch_end(self, epoch, logs=None):
+            if logs:
+                self.exp.log_metrics(
+                    epoch=epoch + 1,
+                    train_accuracy=logs.get('accuracy', 0),
+                    train_loss=logs.get('loss', 0),
+                    val_accuracy=logs.get('val_accuracy', 0),
+                    val_loss=logs.get('val_loss', 0)
+                )
+    
+    exp_logger = ExperimentLoggerCallback(exp)
+    
     print("\n  - Starting model training... (Progress will be shown for each epoch below)")
     history = model.fit(
         X_train, y_train,
         epochs=500,
         batch_size=16,  
         validation_data=(X_test, y_test),
-        callbacks=[es_callback, reduce_lr],
+        callbacks=[es_callback, reduce_lr, exp_logger],
         verbose=1
     )
     print("\n[SUCCESS] Model training complete.")
@@ -310,7 +357,24 @@ if __name__ == "__main__":
     print("\n[INFO] Saving final model and label encoder...")
     model.save(model_save_path)
     joblib.dump(label_encoder, encoder_path)
+    
+    # Save to experiment folder
+    exp.save_model(model_save_path, "final_model.keras")
+    exp.save_model(encoder_path, "label_encoder.joblib")
+    exp.save_artifact(history_plot_path, subfolder="plots")
+    exp.save_artifact(cm_plot_path, subfolder="plots")
+    
+    # Add final notes
+    exp.add_note(f"Final test accuracy: {val_acc:.4f}")
+    exp.add_note(f"Total epochs trained: {len(history.history['accuracy'])}")
+    
+    # Finalize experiment
+    exp.finalize(
+        status="completed",
+        notes=f"Achieved {val_acc:.2%} accuracy on test set with {num_classes} classes"
+    )
 
     print(f"\n[SUCCESS] Process complete.")
     print(f"  - Best Keras model saved to: {model_save_path}")
     print(f"  - Label encoder saved to: {encoder_path}")
+    print(f"  - Experiment tracked in: {exp.experiment_dir}")

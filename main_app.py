@@ -13,7 +13,6 @@ import numpy as np
 from gui.results_window import ResultsWindow
 from gui.user_dialog import show_user_dialog
 from computer_vision.pose_analyzer import PoseAnalyzer
-from pose_definitions import POSE_LIBRARY
 from database.db_manager import DatabaseManager
 
 class TuroArnisGUI:
@@ -193,33 +192,18 @@ class TuroArnisGUI:
                     predicted_class = result['predicted_class']
                     predicted_class = re.sub(r'^\d+\.\s*', '', predicted_class)
                     confidence = result['confidence']
-                    live_angles = result['live_angles']
                     
                     if predicted_class.strip() == self.target_form.strip() and confidence > 0.60:
-                        ideal_pose = POSE_LIBRARY.get(self.target_form)
-                        pose_is_perfect = True
-                        
-                        if ideal_pose and live_angles:
-                            for joint, ideal_range in ideal_pose.items():
-                                live_angle = live_angles.get(joint)
-                                if live_angle is not None:
-                                    min_angle, max_angle = ideal_range
-                                    if not (min_angle <= live_angle <= max_angle):
-                                        pose_is_perfect = False
-                                        feedback = "too bent" if live_angle < min_angle else "too straight"
-                                        error_messages.append(f"{joint.replace('_', ' ').title()} {feedback}")
-                        
-                        if pose_is_perfect:
-                            is_correct = True
-                            draw_color = COLOR_CORRECT
-                            box_color = COLOR_CORRECT
+                        is_correct = True
+                        draw_color = COLOR_CORRECT
+                        box_color = COLOR_CORRECT
 
-                            if self.current_session_id and self.frame_counter % 30 == 0:
-                                self.save_performance(result, is_correct=True)
-                        else:
-                            is_correct = False
-                            if self.current_session_id and self.frame_counter % 60 == 0:
-                                self.save_performance(result, is_correct=False)
+                        if self.current_session_id and self.frame_counter % 30 == 0:
+                            self.save_performance(result, is_correct=True)
+                    else:
+                        is_correct = False
+                        if self.current_session_id and self.frame_counter % 60 == 0:
+                            self.save_performance(result, is_correct=False)
                 
                 cv2.rectangle(processing_frame, (x1, y1), (x2, y2), box_color, 2)
                 

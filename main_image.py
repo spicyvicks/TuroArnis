@@ -11,7 +11,6 @@ import numpy as np
 
 from gui.results_window import ResultsWindow
 from computer_vision.pose_analyzer import PoseAnalyzer
-from pose_definitions import POSE_LIBRARY
 
 TEST_IMAGE_PATH = 'Right Eye Thrust.jpg' 
 DEFAULT_TEST_POSE_PRETTY_NAME = "Right Eye Thrust" 
@@ -189,31 +188,10 @@ class TuroArnisGUI:
                     print(f"[DEBUG] Match: {predicted_normalized == target_normalized} | Confidence: {confidence:.2f}")
                     
                     if predicted_normalized == target_normalized and confidence > 0.60:
-                        ideal_pose = POSE_LIBRARY.get(self.target_form)
-                        pose_is_perfect = True
-                        
-                        if ideal_pose and live_angles:
-                            for joint, ideal_range in ideal_pose.items():
-                                live_angle = live_angles.get(joint)
-                                if live_angle is not None:
-                                    min_angle, max_angle = ideal_range
-                                    if not (min_angle <= live_angle <= max_angle):
-                                        pose_is_perfect = False
-                                        feedback = "too bent" if live_angle < min_angle else "too straight"
-                                        error_messages.append(f"{joint.replace('_', ' ').title()}: {feedback}")
-                        else:
-                            print(f"[DEBUG] No ideal pose in POSE_LIBRARY, trusting model")
-                            pose_is_perfect = True
-                        
-                        if pose_is_perfect:
-                            is_correct = True
-                            draw_color = COLOR_CORRECT
-                            feedback_text = "✓ Perfect Form!"
-                            print(f"[DEBUG] Setting GREEN color")
-                        else:
-                            draw_color = COLOR_ERROR
-                            feedback_text = "Adjustments:\n" + "\n".join(error_messages[:3])
-                            print(f"[DEBUG] Setting RED color - {len(error_messages)} errors")
+                        is_correct = True
+                        draw_color = COLOR_CORRECT
+                        feedback_text = "✓ Perfect Form!"
+                        print(f"[DEBUG] Setting GREEN color")
                     else:
                         draw_color = COLOR_ERROR
                         if confidence <= 0.60:

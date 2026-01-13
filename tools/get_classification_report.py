@@ -8,6 +8,12 @@ from sklearn.metrics import classification_report, confusion_matrix
 import matplotlib.pyplot as plt
 import seaborn as sns
 
+class CustomInputLayer(tf.keras.layers.InputLayer):
+    def __init__(self, batch_shape=None, **kwargs):
+        if batch_shape is not None:
+            kwargs['input_shape'] = batch_shape[1:]
+        super().__init__(**kwargs)
+
 def generate_classification_report():
     print("\n[INFO] Starting classification report generation...")
     
@@ -20,7 +26,14 @@ def generate_classification_report():
     report_save_path = os.path.join(project_root, 'models', 'classification_report.txt')
     
     print("[INFO] Loading model and encoder...")
-    model = tf.keras.models.load_model(model_path)
+    try:
+        model = tf.keras.models.load_model(model_path, compile=False, safe_mode=False)
+    except Exception as e:
+        print(f"[WARNING] Standard load failed: {e}")
+        print("[INFO] Attempting alternative loading method...")
+        with tf.keras.utils.custom_object_scope({'CustomInputLayer': CustomInputLayer}):
+            model = tf.keras.models.load_model(model_path, compile=False)
+    
     label_encoder = joblib.load(encoder_path)
     
     print("[INFO] Loading test data...")

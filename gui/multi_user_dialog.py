@@ -34,14 +34,18 @@ class MultiUserDialog:
         self.setup_ui()
         
         # Center on screen
-        self.dialog.update_idletasks()
-        x = (self.dialog.winfo_screenwidth() // 2) - (900 // 2)
-        y = (self.dialog.winfo_screenheight() // 2) - (700 // 2)
-        self.dialog.geometry(f"+{x}+{y}")
+        self.center_window()
         
         # Ensure dialog is visible
         self.dialog.lift()
         self.dialog.focus_force()
+    
+    def center_window(self):
+        """Center the dialog on screen"""
+        self.dialog.update_idletasks()
+        x = (self.dialog.winfo_screenwidth() // 2) - (900 // 2)
+        y = (self.dialog.winfo_screenheight() // 2) - (700 // 2)
+        self.dialog.geometry(f"+{x}+{y}")
     
     def setup_ui(self):
         # Title

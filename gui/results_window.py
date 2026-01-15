@@ -27,6 +27,10 @@ class ResultsWindow(ttk.Toplevel):
         close_btn.pack(pady=(0, 10))
         
         # Center window
+        self.center_window()
+    
+    def center_window(self):
+        """Center the window on screen"""
         self.update_idletasks()
         x = (self.winfo_screenwidth() // 2) - (1200 // 2)
         y = (self.winfo_screenheight() // 2) - (700 // 2)

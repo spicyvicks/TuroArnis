@@ -20,6 +20,9 @@ class TuroArnisGUI:
         self.window = window
         self.window.title(window_title)
         
+        # Hide window until UI is built
+        self.window.withdraw()
+        
         self.screen_width = self.window.winfo_screenwidth()
         self.screen_height = self.window.winfo_screenheight()
 
@@ -117,8 +120,32 @@ class TuroArnisGUI:
         self.window.protocol("WM_DELETE_WINDOW", self.on_closing)
         self.process_queue()
         
-        self.window.geometry(f"{int(self.screen_width * 0.8)}x{int(self.screen_height * 0.8)}")
+        # Set size and center the main window
+        width = int(self.screen_width * 0.8)
+        height = int(self.screen_height * 0.8)
+        self.window.geometry(f"{width}x{height}")
+        self.center_window(self.window, width, height)
+        
+        # Show window after everything is set up
+        self.window.deiconify()
         self.window.mainloop()
+    
+    @staticmethod
+    def center_window(window, width=None, height=None):
+        """Center a window on the screen"""
+        window.update_idletasks()
+        
+        if width is None or height is None:
+            width = window.winfo_width()
+            height = window.winfo_height()
+        
+        screen_width = window.winfo_screenwidth()
+        screen_height = window.winfo_screenheight()
+        
+        x = (screen_width // 2) - (width // 2)
+        y = (screen_height // 2) - (height // 2)
+        
+        window.geometry(f"+{x}+{y}")
 
     def draw_text_with_bg(self, img, text, pos, font_face, font_scale, text_color, bg_color, thickness):
         (text_w, text_h), baseline = cv2.getTextSize(text, font_face, font_scale, thickness)
@@ -363,8 +390,26 @@ class TuroArnisGUI:
             stick_detected=stick_detected
         )
     
+    @staticmethod
+    def center_window(window, width=None, height=None):
+        """Center a window on the screen"""
+        window.update_idletasks()
+        
+        if width is None or height is None:
+            width = window.winfo_width()
+            height = window.winfo_height()
+        
+        screen_width = window.winfo_screenwidth()
+        screen_height = window.winfo_screenheight()
+        
+        x = (screen_width // 2) - (width // 2)
+        y = (screen_height // 2) - (height // 2)
+        
+        window.geometry(f"+{x}+{y}")
+    
     def open_results_window(self):
-        ResultsWindow(self.window, db_manager=self.db, current_user=self.current_user)
+        results_window = ResultsWindow(self.window, db_manager=self.db, current_user=self.current_user)
+        self.center_window(results_window, 1200, 700)
     
     def on_closing(self):
         print("[INFO] Closing application...")

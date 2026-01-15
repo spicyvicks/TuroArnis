@@ -12,8 +12,6 @@ current_dir = os.path.dirname(os.path.abspath(__file__))
 project_root = os.path.dirname(current_dir)
 sys.path.append(project_root)
 
-from sort import Sort
-
 class PoseAnalyzer:
     def __init__(self, detection_interval=3, stick_model_path=None, debug_stick=False):
         print("[info] initializing computer vision components...")
@@ -38,13 +36,12 @@ class PoseAnalyzer:
         else:
             print(f"[DEBUG-INIT] Stick detector NOT loaded - path is None or doesn't exist")
         
-        self.tracker = Sort(
-            max_age=120,
-            min_hits=2,
-            iou_threshold=0.25
-        )
+        # Using Ultralytics built-in ByteTrack (more reliable than SORT)
+        self.use_builtin_tracking = True
+        self.track_history = {}  # Store track history for ByteTrack
         self.id_mapping = {}
         self.next_stable_id = 1
+        print("[info] Using Ultralytics ByteTrack for person tracking")
         
         self.mp_drawing = mp.solutions.drawing_utils
         self.mp_pose = mp.solutions.pose
@@ -189,27 +186,34 @@ class PoseAnalyzer:
     def process_frame(self, frame):
         h, w, _ = frame.shape
 
-        results_yolo = self.yolo_model(frame, stream=True, verbose=False, classes=[0], conf=0.3, imgsz=320)
-        detections = np.empty((0, 5))
+        # Use YOLO's built-in ByteTrack tracking
+        results_yolo = self.yolo_model.track(
+            frame, 
+            persist=True,  # Persist tracks between frames
+            tracker="bytetrack.yaml",  # Use ByteTrack algorithm
+            verbose=False, 
+            classes=[0],  # Person class only
+            conf=0.3, 
+            imgsz=320
+        )
+        
+        tracked_persons = []
         for r in results_yolo:
-            for box in r.boxes:
-                if box.conf[0] >= 0.3:
-                    x1, y1, x2, y2 = map(int, box.xyxy[0])
-                    detections = np.vstack((detections, np.array([x1, y1, x2, y2, box.conf[0]])))
+            if r.boxes is not None and r.boxes.id is not None:
+                for box, track_id in zip(r.boxes, r.boxes.id):
+                    if box.conf[0] >= 0.3:
+                        x1, y1, x2, y2 = map(int, box.xyxy[0])
+                        tracker_id = int(track_id)
+                        
+                        # Map to stable IDs
+                        if tracker_id not in self.id_mapping:
+                            self.id_mapping[tracker_id] = self.next_stable_id
+                            self.next_stable_id += 1
+                        stable_id = self.id_mapping[tracker_id]
+                        
+                        tracked_persons.append([x1, y1, x2, y2, stable_id])
         
-        tracked_persons = self.tracker.update(detections)
-        
-        stable_tracked = []
-        for person in tracked_persons:
-            tracker_id = int(person[4])
-            if tracker_id not in self.id_mapping:
-                self.id_mapping[tracker_id] = self.next_stable_id
-                self.next_stable_id += 1
-            stable_id = self.id_mapping[tracker_id]
-            stable_person = np.array([person[0], person[1], person[2], person[3], stable_id])
-            stable_tracked.append(stable_person)
-        
-        tracked_persons = np.array(stable_tracked) if stable_tracked else np.empty((0, 5))
+        tracked_persons = np.array(tracked_persons) if tracked_persons else np.empty((0, 5))
         
         analysis_results = { 
             int(p[4]): {
@@ -356,14 +360,12 @@ class PoseAnalyzer:
         return np.degrees(np.arccos(np.clip(dot_product / (magnitude + 1e-6), -1.0, 1.0)))
 
     def reset_tracker(self):
-        self.tracker = Sort(
-            max_age=120,
-            min_hits=2,
-            iou_threshold=0.25
-        )
-        self.id_mapping.clear()
+        # Reset tracking by reinitializing the model (clears ByteTrack state)
+        self.yolo_model.predictor = None  # Clear predictor to reset tracking
+        self.track_history = {}
+        self.id_mapping = {}
         self.next_stable_id = 1
-        print("[info] Tracker reset - IDs reinitialized")
+        print("[info] ByteTrack reset - IDs reinitialized")
 
     def close(self):
         self.pose.close()

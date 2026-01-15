@@ -6,9 +6,6 @@ import joblib
 import mediapipe as mp
 import tensorflow as tf
 
-from tensorflow.keras.utils import custom_object_scope
-from tensorflow.keras.layers import InputLayer
-
 from ultralytics import YOLO
 
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -16,12 +13,6 @@ project_root = os.path.dirname(current_dir)
 sys.path.append(project_root)
 
 from sort import Sort
-
-class CustomInputLayer(InputLayer):
-    def __init__(self, batch_shape=None, **kwargs):
-        if batch_shape is not None:
-            kwargs['input_shape'] = batch_shape[1:]
-        super().__init__(**kwargs)
 
 class PoseAnalyzer:
     def __init__(self, detection_interval=3, stick_model_path=None, debug_stick=False):
@@ -57,10 +48,12 @@ class PoseAnalyzer:
         
         self.mp_drawing = mp.solutions.drawing_utils
         self.mp_pose = mp.solutions.pose
+        # PERFORMANCE OPTIMIZATION: Use faster settings for video
         self.pose = self.mp_pose.Pose(
-            static_image_mode=True,
-            model_complexity=2,
-            min_detection_confidence=0.5
+            static_image_mode=False,  # Changed from True - much faster for video
+            model_complexity=1,        # Changed from 2 - balanced speed/accuracy
+            min_detection_confidence=0.5,
+            smooth_landmarks=True      # Smoother output for video
         )
 
         try:
@@ -70,8 +63,7 @@ class PoseAnalyzer:
             if not os.path.exists(model_path) or not os.path.exists(encoder_path):
                 raise FileNotFoundError("Model or encoder file not found in the 'models' directory.")
 
-            with custom_object_scope({'InputLayer': CustomInputLayer}):
-                self.pose_classifier_model = tf.keras.models.load_model(model_path)
+            self.pose_classifier_model = tf.keras.models.load_model(model_path)
 
             self.label_encoder = joblib.load(encoder_path)
             
@@ -376,25 +368,3 @@ class PoseAnalyzer:
     def close(self):
         self.pose.close()
         print("[info] pose analyzer closed.")
-    
-    def _get_stick_from_pattern(self, predicted_class, landmarks):
-        if predicted_class not in STICK_PATTERNS:
-            return None
-        
-        pattern = STICK_PATTERNS[predicted_class]
-        hand = pattern['hand']  # 'right' or 'left'
-        angle_offset = pattern['stick_arm_angle']
-        
-        wrist = landmarks[WRIST_LANDMARK[hand]]
-        elbow = landmarks[ELBOW_LANDMARK[hand]]
-        
-        arm_vector = np.array([wrist.x - elbow.x, wrist.y - elbow.y])
-        arm_angle = np.arctan2(arm_vector[1], arm_vector[0])
-        
-        stick_angle = arm_angle + angle_offset
-        
-        stick_length = calculate_body_proportional_length(landmarks)
-        endpoint1 = wrist + 30 * (-cos(stick_angle), -sin(stick_angle))
-        endpoint2 = wrist + stick_length * (cos(stick_angle), sin(stick_angle))
-        
-        return (endpoint1, endpoint2)

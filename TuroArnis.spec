@@ -10,14 +10,30 @@ from PyInstaller.utils.hooks import collect_data_files, collect_submodules
 block_cipher = None
 
 # Collect all necessary data files
-datas = [
-    ('models/*.keras', 'models'),
-    ('models/*.joblib', 'models'),
-    ('models/*.pt', 'models'),
-    ('runs/pose/arnis_stick_detector/weights/*.pt', 'runs/pose/arnis_stick_detector/weights'),
-    ('*.pt', '.'),  # YOLO base models
-    ('assets/*', 'assets'),  # If you have assets folder
-]
+import os
+
+# Collect MediaPipe data files (includes model .tflite files)
+datas = collect_data_files('mediapipe')
+
+# Add your models if they exist
+if os.path.exists('models/arnis_coordinates_classifier.keras'):
+    datas.append(('models/arnis_coordinates_classifier.keras', 'models'))
+if os.path.exists('models/label_encoder.joblib'):
+    datas.append(('models/label_encoder.joblib', 'models'))
+
+# Add stick detector model if it exists
+if os.path.exists('runs/pose/arnis_stick_detector/weights/best.pt'):
+    datas.append(('runs/pose/arnis_stick_detector/weights/best.pt', 'runs/pose/arnis_stick_detector/weights'))
+
+# Add YOLO base models
+if os.path.exists('yolov8n-pose.pt'):
+    datas.append(('yolov8n-pose.pt', '.'))
+if os.path.exists('yolov8n.pt'):
+    datas.append(('yolov8n.pt', '.'))
+
+# Add assets if folder exists
+if os.path.exists('assets'):
+    datas.append(('assets', 'assets'))
 
 # Collect hidden imports
 hiddenimports = [

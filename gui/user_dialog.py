@@ -259,7 +259,18 @@ class UserManagementDialog:
 
 def show_user_dialog(parent, db_manager):
     """Show user management dialog and return selected user"""
+    # Temporarily show parent window to ensure dialog displays correctly
+    was_withdrawn = not parent.winfo_viewable()
+    if was_withdrawn:
+        parent.deiconify()
+        parent.update_idletasks()
+    
     dialog = UserManagementDialog(parent, db_manager)
+    
+    # Hide parent again if it was originally hidden
+    if was_withdrawn:
+        parent.withdraw()
+    
     parent.wait_window(dialog.dialog)
     return dialog.get_selected_user()
 

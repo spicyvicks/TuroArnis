@@ -20,15 +20,16 @@ class TuroArnisGUI:
         self.window = window
         self.window.title(window_title)
         
-        # Hide window until UI is built
-        self.window.withdraw()
-        
+        self.window.update_idletasks()
         self.screen_width = self.window.winfo_screenwidth()
         self.screen_height = self.window.winfo_screenheight()
+        
+        self.window.withdraw()
 
         self.db = DatabaseManager('turaarnis.db')
         self.current_user = None
         self.current_session_id = None
+        
         self.show_user_selection()
         
         if not self.current_user:
@@ -36,9 +37,15 @@ class TuroArnisGUI:
             self.window.destroy()
             return
 
+
         self.frame_counter = 0
         self.processing_interval = 3
         self.last_known_results = []
+        
+        # State-based attempt tracking
+        self.last_pose_state = None  # 'correct', 'incorrect', or None
+        self.state_frame_count = 0   # How many frames in current state
+        self.min_state_frames = 15   # Minimum frames to confirm a state (~0.5 seconds at 30fps)
 
         stick_model_path = 'runs/pose/arnis_stick_detector/weights/best.pt'
         self.analyzer = PoseAnalyzer(
@@ -220,17 +227,38 @@ class TuroArnisGUI:
                     predicted_class = re.sub(r'^\d+\.\s*', '', predicted_class)
                     confidence = result['confidence']
                     
+                    # Determine current pose state
                     if predicted_class.strip() == self.target_form.strip() and confidence > 0.60:
                         is_correct = True
                         draw_color = COLOR_CORRECT
                         box_color = COLOR_CORRECT
-
-                        if self.current_session_id and self.frame_counter % 30 == 0:
-                            self.save_performance(result, is_correct=True)
+                        current_state = 'correct'
                     else:
                         is_correct = False
-                        if self.current_session_id and self.frame_counter % 60 == 0:
-                            self.save_performance(result, is_correct=False)
+                        current_state = 'incorrect'
+                    
+                    # State-based attempt tracking
+                    if self.current_session_id:
+                        # Check if state changed
+                        if current_state != self.last_pose_state:
+                            # State transition detected
+                            if self.last_pose_state is not None and self.state_frame_count >= self.min_state_frames:
+                                # Previous state was stable, record the transition
+                                if current_state == 'correct':
+                                    # Transitioning to correct = new successful attempt
+                                    self.save_performance(result, is_correct=True)
+                                    print(f"[ATTEMPT] ✓ Correct attempt recorded (transition from {self.last_pose_state})")
+                                elif self.last_pose_state == 'correct':
+                                    # Transitioning from correct to incorrect = record the failure
+                                    self.save_performance(result, is_correct=False)
+                                    print(f"[ATTEMPT] ✗ Incorrect attempt recorded (transition from correct)")
+                            
+                            # Update state
+                            self.last_pose_state = current_state
+                            self.state_frame_count = 1
+                        else:
+                            # Same state, increment counter
+                            self.state_frame_count += 1
                 
                 cv2.rectangle(processing_frame, (x1, y1), (x2, y2), box_color, 2)
                 
@@ -293,6 +321,9 @@ class TuroArnisGUI:
                 try: self.queue.get_nowait()
                 except queue.Empty: pass
             self.queue.put(final_frame)
+            
+            # Increment frame counter for attempt sampling
+            self.frame_counter += 1
             time.sleep(0.01)
 
     def process_queue(self):

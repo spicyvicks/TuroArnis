@@ -33,19 +33,18 @@ class TuroArnisGUI:
         self.show_user_selection()
         
         if not self.current_user:
-            print("[INFO] No user selected, exiting...")
+            print("[INFO] no user selected, exiting...")
             self.window.destroy()
             return
-
 
         self.frame_counter = 0
         self.processing_interval = 3
         self.last_known_results = []
         
-        # State-based attempt tracking
-        self.last_pose_state = None  # 'correct', 'incorrect', or None
-        self.state_frame_count = 0   # How many frames in current state
-        self.min_state_frames = 15   # Minimum frames to confirm a state (~0.5 seconds at 30fps)
+        # state tracking
+        self.last_pose_state = None
+        self.state_frame_count = 0
+        self.min_state_frames = 15
 
         stick_model_path = 'runs/pose/arnis_stick_detector/weights/best.pt'
         self.analyzer = PoseAnalyzer(
@@ -127,31 +126,24 @@ class TuroArnisGUI:
         self.window.protocol("WM_DELETE_WINDOW", self.on_closing)
         self.process_queue()
         
-        # Set size and center the main window
         width = int(self.screen_width * 0.8)
         height = int(self.screen_height * 0.8)
         self.window.geometry(f"{width}x{height}")
         self.center_window(self.window, width, height)
         
-        # Show window after everything is set up
         self.window.deiconify()
         self.window.mainloop()
     
     @staticmethod
     def center_window(window, width=None, height=None):
-        """Center a window on the screen"""
         window.update_idletasks()
-        
         if width is None or height is None:
             width = window.winfo_width()
             height = window.winfo_height()
-        
         screen_width = window.winfo_screenwidth()
         screen_height = window.winfo_screenheight()
-        
         x = (screen_width // 2) - (width // 2)
         y = (screen_height // 2) - (height // 2)
-        
         window.geometry(f"+{x}+{y}")
 
     def draw_text_with_bg(self, img, text, pos, font_face, font_scale, text_color, bg_color, thickness):
@@ -195,9 +187,6 @@ class TuroArnisGUI:
             analysis_results = self.analyzer.process_frame(processing_frame)
             if analysis_results:
                 self.last_known_results = analysis_results
-                if analysis_results and len(analysis_results) > 0:
-                    result = analysis_results[0]
-                    print(f"[DEBUG-MAIN] Analysis result stick_endpoints: {result.get('stick_endpoints')}")
 
             feedback_x = processing_frame.shape[1] - 270; feedback_y = 30
             
@@ -227,7 +216,6 @@ class TuroArnisGUI:
                     predicted_class = re.sub(r'^\d+\.\s*', '', predicted_class)
                     confidence = result['confidence']
                     
-                    # Determine current pose state
                     if predicted_class.strip() == self.target_form.strip() and confidence > 0.60:
                         is_correct = True
                         draw_color = COLOR_CORRECT
@@ -237,38 +225,26 @@ class TuroArnisGUI:
                         is_correct = False
                         current_state = 'incorrect'
                     
-                    # State-based attempt tracking
+                    # state transition tracking
                     if self.current_session_id:
-                        # Check if state changed
                         if current_state != self.last_pose_state:
-                            # State transition detected
                             if self.last_pose_state is not None and self.state_frame_count >= self.min_state_frames:
-                                # Previous state was stable, record the transition
                                 if current_state == 'correct':
-                                    # Transitioning to correct = new successful attempt
                                     self.save_performance(result, is_correct=True)
-                                    print(f"[ATTEMPT] ✓ Correct attempt recorded (transition from {self.last_pose_state})")
+                                    print(f"[ATTEMPT] correct (from {self.last_pose_state})")
                                 elif self.last_pose_state == 'correct':
-                                    # Transitioning from correct to incorrect = record the failure
                                     self.save_performance(result, is_correct=False)
-                                    print(f"[ATTEMPT] ✗ Incorrect attempt recorded (transition from correct)")
-                            
-                            # Update state
+                                    print(f"[ATTEMPT] incorrect (from correct)")
                             self.last_pose_state = current_state
                             self.state_frame_count = 1
                         else:
-                            # Same state, increment counter
                             self.state_frame_count += 1
                 
                 cv2.rectangle(processing_frame, (x1, y1), (x2, y2), box_color, 2)
                 
-                print(f"[DEBUG-DRAW] Checking stick_endpoints: {result.get('stick_endpoints')}")
                 if result['stick_endpoints']:
                     pt1, pt2 = result['stick_endpoints']
-                    print(f"[DEBUG-DRAW] ✓ Drawing stick line from {pt1} to {pt2}")
                     cv2.line(processing_frame, pt1, pt2, COLOR_PROMPT, 4)
-                else:
-                    print(f"[DEBUG-DRAW] ✗ No stick to draw")
 
                 user_display_name = self.current_user['name'] if self.current_user else f"Person {person_id}"
                 self.draw_text_with_bg(img=processing_frame, text=user_display_name, pos=(x1, y1 - 10), font_face=cv2.FONT_HERSHEY_SIMPLEX, font_scale=0.9, text_color=COLOR_BLACK, bg_color=COLOR_WHITE, thickness=2)
@@ -322,7 +298,6 @@ class TuroArnisGUI:
                 except queue.Empty: pass
             self.queue.put(final_frame)
             
-            # Increment frame counter for attempt sampling
             self.frame_counter += 1
             time.sleep(0.01)
 
@@ -344,7 +319,7 @@ class TuroArnisGUI:
         self.target_form = self.practice_stances[pretty_name]
         self.form_button.config(text=pretty_name)
         self.status_label.config(text=f"Status: Analyzing '{pretty_name}'")
-        print(f"targeting model class: '{self.target_form}'")
+        print(f"[INFO] targeting: '{self.target_form}'")
 
         if self.current_user and not self.current_session_id:
             self.start_session()
@@ -353,7 +328,7 @@ class TuroArnisGUI:
         selected = show_user_dialog(self.window, self.db)
         if selected:
             self.current_user = selected
-            print(f"[INFO] User selected: {self.current_user['name']}")
+            print(f"[INFO] user: {self.current_user['name']}")
         else:
             self.current_user = None
     
@@ -365,7 +340,7 @@ class TuroArnisGUI:
             user_id=self.current_user['id'],
             target_pose=self.target_form
         )
-        print(f"[INFO] Started session {self.current_session_id} for {self.current_user['name']}")
+        print(f"[INFO] session {self.current_session_id} started")
 
         self.session_status_label.config(text=f"Session #{self.current_session_id} - Active", bootstyle="success")
         self.start_session_btn.config(state=DISABLED)
@@ -381,7 +356,7 @@ class TuroArnisGUI:
     def end_session(self):
         if self.current_session_id:
             self.db.end_session(self.current_session_id)
-            print(f"[INFO] Ended session {self.current_session_id}")
+            print(f"[INFO] session {self.current_session_id} ended")
 
             summary = self.db.get_session_summary(self.current_session_id)
             from ttkbootstrap.dialogs import Messagebox
@@ -399,10 +374,9 @@ class TuroArnisGUI:
             self.end_session_btn.config(state=DISABLED)
     
     def save_performance(self, result, is_correct):
-        if not self.current_session_id or not self.current_session_id:
+        if not self.current_session_id:
             return
         
-        # Extract data from result
         predicted_class = result.get('predicted_class', 'N/A')
         predicted_class = re.sub(r'^\d+\.\s*', '', predicted_class)
         confidence = result.get('confidence', 0.0)
@@ -421,29 +395,12 @@ class TuroArnisGUI:
             stick_detected=stick_detected
         )
     
-    @staticmethod
-    def center_window(window, width=None, height=None):
-        """Center a window on the screen"""
-        window.update_idletasks()
-        
-        if width is None or height is None:
-            width = window.winfo_width()
-            height = window.winfo_height()
-        
-        screen_width = window.winfo_screenwidth()
-        screen_height = window.winfo_screenheight()
-        
-        x = (screen_width // 2) - (width // 2)
-        y = (screen_height // 2) - (height // 2)
-        
-        window.geometry(f"+{x}+{y}")
-    
     def open_results_window(self):
         results_window = ResultsWindow(self.window, db_manager=self.db, current_user=self.current_user)
         self.center_window(results_window, 1200, 700)
     
     def on_closing(self):
-        print("[INFO] Closing application...")
+        print("[INFO] closing...")
         self.is_running = False
         time.sleep(0.5)
 

@@ -3,6 +3,7 @@ import os
 import cv2
 import threading
 import time
+import re
 from PIL import Image, ImageTk
 import ttkbootstrap as ttk
 from ttkbootstrap.constants import *
@@ -12,20 +13,31 @@ import numpy as np
 from gui.results_window import ResultsWindow
 from computer_vision.pose_analyzer import PoseAnalyzer
 
+# image testing config
 TEST_IMAGE_PATH = 'Right Eye Thrust.jpg' 
-DEFAULT_TEST_POSE_PRETTY_NAME = "Right Eye Thrust" 
+DEFAULT_TEST_POSE_PRETTY_NAME = "Right Eye Thrust"
 
-class TuroArnisGUI: 
+class TuroArnisGUI:
     def __init__(self, window, window_title):
         self.window = window
         self.window.title(window_title)
         
+        self.window.update_idletasks()
         self.screen_width = self.window.winfo_screenwidth()
         self.screen_height = self.window.winfo_screenheight()
+        
+        # test user, no db
+        self.current_user = {'id': 0, 'name': 'Test User (Image Mode)'}
+        self.current_session_id = None
 
         self.frame_counter = 0
         self.processing_interval = 3
         self.last_known_results = []
+        
+        # state tracking
+        self.last_pose_state = None
+        self.state_frame_count = 0
+        self.min_state_frames = 15
 
         stick_model_path = 'runs/pose/arnis_stick_detector/weights/best.pt'
         self.analyzer = PoseAnalyzer(
@@ -34,15 +46,15 @@ class TuroArnisGUI:
             debug_stick=True
         )
         
+        # load test image
         self.static_image_original = cv2.imread(TEST_IMAGE_PATH)
         if self.static_image_original is None:
-            print(f"[CRITICAL ERROR] Could not load image at: {TEST_IMAGE_PATH}. Please check the path.")
+            print(f"[ERROR] could not load image: {TEST_IMAGE_PATH}")
             sys.exit(1)
         self.cap = None
-
+        
         self.queue = queue.Queue(maxsize=1)
         self.target_form = None
-        self.current_user = "Default User"
         
         self.window.grid_rowconfigure(0, weight=1)
         self.window.grid_columnconfigure(0, weight=0)
@@ -57,14 +69,20 @@ class TuroArnisGUI:
         self.controls_panel.grid(row=0, column=0, sticky="nsew")
         self.controls_panel.grid_propagate(False) 
         
-        ttk.Label(self.controls_panel, text="Controls", font="Arial 14 bold", bootstyle="dark").pack(pady=(0, 10), anchor=W)
-        self.user_button = ttk.Menubutton(self.controls_panel, text=self.current_user, bootstyle="secondary")
-        self.user_button.pack(fill=X, pady=5)
-        self.user_menu = ttk.Menu(self.user_button)
-        users = ["Default User", "John Doe", "Jane Smith"]
-        for user_text in users:
-            self.user_menu.add_command(label=user_text, command=lambda u=user_text: self.on_user_selected(u))
-        self.user_button["menu"] = self.user_menu
+        ttk.Label(self.controls_panel, text="Controls", font=("-size 14 -weight bold"), bootstyle="dark").pack(pady=(0, 10), anchor=W)
+
+        user_frame = ttk.Labelframe(self.controls_panel, text="Current User", padding=10)
+        user_frame.pack(fill=X, pady=5)
+        ttk.Label(user_frame, text=self.current_user['name'], font=("-size 12 -weight bold"), bootstyle="info").pack(anchor=W)
+        ttk.Label(user_frame, text="Image Testing Mode", font=("-size 9"), bootstyle="secondary").pack(anchor=W)
+
+        session_frame = ttk.Labelframe(self.controls_panel, text="Session", padding=10)
+        session_frame.pack(fill=X, pady=5)
+        
+        self.session_status_label = ttk.Label(session_frame, text="Image Testing - No Sessions", font=("-size 9"), bootstyle="secondary")
+        self.session_status_label.pack(anchor=W, pady=2)
+        
+        ttk.Separator(self.controls_panel, orient=HORIZONTAL).pack(fill=X, pady=10)
         
         self.practice_stances = {
             "Crown Thrust": "crown_thrust_correct", "Left Chest Thrust": "left_chest_thrust_correct",
@@ -82,23 +100,21 @@ class TuroArnisGUI:
         self.form_button["menu"] = self.form_menu
         
         ttk.Separator(self.controls_panel, orient=HORIZONTAL).pack(fill=X, pady=15)
-        self.status_label = ttk.Label(self.controls_panel, text="Status: Select a form", font="Arial 12", wraplength=220, bootstyle="dark")
+        self.status_label = ttk.Label(self.controls_panel, text="Status: Select a form", font="-size 12", wraplength=220, bootstyle="dark")
         self.status_label.pack(fill=X, pady=5, anchor=W)
         
-        self.keras_status_label = ttk.Label(self.controls_panel, text="Keras: N/A (0.00)", font="Arial 10", bootstyle="warning")
+        self.keras_status_label = ttk.Label(self.controls_panel, text="Keras: N/A (0.00)", font="-size 10", bootstyle="warning")
         self.keras_status_label.pack(fill=X, pady=5, anchor=W)
-        
-        self.feedback_label = ttk.Label(self.controls_panel, text="", font="Arial 9", wraplength=220, bootstyle="dark", justify=LEFT)
-        self.feedback_label.pack(fill=X, pady=5, anchor=W)
         
         self.view_all_results_button = ttk.Button(self.controls_panel, text="View All Results", command=self.open_results_window, bootstyle="info")
         self.view_all_results_button.pack(fill=X, pady=10, side=BOTTOM)
 
+        # auto-select default pose
         if DEFAULT_TEST_POSE_PRETTY_NAME in self.practice_stances:
             self.target_form = self.practice_stances[DEFAULT_TEST_POSE_PRETTY_NAME]
             self.form_button.config(text=DEFAULT_TEST_POSE_PRETTY_NAME)
             self.status_label.config(text=f"Status: Analyzing '{DEFAULT_TEST_POSE_PRETTY_NAME}' (Image Test)")
-            print(f"[INFO] Targeting model class: '{self.target_form}'")
+            print(f"[INFO] targeting: '{self.target_form}'")
 
         self.is_running = True
         self.thread = threading.Thread(target=self.video_loop, daemon=True)
@@ -107,8 +123,24 @@ class TuroArnisGUI:
         self.window.protocol("WM_DELETE_WINDOW", self.on_closing)
         self.process_queue()
         
-        self.window.geometry(f"{int(self.screen_width * 0.8)}x{int(self.screen_height * 0.8)}")
+        width = int(self.screen_width * 0.8)
+        height = int(self.screen_height * 0.8)
+        self.window.geometry(f"{width}x{height}")
+        self.center_window(self.window, width, height)
+        
         self.window.mainloop()
+    
+    @staticmethod
+    def center_window(window, width=None, height=None):
+        window.update_idletasks()
+        if width is None or height is None:
+            width = window.winfo_width()
+            height = window.winfo_height()
+        screen_width = window.winfo_screenwidth()
+        screen_height = window.winfo_screenheight()
+        x = (screen_width // 2) - (width // 2)
+        y = (screen_height // 2) - (height // 2)
+        window.geometry(f"+{x}+{y}")
 
     def draw_text_with_bg(self, img, text, pos, font_face, font_scale, text_color, bg_color, thickness):
         (text_w, text_h), baseline = cv2.getTextSize(text, font_face, font_scale, thickness)
@@ -141,21 +173,24 @@ class TuroArnisGUI:
 
         while self.is_running:
             frame = self.static_image_original.copy()
-            processing_frame = cv2.resize(frame, (640, 480))
-            analysis_results = self.analyzer.process_frame(processing_frame)
             
+            frame = cv2.flip(frame, 1)
+            processing_frame = cv2.resize(frame, (640, 480))
+            
+            analysis_results = self.analyzer.process_frame(processing_frame)
             if analysis_results:
                 self.last_known_results = analysis_results
                 if analysis_results and len(analysis_results) > 0:
                     result = analysis_results[0]
-                    print(f"[DEBUG-MAIN] Analysis result stick_endpoints: {result.get('stick_endpoints')}")
+                    print(f"[DEBUG] stick_endpoints: {result.get('stick_endpoints')}")
 
-            keras_status_text = "Keras: N/A (0.00)"
-            feedback_text = ""
+            feedback_x = processing_frame.shape[1] - 270; feedback_y = 30
             
-            if self.last_known_results and len(self.last_known_results) > 0:
-                result = self.last_known_results[0] 
+            keras_status_text = "Keras: N/A (0.00)"
+            if self.last_known_results:
+                result = self.last_known_results[0]
                 predicted_class = result['predicted_class']
+                predicted_class = re.sub(r'^\d+\.\s*', '', predicted_class)
                 confidence = result['confidence']
                 pretty_class_name = predicted_class.replace('_correct', '').replace('_', ' ').title()
                 keras_status_text = f"Keras: {pretty_class_name} ({confidence:.2f})"
@@ -164,63 +199,90 @@ class TuroArnisGUI:
                 else: self.keras_status_label.config(bootstyle="danger")
             self.keras_status_label.config(text=keras_status_text)
             
-            if self.last_known_results and len(self.last_known_results) > 0:
-                result = self.last_known_results[0] 
+            if self.last_known_results:
+                result = self.last_known_results[0]
                 x1, y1, x2, y2 = result['bbox']
                 person_id = result['id']
                 
-                draw_color = COLOR_DEFAULT
-                box_color = COLOR_DEFAULT
-                is_correct = False
+                draw_color = COLOR_ERROR; box_color = COLOR_DEFAULT; is_correct = False
                 error_messages = []
 
                 if self.target_form:
                     predicted_class = result['predicted_class']
+                    predicted_class = re.sub(r'^\d+\.\s*', '', predicted_class)
                     confidence = result['confidence']
-                    live_angles = result['live_angles']
                     
-                    import re
-                    predicted_normalized = re.sub(r'^\d+\.\s*', '', predicted_class.strip())
-                    target_normalized = re.sub(r'^\d+\.\s*', '', self.target_form.strip())
-                    
-                    print(f"[DEBUG] Predicted: '{predicted_class}' -> '{predicted_normalized}'")
-                    print(f"[DEBUG] Target: '{self.target_form}' -> '{target_normalized}'")
-                    print(f"[DEBUG] Match: {predicted_normalized == target_normalized} | Confidence: {confidence:.2f}")
-                    
-                    if predicted_normalized == target_normalized and confidence > 0.60:
+                    if predicted_class.strip() == self.target_form.strip() and confidence > 0.60:
                         is_correct = True
                         draw_color = COLOR_CORRECT
-                        feedback_text = "✓ Perfect Form!"
-                        print(f"[DEBUG] Setting GREEN color")
+                        box_color = COLOR_CORRECT
+                        current_state = 'correct'
                     else:
-                        draw_color = COLOR_ERROR
-                        if confidence <= 0.60:
-                            feedback_text = "Low confidence - adjust pose"
-                        else:
-                            feedback_text = f"Wrong pose detected"
-                        print(f"[DEBUG] No match or low confidence - RED")
-                else:
-                    feedback_text = "Select a target form"
-                
-                self.feedback_label.config(text=feedback_text)
-                print(f"[DEBUG] Feedback: {feedback_text}")
+                        is_correct = False
+                        current_state = 'incorrect'
+                    
+                    # state transition tracking (logs only)
+                    if current_state != self.last_pose_state:
+                        if self.last_pose_state is not None and self.state_frame_count >= self.min_state_frames:
+                            if current_state == 'correct':
+                                print(f"[ATTEMPT] correct (from {self.last_pose_state})")
+                            elif self.last_pose_state == 'correct':
+                                print(f"[ATTEMPT] incorrect (from correct)")
+                        self.last_pose_state = current_state
+                        self.state_frame_count = 1
+                    else:
+                        self.state_frame_count += 1
                 
                 cv2.rectangle(processing_frame, (x1, y1), (x2, y2), box_color, 2)
                 
-                print(f"[DEBUG-DRAW] Checking stick_endpoints: {result.get('stick_endpoints')}")
                 if result['stick_endpoints']:
                     pt1, pt2 = result['stick_endpoints']
-                    print(f"[DEBUG-DRAW] ✓ Drawing stick line from {pt1} to {pt2}")
                     cv2.line(processing_frame, pt1, pt2, COLOR_PROMPT, 4)
-                else:
-                    print(f"[DEBUG-DRAW] ✗ No stick to draw")
 
-                self.draw_text_with_bg(img=processing_frame, text=f"User {person_id}", pos=(x1, y1 - 10), font_face=cv2.FONT_HERSHEY_SIMPLEX, font_scale=0.6, text_color=COLOR_BLACK, bg_color=COLOR_WHITE, thickness=2)
+                user_display_name = self.current_user['name'] if self.current_user else f"Person {person_id}"
+                self.draw_text_with_bg(img=processing_frame, text=user_display_name, pos=(x1, y1 - 10), font_face=cv2.FONT_HERSHEY_SIMPLEX, font_scale=0.9, text_color=COLOR_BLACK, bg_color=COLOR_WHITE, thickness=2)
 
-                if result['landmarks']:
-                    landmark_spec = self.analyzer.mp_drawing.DrawingSpec(color=draw_color, thickness=2, circle_radius=2)
-                    connection_spec = self.analyzer.mp_drawing.DrawingSpec(color=draw_color, thickness=2, circle_radius=2)
-                    self.analyzer.mp_drawing.draw_landmarks(processing_frame, result['landmarks'], self.analyzer.mp_pose.POSE_CONNECTIONS, landmark_drawing_spec=landmark_spec, connection_drawing_spec=connection_spec)
+                if result.get('landmarks_absolute'):
+                    landmarks_abs = result['landmarks_absolute']
+                    
+                    for idx, (lx, ly, lz) in enumerate(landmarks_abs):
+                        cv2.circle(processing_frame, (lx, ly), 2, draw_color, -1)
+                    
+                    pose_connections = self.analyzer.mp_pose.POSE_CONNECTIONS
+                    for connection in pose_connections:
+                        start_idx, end_idx = connection
+                        if start_idx < len(landmarks_abs) and end_idx < len(landmarks_abs):
+                            start_pt = (int(landmarks_abs[start_idx][0]), int(landmarks_abs[start_idx][1]))
+                            end_pt = (int(landmarks_abs[end_idx][0]), int(landmarks_abs[end_idx][1]))
+                            cv2.line(processing_frame, start_pt, end_pt, draw_color, 2)
+
+                if self.target_form:
+                    overlay = processing_frame.copy()
+                    cv2.rectangle(overlay, (feedback_x - 10, feedback_y - 20), (processing_frame.shape[1] - 10, feedback_y + 150), COLOR_BG_TRANSPARENT, -1)
+                    alpha = 0.6
+                    processing_frame = cv2.addWeighted(overlay, alpha, processing_frame, 1 - alpha, 0)
+                    
+                    if is_correct:
+                        cv2.putText(processing_frame, "Correct!", (feedback_x, feedback_y), cv2.FONT_HERSHEY_SIMPLEX, 0.7, COLOR_CORRECT, 2)
+                    else:
+                        error_display_list = []
+                        if result['grip_angle'] is not None:
+                            target_min, target_max = 80, 120 
+                            if not (target_min <= result['grip_angle'] <= target_max):
+                                feedback = "Extend stick" if result['grip_angle'] < target_min else "Retract stick"
+                                error_display_list.append(f"Grip: {feedback}")
+                        
+                        error_display_list.extend(error_messages)
+
+                        if error_display_list:
+                            cv2.putText(processing_frame, "Feedback:", (feedback_x, feedback_y), cv2.FONT_HERSHEY_SIMPLEX, 0.7, COLOR_PROMPT, 2)
+                            for i, msg in enumerate(error_display_list[:4]):
+                                cv2.putText(processing_frame, msg, (feedback_x, feedback_y + 30 + (i * 25)), cv2.FONT_HERSHEY_SIMPLEX, 0.6, COLOR_ERROR, 2)
+                        else:
+                            pretty_form_name = self.form_button.cget('text')
+                            if pretty_form_name != "Choose Arnis Form":
+                                cv2.putText(processing_frame, f"Adjust to Form:", (feedback_x, feedback_y), cv2.FONT_HERSHEY_SIMPLEX, 0.7, COLOR_PROMPT, 2)
+                                cv2.putText(processing_frame, pretty_form_name, (feedback_x, feedback_y + 30), cv2.FONT_HERSHEY_SIMPLEX, 0.6, COLOR_WHITE, 2)
             
             canvas_width = self.video_canvas.winfo_width(); canvas_height = self.video_canvas.winfo_height()
             final_frame = self.resize_and_pad(processing_frame, size=(canvas_width, canvas_height))
@@ -228,6 +290,8 @@ class TuroArnisGUI:
                 try: self.queue.get_nowait()
                 except queue.Empty: pass
             self.queue.put(final_frame)
+            
+            self.frame_counter += 1
             time.sleep(0.1)
 
     def process_queue(self):
@@ -241,27 +305,25 @@ class TuroArnisGUI:
         except queue.Empty: pass
         finally: self.window.after(30, self.process_queue)
 
-    def on_canvas_resize(self, event): self.process_queue() 
+    def on_canvas_resize(self, event):
+        self.process_queue() 
 
     def on_action_selected(self, pretty_name):
         self.target_form = self.practice_stances[pretty_name]
         self.form_button.config(text=pretty_name)
-        self.status_label.config(text=f"Status: Analyzing '{pretty_name}'")
-        print(f"[INFO] Targeting model class: '{self.target_form}'")
+        self.status_label.config(text=f"Status: Analyzing '{pretty_name}' (Image Test)")
+        print(f"[INFO] targeting: '{self.target_form}'")
     
-    def open_results_window(self): ResultsWindow(self.window)
+    def open_results_window(self):
+        from ttkbootstrap.dialogs import Messagebox
+        Messagebox.show_info("Image Testing Mode - No results database available", "Info")
     
     def on_closing(self):
-        print("[INFO] Closing application...")
+        print("[INFO] closing...")
         self.is_running = False
         time.sleep(0.5)
         self.analyzer.close()
         self.window.destroy()
-    
-    def on_user_selected(self, username):
-        self.current_user = username
-        self.user_button.config(text=username)
-        print(f"[INFO] Current user set to: {username}")
     
     def reset_feedback(self):
         self.target_form = None

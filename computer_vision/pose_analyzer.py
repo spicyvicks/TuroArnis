@@ -36,12 +36,17 @@ class PoseAnalyzer:
         else:
             print(f"[DEBUG-INIT] Stick detector NOT loaded - path is None or doesn't exist")
         
-        # Using Ultralytics built-in ByteTrack (more reliable than SORT)
+        # using ultralytics bytetrack
         self.use_builtin_tracking = True
-        self.track_history = {}  # Store track history for ByteTrack
+        self.track_history = {}
         self.id_mapping = {}
         self.next_stable_id = 1
-        print("[info] Using Ultralytics ByteTrack for person tracking")
+        print("[info] using bytetrack for person tracking")
+        
+        # stick keypoint smoothing buffer
+        self.stick_buffer = []
+        self.stick_buffer_size = 5
+        self.min_keypoint_confidence = 0.4
         
         self.mp_drawing = mp.solutions.drawing_utils
         self.mp_pose = mp.solutions.pose
@@ -159,13 +164,20 @@ class PoseAnalyzer:
                 grip_conf = kpts[0][2].item()
                 tip_conf = kpts[1][2].item()
                 
+                # confidence filtering
+                if grip_conf < self.min_keypoint_confidence or tip_conf < self.min_keypoint_confidence:
+                    if debug:
+                        print(f"[DEBUG-STICK] low confidence - grip: {grip_conf:.2f}, tip: {tip_conf:.2f}")
+                    return None, None
+                
+                # apply smoothing
+                smoothed = self._smooth_stick_keypoints(grip_point, tip_point)
+                if smoothed:
+                    grip_point, tip_point = smoothed
+                
                 if debug:
-                    print(f"[DEBUG-STICK] ✓ Grip keypoint: {grip_point} (conf: {grip_conf:.3f})")
-                    print(f"[DEBUG-STICK] ✓ Tip keypoint: {tip_point} (conf: {tip_conf:.3f})")
-                    stick_length = np.sqrt((tip_point[0] - grip_point[0])**2 + 
-                                         (tip_point[1] - grip_point[1])**2)
-                    print(f"[DEBUG-STICK] ✓ Stick length: {stick_length:.1f} pixels")
-                    print(f"[DEBUG-STICK] ✓ RETURNING stick_endpoints and bbox")
+                    print(f"[DEBUG-STICK] grip: {grip_point} (conf: {grip_conf:.2f})")
+                    print(f"[DEBUG-STICK] tip: {tip_point} (conf: {tip_conf:.2f})")
                 
                 return (grip_point, tip_point), stick_bbox
             else:
@@ -358,6 +370,48 @@ class PoseAnalyzer:
         dot_product = np.dot(ba, bc)
         magnitude = np.linalg.norm(ba) * np.linalg.norm(bc)
         return np.degrees(np.arccos(np.clip(dot_product / (magnitude + 1e-6), -1.0, 1.0)))
+
+    def _smooth_stick_keypoints(self, grip_point, tip_point):
+        # add to buffer
+        self.stick_buffer.append((grip_point, tip_point))
+        
+        # keep buffer at max size
+        if len(self.stick_buffer) > self.stick_buffer_size:
+            self.stick_buffer.pop(0)
+        
+        # need at least 2 points to smooth
+        if len(self.stick_buffer) < 2:
+            return grip_point, tip_point
+        
+        # average all points in buffer
+        avg_grip_x = int(np.mean([p[0][0] for p in self.stick_buffer]))
+        avg_grip_y = int(np.mean([p[0][1] for p in self.stick_buffer]))
+        avg_tip_x = int(np.mean([p[1][0] for p in self.stick_buffer]))
+        avg_tip_y = int(np.mean([p[1][1] for p in self.stick_buffer]))
+        
+        return (avg_grip_x, avg_grip_y), (avg_tip_x, avg_tip_y)
+    
+    def draw_stick_debug(self, frame, stick_endpoints, stick_bbox=None):
+        # draw debug overlay for stick detection
+        if stick_endpoints:
+            grip, tip = stick_endpoints
+            # draw keypoints
+            cv2.circle(frame, grip, 8, (0, 255, 0), -1)  # green = grip
+            cv2.circle(frame, tip, 8, (0, 0, 255), -1)   # red = tip
+            # draw line
+            cv2.line(frame, grip, tip, (255, 255, 0), 3)
+            # labels
+            cv2.putText(frame, "GRIP", (grip[0]-20, grip[1]-15), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+            cv2.putText(frame, "TIP", (tip[0]-15, tip[1]-15), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 2)
+        
+        if stick_bbox:
+            x1, y1, x2, y2 = stick_bbox
+            cv2.rectangle(frame, (x1, y1), (x2, y2), (255, 0, 255), 2)
+        
+        return frame
+
+    def clear_stick_buffer(self):
+        self.stick_buffer = []
 
     def reset_tracker(self):
         # Reset tracking by reinitializing the model (clears ByteTrack state)

@@ -14,8 +14,8 @@ from gui.results_window import ResultsWindow
 from computer_vision.pose_analyzer import PoseAnalyzer
 
 # image testing config
-TEST_IMAGE_PATH = 'Right Eye Thrust.jpg' 
-DEFAULT_TEST_POSE_PRETTY_NAME = "Right Eye Thrust"
+TEST_IMAGE_PATH = 'Left Temple Block.jpg' 
+DEFAULT_TEST_POSE_PRETTY_NAME = "Left Temple Block"
 
 class TuroArnisGUI:
     def __init__(self, window, window_title):
@@ -235,9 +235,9 @@ class TuroArnisGUI:
                 
                 cv2.rectangle(processing_frame, (x1, y1), (x2, y2), box_color, 2)
                 
+                # use debug overlay for stick in test mode
                 if result['stick_endpoints']:
-                    pt1, pt2 = result['stick_endpoints']
-                    cv2.line(processing_frame, pt1, pt2, COLOR_PROMPT, 4)
+                    self.analyzer.draw_stick_debug(processing_frame, result['stick_endpoints'])
 
                 user_display_name = self.current_user['name'] if self.current_user else f"Person {person_id}"
                 self.draw_text_with_bg(img=processing_frame, text=user_display_name, pos=(x1, y1 - 10), font_face=cv2.FONT_HERSHEY_SIMPLEX, font_scale=0.9, text_color=COLOR_BLACK, bg_color=COLOR_WHITE, thickness=2)

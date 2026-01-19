@@ -1,7 +1,7 @@
 # TuroArnis Training Features
-# Total: 35 features (Angle Mode)
+# Total: 32 features (Angle Mode)
 
-## JOINT ANGLES (16 features)
+## JOINT ANGLES (15 features)
 1.  left_elbow        - Left elbow bend angle
 2.  right_elbow       - Right elbow bend angle
 3.  left_shoulder     - Left shoulder angle (hip-shoulder-elbow)
@@ -18,7 +18,7 @@
 14. right_arm_raise   - Right arm raise from torso
 15. torso_lean        - Torso forward/backward lean
 
-## RELATIVE POSITIONS (19 features)
+## RELATIVE POSITIONS (17 features)
 
 ### Wrist relative to shoulder
 16. lwrist_rel_x      - Left wrist X offset from left shoulder
@@ -41,18 +41,6 @@
 29. rfoot_rel_y       - Right foot Y offset from hip center
 
 ### Body balance
-30. shoulder_tilt     - Shoulder left-right tilt (left_shoulder.y - right_shoulder.y)
-31. hip_tilt          - Hip left-right tilt (left_hip.y - right_hip.y)
+30. shoulder_tilt     - Shoulder left-right tilt
+31. hip_tilt          - Hip left-right tilt
 32. stance_width      - Distance between ankles (foot spread)
-
----
-
-# MediaPipe Landmark Reference
-# 11 = left_shoulder    12 = right_shoulder
-# 13 = left_elbow       14 = right_elbow
-# 15 = left_wrist       16 = right_wrist
-# 19 = left_index       20 = right_index (hand)
-# 23 = left_hip         24 = right_hip
-# 25 = left_knee        26 = right_knee
-# 27 = left_ankle       28 = right_ankle
-# 31 = left_foot_index  32 = right_foot_index

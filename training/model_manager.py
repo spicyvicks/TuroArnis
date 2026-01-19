@@ -235,7 +235,8 @@ def delete_model():
     print("\nSelect a model to delete:")
     for i, v in enumerate(versions, 1):
         is_active = " (ACTIVE)" if active and v['name'] == active['version'] else ""
-        print(f"  {i}. {v['name']}{is_active}")
+        acc = f"{v.get('test_accuracy', 0)*100:.1f}%" if v.get('test_accuracy') else "N/A"
+        print(f"  {i}. {v['name']} - {acc}{is_active}")
     
     try:
         choice = int(input("\nEnter number (0 to cancel): "))

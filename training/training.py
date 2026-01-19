@@ -35,7 +35,7 @@ def calculate_angle_3d(a, b, c):
     return np.degrees(np.arccos(np.clip(dot_product / magnitude, -1.0, 1.0)))
 
 def extract_angles_from_image(image_path):
-    """extract joint angles and key positions (~35 features)"""
+    """extract joint angles and key positions (33 features)"""
     global worker_pose_instance
     if worker_pose_instance is None:
         init_worker()
@@ -96,15 +96,18 @@ def extract_angles_from_image(image_path):
         left_foot_rel = [lm[31].x - hip_center[0], lm[31].y - hip_center[1]]
         right_foot_rel = [lm[32].x - hip_center[0], lm[32].y - hip_center[1]]
         
-        # body balance/tilt features (NEW)
+        # body balance/tilt features
         shoulder_tilt = lm[11].y - lm[12].y
         hip_tilt = lm[23].y - lm[24].y
         stance_width = abs(lm[27].x - lm[28].x)  # distance between ankles
         
+        # facing direction (positive = facing right, negative = facing left)
+        facing_direction = lm[11].z - lm[12].z  # left_shoulder.z - right_shoulder.z
+        
         features = (angles + left_wrist_rel + right_wrist_rel + 
                    left_hand_rel + right_hand_rel + 
                    left_foot_rel + right_foot_rel +
-                   [shoulder_tilt, hip_tilt, stance_width])
+                   [shoulder_tilt, hip_tilt, stance_width, facing_direction])
         return features
         
     except Exception:
@@ -261,9 +264,9 @@ if __name__ == "__main__":
                              'rwrist_rel_x', 'rwrist_rel_y', 'rwrist_rel_z',
                              'lhand_rel_x', 'lhand_rel_y', 'rhand_rel_x', 'rhand_rel_y',
                              'lfoot_rel_x', 'lfoot_rel_y', 'rfoot_rel_x', 'rfoot_rel_y',
-                             'shoulder_tilt', 'hip_tilt', 'stance_width']
+                             'shoulder_tilt', 'hip_tilt', 'stance_width', 'facing_direction']
             header = ['class'] + angle_names + position_names
-            print(f"\n[STAGE 1] Extracting ANGLE features (35 features)...")
+            print(f"\n[STAGE 1] Extracting ANGLE features (33 features)...")
         else:
             csv_output_file = os.path.join(project_root, 'arnis_poses_coordinates.csv')
             extraction_func = extract_coordinates_from_image
@@ -364,9 +367,9 @@ if __name__ == "__main__":
         print(f"\n[CRITICAL ERROR] Only {len(X)} sample(s) available. Need at least 2 for train_test_split. Cannot train.")
         sys.exit(1)
 
-    # proper 3-way split: train (60%), validation (20%), test (20%)
-    X_temp, X_test, y_temp, y_test = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
-    X_train, X_val, y_train, y_val = train_test_split(X_temp, y_temp, test_size=0.25, random_state=42, stratify=y_temp)
+    # data split: train (80%), validation (10%), test (10%)
+    X_temp, X_test, y_temp, y_test = train_test_split(X, y, test_size=0.1, random_state=42, stratify=y)
+    X_train, X_val, y_train, y_val = train_test_split(X_temp, y_temp, test_size=0.11, random_state=42, stratify=y_temp)
     
     print(f"  - Data split: {len(X_train)} train, {len(X_val)} val, {len(X_test)} test")
     
@@ -543,18 +546,37 @@ if __name__ == "__main__":
     with open(os.path.join(version_dir, 'metadata.json'), 'w') as f:
         json.dump(metadata, f, indent=2)
     
-    # set as active model
+    # set as active model only if accuracy is higher than current active
     active_model_path = os.path.join(models_dir, 'active_model.json')
-    active_config = {
-        'version': version_name,
-        'path': version_dir,
-        'model_path': model_save_path,
-        'encoder_path': encoder_path,
-        'scaler_path': scaler_path,
-        'set_at': datetime.now().isoformat()
-    }
-    with open(active_model_path, 'w') as f:
-        json.dump(active_config, f, indent=2)
+    
+    should_set_active = True
+    if os.path.exists(active_model_path):
+        with open(active_model_path, 'r') as f:
+            current_active = json.load(f)
+        # check if current active has higher accuracy
+        current_metadata_path = os.path.join(current_active['path'], 'metadata.json')
+        if os.path.exists(current_metadata_path):
+            with open(current_metadata_path, 'r') as f:
+                current_metadata = json.load(f)
+            current_acc = current_metadata.get('test_accuracy', 0)
+            if val_acc <= current_acc:
+                should_set_active = False
+                print(f"\n[INFO] New model accuracy ({val_acc*100:.2f}%) <= current active ({current_acc*100:.2f}%)")
+                print(f"[INFO] Keeping {current_active['version']} as active model")
+    
+    if should_set_active:
+        active_config = {
+            'version': version_name,
+            'path': version_dir,
+            'model_path': model_save_path,
+            'encoder_path': encoder_path,
+            'scaler_path': scaler_path,
+            'test_accuracy': float(val_acc),
+            'set_at': datetime.now().isoformat()
+        }
+        with open(active_model_path, 'w') as f:
+            json.dump(active_config, f, indent=2)
+        print(f"\n[INFO] Set as active model (highest accuracy: {val_acc*100:.2f}%)")
     
     # save to experiment folder
     exp.save_model(model_save_path, "final_model.keras")

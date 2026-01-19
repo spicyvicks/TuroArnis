@@ -61,22 +61,31 @@ class PoseAnalyzer:
         try:
             model_path = os.path.join(project_root, 'models', 'arnis_coordinates_classifier.keras')
             encoder_path = os.path.join(project_root, 'models', 'label_encoder.joblib')
+            scaler_path = os.path.join(project_root, 'models', 'scaler.joblib')
 
             if not os.path.exists(model_path) or not os.path.exists(encoder_path):
                 raise FileNotFoundError("Model or encoder file not found in the 'models' directory.")
 
             self.pose_classifier_model = tf.keras.models.load_model(model_path)
-
             self.label_encoder = joblib.load(encoder_path)
+            
+            # load scaler if available (for newer trained models)
+            if os.path.exists(scaler_path):
+                self.scaler = joblib.load(scaler_path)
+                print("[info] feature scaler loaded")
+            else:
+                self.scaler = None
+                print("[warning] no scaler found - using unscaled features")
             
             if not self.pose_classifier_model.optimizer:
                 self.pose_classifier_model.compile(optimizer='adam', loss='sparse_categorical_crossentropy', metrics=['accuracy'])
             
-            print("[info] Keras pose classification model and encoder loaded successfully.")
+            print("[info] keras pose classifier loaded")
         except Exception as e:
-            print(f"[critical] could not load Keras model or encoder: {e}")
+            print(f"[critical] could not load keras model: {e}")
             self.pose_classifier_model = None
             self.label_encoder = None
+            self.scaler = None
         
         self.detection_interval = detection_interval
         self.frame_count = 0
@@ -275,6 +284,11 @@ class PoseAnalyzer:
                         landmarks_np = np.array([[lm.x, lm.y, lm.z] for lm in world_landmarks])
                         hip_center = (landmarks_np[23] + landmarks_np[24]) / 2.0
                         coords = (landmarks_np - hip_center).flatten()
+                        
+                        # apply scaler if available
+                        if self.scaler is not None:
+                            coords = self.scaler.transform(coords.reshape(1, -1))[0]
+                        
                         pred_proba = self.pose_classifier_model.predict(np.expand_dims(coords, axis=0), verbose=0)[0]
                         pred_index = np.argmax(pred_proba)
                         confidence = pred_proba[pred_index]

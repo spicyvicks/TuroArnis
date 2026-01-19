@@ -7,7 +7,8 @@ import numpy as np
 import pandas as pd
 from tqdm import tqdm
 from multiprocessing import Pool, cpu_count
-from sklearn.model_selection import train_test_split 
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler
 
 worker_pose_instance = None
 
@@ -112,7 +113,7 @@ if __name__ == "__main__":
     project_root = os.path.dirname(current_dir)
     sys.path.append(project_root)
 
-    dataset_folder = os.path.join(project_root, 'dataset_multiclass_2')
+    dataset_folder = os.path.join(project_root, 'dataset')
     csv_output_file = os.path.join(project_root, 'arnis_poses_coordinates.csv')
     models_dir = os.path.join(project_root, 'models')
     model_save_path = os.path.join(models_dir, 'arnis_coordinates_classifier.keras')
@@ -227,8 +228,22 @@ if __name__ == "__main__":
         print(f"\n[CRITICAL ERROR] Only {len(X)} sample(s) available. Need at least 2 for train_test_split. Cannot train.")
         sys.exit(1)
 
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
-    print(f"  - Data split: {len(X_train)} for training, {len(X_test)} for testing.")
+    # proper 3-way split: train (60%), validation (20%), test (20%)
+    X_temp, X_test, y_temp, y_test = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
+    X_train, X_val, y_train, y_val = train_test_split(X_temp, y_temp, test_size=0.25, random_state=42, stratify=y_temp)
+    
+    print(f"  - Data split: {len(X_train)} train, {len(X_val)} val, {len(X_test)} test")
+    
+    # apply feature scaling (critical for neural networks)
+    scaler = StandardScaler()
+    X_train = scaler.fit_transform(X_train)
+    X_val = scaler.transform(X_val)
+    X_test = scaler.transform(X_test)
+    
+    # save scaler for inference
+    scaler_path = os.path.join(models_dir, 'scaler.joblib')
+    joblib.dump(scaler, scaler_path)
+    print(f"  - Feature scaler saved to: {scaler_path}")
 
     # Log experiment configuration
     exp.log_config({
@@ -324,12 +339,12 @@ if __name__ == "__main__":
     
     exp_logger = ExperimentLoggerCallback(exp)
     
-    print("\n  - Starting model training... (Progress will be shown for each epoch below)")
+    print("\n  - Starting model training...")
     history = model.fit(
         X_train, y_train,
         epochs=500,
-        batch_size=16,  
-        validation_data=(X_test, y_test),
+        batch_size=16,
+        validation_data=(X_val, y_val),  # use validation set, not test set
         callbacks=[es_callback, reduce_lr, exp_logger],
         verbose=1
     )
@@ -377,4 +392,5 @@ if __name__ == "__main__":
     print(f"\n[SUCCESS] Process complete.")
     print(f"  - Best Keras model saved to: {model_save_path}")
     print(f"  - Label encoder saved to: {encoder_path}")
+    print(f"  - Feature scaler saved to: {scaler_path}")
     print(f"  - Experiment tracked in: {exp.experiment_dir}")

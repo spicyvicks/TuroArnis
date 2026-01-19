@@ -8,3 +8,5 @@ build/TuroArnis/TuroArnis.pkg
 dist/TuroArnis.exe
 incorrect/
 /incorrect
+dataset_aug/
+/dataset_aug

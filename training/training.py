@@ -12,6 +12,10 @@ from sklearn.preprocessing import StandardScaler
 
 worker_pose_instance = None
 
+# feature extraction mode: 'coordinates' (99 features) or 'angles' (25 features)
+# can be set via environment variable or changed here
+FEATURE_MODE = os.environ.get('FEATURE_MODE', 'angles')
+
 def init_worker():
     global worker_pose_instance
     worker_pose_instance = mp.solutions.pose.Pose(
@@ -20,7 +24,94 @@ def init_worker():
         model_complexity=2
     )
 
+def calculate_angle_3d(a, b, c):
+    """calculate angle at point b given 3 points"""
+    a, b, c = np.array(a), np.array(b), np.array(c)
+    ba, bc = a - b, c - b
+    dot_product = np.dot(ba, bc)
+    magnitude = np.linalg.norm(ba) * np.linalg.norm(bc)
+    if magnitude == 0:
+        return 0
+    return np.degrees(np.arccos(np.clip(dot_product / magnitude, -1.0, 1.0)))
+
+def extract_angles_from_image(image_path):
+    """extract joint angles and key positions (~35 features)"""
+    global worker_pose_instance
+    if worker_pose_instance is None:
+        init_worker()
+        
+    image = cv2.imread(image_path)
+    if image is None: 
+        return None
+        
+    image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+    results = worker_pose_instance.process(image_rgb)
+    
+    if not results.pose_world_landmarks:
+        return None
+        
+    try:
+        lm = results.pose_world_landmarks.landmark
+        
+        # joint angles (16 angles)
+        angles = [
+            # elbows
+            calculate_angle_3d([lm[11].x, lm[11].y, lm[11].z], [lm[13].x, lm[13].y, lm[13].z], [lm[15].x, lm[15].y, lm[15].z]),  # left elbow
+            calculate_angle_3d([lm[12].x, lm[12].y, lm[12].z], [lm[14].x, lm[14].y, lm[14].z], [lm[16].x, lm[16].y, lm[16].z]),  # right elbow
+            # shoulders
+            calculate_angle_3d([lm[23].x, lm[23].y, lm[23].z], [lm[11].x, lm[11].y, lm[11].z], [lm[13].x, lm[13].y, lm[13].z]),  # left shoulder
+            calculate_angle_3d([lm[24].x, lm[24].y, lm[24].z], [lm[12].x, lm[12].y, lm[12].z], [lm[14].x, lm[14].y, lm[14].z]),  # right shoulder
+            # wrists
+            calculate_angle_3d([lm[13].x, lm[13].y, lm[13].z], [lm[15].x, lm[15].y, lm[15].z], [lm[19].x, lm[19].y, lm[19].z]),  # left wrist
+            calculate_angle_3d([lm[14].x, lm[14].y, lm[14].z], [lm[16].x, lm[16].y, lm[16].z], [lm[20].x, lm[20].y, lm[20].z]),  # right wrist
+            # hips
+            calculate_angle_3d([lm[11].x, lm[11].y, lm[11].z], [lm[23].x, lm[23].y, lm[23].z], [lm[25].x, lm[25].y, lm[25].z]),  # left hip
+            calculate_angle_3d([lm[12].x, lm[12].y, lm[12].z], [lm[24].x, lm[24].y, lm[24].z], [lm[26].x, lm[26].y, lm[26].z]),  # right hip
+            # knees
+            calculate_angle_3d([lm[23].x, lm[23].y, lm[23].z], [lm[25].x, lm[25].y, lm[25].z], [lm[27].x, lm[27].y, lm[27].z]),  # left knee
+            calculate_angle_3d([lm[24].x, lm[24].y, lm[24].z], [lm[26].x, lm[26].y, lm[26].z], [lm[28].x, lm[28].y, lm[28].z]),  # right knee
+            # ankles (NEW)
+            calculate_angle_3d([lm[25].x, lm[25].y, lm[25].z], [lm[27].x, lm[27].y, lm[27].z], [lm[31].x, lm[31].y, lm[31].z]),  # left ankle
+            calculate_angle_3d([lm[26].x, lm[26].y, lm[26].z], [lm[28].x, lm[28].y, lm[28].z], [lm[32].x, lm[32].y, lm[32].z]),  # right ankle
+            # arm-to-torso angles
+            calculate_angle_3d([lm[12].x, lm[12].y, lm[12].z], [lm[11].x, lm[11].y, lm[11].z], [lm[13].x, lm[13].y, lm[13].z]),  # left arm raise
+            calculate_angle_3d([lm[11].x, lm[11].y, lm[11].z], [lm[12].x, lm[12].y, lm[12].z], [lm[14].x, lm[14].y, lm[14].z]),  # right arm raise
+            # torso angle (NEW) - spine alignment
+            calculate_angle_3d([(lm[11].x+lm[12].x)/2, (lm[11].y+lm[12].y)/2, (lm[11].z+lm[12].z)/2], 
+                              [(lm[23].x+lm[24].x)/2, (lm[23].y+lm[24].y)/2, (lm[23].z+lm[24].z)/2],
+                              [(lm[23].x+lm[24].x)/2, (lm[23].y+lm[24].y)/2 + 0.1, (lm[23].z+lm[24].z)/2]),  # torso lean
+        ]
+        
+        # relative positions (19 features)
+        # wrist positions relative to shoulder
+        left_wrist_rel = [lm[15].x - lm[11].x, lm[15].y - lm[11].y, lm[15].z - lm[11].z]
+        right_wrist_rel = [lm[16].x - lm[12].x, lm[16].y - lm[12].y, lm[16].z - lm[12].z]
+        
+        # hand positions relative to hip center
+        hip_center = [(lm[23].x + lm[24].x)/2, (lm[23].y + lm[24].y)/2, (lm[23].z + lm[24].z)/2]
+        left_hand_rel = [lm[19].x - hip_center[0], lm[19].y - hip_center[1]]
+        right_hand_rel = [lm[20].x - hip_center[0], lm[20].y - hip_center[1]]
+        
+        # foot positions relative to hip center (NEW)
+        left_foot_rel = [lm[31].x - hip_center[0], lm[31].y - hip_center[1]]
+        right_foot_rel = [lm[32].x - hip_center[0], lm[32].y - hip_center[1]]
+        
+        # body balance/tilt features (NEW)
+        shoulder_tilt = lm[11].y - lm[12].y
+        hip_tilt = lm[23].y - lm[24].y
+        stance_width = abs(lm[27].x - lm[28].x)  # distance between ankles
+        
+        features = (angles + left_wrist_rel + right_wrist_rel + 
+                   left_hand_rel + right_hand_rel + 
+                   left_foot_rel + right_foot_rel +
+                   [shoulder_tilt, hip_tilt, stance_width])
+        return features
+        
+    except Exception:
+        return None
+
 def extract_coordinates_from_image(image_path):
+    """extract hip-centered coordinates (99 features)"""
     global worker_pose_instance
     if worker_pose_instance is None:
         init_worker()
@@ -157,13 +248,31 @@ if __name__ == "__main__":
     RUN_FEATURE_EXTRACTION = True 
 
     if RUN_FEATURE_EXTRACTION:
-        print("\n[STAGE 1] Starting Coordinate Feature Extraction...")
+        # set csv file and extraction function based on mode
+        if FEATURE_MODE == 'angles':
+            csv_output_file = os.path.join(project_root, 'arnis_poses_angles.csv')
+            extraction_func = extract_angles_from_image
+            # header for 35 angle features
+            angle_names = ['left_elbow', 'right_elbow', 'left_shoulder', 'right_shoulder',
+                          'left_wrist', 'right_wrist', 'left_hip', 'right_hip',
+                          'left_knee', 'right_knee', 'left_ankle', 'right_ankle',
+                          'left_arm_raise', 'right_arm_raise', 'torso_lean']
+            position_names = ['lwrist_rel_x', 'lwrist_rel_y', 'lwrist_rel_z',
+                             'rwrist_rel_x', 'rwrist_rel_y', 'rwrist_rel_z',
+                             'lhand_rel_x', 'lhand_rel_y', 'rhand_rel_x', 'rhand_rel_y',
+                             'lfoot_rel_x', 'lfoot_rel_y', 'rfoot_rel_x', 'rfoot_rel_y',
+                             'shoulder_tilt', 'hip_tilt', 'stance_width']
+            header = ['class'] + angle_names + position_names
+            print(f"\n[STAGE 1] Extracting ANGLE features (35 features)...")
+        else:
+            csv_output_file = os.path.join(project_root, 'arnis_poses_coordinates.csv')
+            extraction_func = extract_coordinates_from_image
+            header = ['class'] + [f'{ax}_{i}' for i in range(33) for ax in ['x', 'y', 'z']]
+            print(f"\n[STAGE 1] Extracting COORDINATE features (99 features)...")
         
         if not os.path.exists(dataset_folder):
             print(f"\n[ERROR] Dataset folder not found: {dataset_folder}")
             sys.exit(1)
-            
-        header = ['class'] + [f'{ax}_{i}' for i in range(33) for ax in ['x', 'y', 'z']]
         
         pose_classes = sorted([d for d in os.listdir(dataset_folder) if os.path.isdir(os.path.join(dataset_folder, d))])
         
@@ -187,33 +296,34 @@ if __name__ == "__main__":
         MAX_PROCESSES_CAP = 6  
         num_processes = max(1, min(cpu_count() - 1, MAX_PROCESSES_CAP))
         
-        print(f"  - Found {len(all_image_paths)} images.")
-        print(f"  - Using {num_processes} processes for extraction...")
+        print(f"  - Found {len(all_image_paths)} images")
+        print(f"  - Using {num_processes} processes")
+        print(f"  - Mode: {FEATURE_MODE.upper()}")
 
         with Pool(processes=num_processes, initializer=init_worker) as pool:
-            image_coords = pool.imap(extract_coordinates_from_image, all_image_paths)
-            results = list(tqdm(image_coords, total=len(all_image_paths), desc="  - Extracting Coordinates"))
+            features = pool.imap(extraction_func, all_image_paths)
+            results = list(tqdm(features, total=len(all_image_paths), desc="  - Extracting"))
 
         success_count = 0
         with open(csv_output_file, 'w', newline='') as f:
             writer = csv.writer(f)
             writer.writerow(header)
-            for i, coords in enumerate(results):
-                if coords:
+            for i, feat in enumerate(results):
+                if feat:
                     image_path = all_image_paths[i]
                     class_name = path_to_class_map[image_path]
-                    writer.writerow([class_name] + coords)
+                    writer.writerow([class_name] + feat)
                     success_count += 1
         
-        print(f"\n[SUCCESS] Coordinate extraction complete. {success_count} samples saved to CSV.")
+        print(f"\n[SUCCESS] Extracted {success_count} samples → {os.path.basename(csv_output_file)}")
         print("="*50)
         
         if success_count == 0:
-            print("[CRITICAL ERROR] No pose features were successfully extracted. Check if images are valid.")
+            print("[ERROR] No features extracted. Check images.")
             sys.exit(1)
             
     else:
-        print("\n[STAGE 1] Skipping coordinate extraction. Using existing CSV.")
+        print("\n[STAGE 1] Skipping extraction. Using existing CSV.")
         if not os.path.exists(csv_output_file):
             print(f"[ERROR] Skipping extraction but CSV file not found: {csv_output_file}")
             sys.exit(1)
@@ -265,6 +375,23 @@ if __name__ == "__main__":
     X_train = scaler.fit_transform(X_train)
     X_val = scaler.transform(X_val)
     X_test = scaler.transform(X_test)
+    
+    # coordinate-level augmentation 
+    # def augment_coordinates(X, y, noise_levels=[0.02, 0.05], copies=2):
+    #     """add slight noise to coordinates to increase variety"""
+    #     X_aug = [X]
+    #     y_aug = [y]
+    #     for _ in range(copies):
+    #         noise_level = np.random.choice(noise_levels)
+    #         noise = np.random.normal(0, noise_level, X.shape)
+    #         X_noisy = X + noise
+    #         X_aug.append(X_noisy)
+    #         y_aug.append(y)
+    #     return np.vstack(X_aug), np.hstack(y_aug)
+    
+    # X_train_orig_size = len(X_train)
+    # X_train, y_train = augment_coordinates(X_train, y_train)
+    # print(f"  - Coordinate augmentation: {X_train_orig_size} → {len(X_train)} samples")
     
     # save scaler for inference
     joblib.dump(scaler, scaler_path)
@@ -402,6 +529,7 @@ if __name__ == "__main__":
     metadata = {
         'version': version_name,
         'trained_at': datetime.now().isoformat(),
+        'feature_mode': FEATURE_MODE,  # 'angles' or 'coordinates'
         'test_accuracy': float(val_acc),
         'test_loss': float(val_loss),
         'num_classes': num_classes,

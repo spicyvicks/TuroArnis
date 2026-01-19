@@ -106,16 +106,37 @@ def list_models():
 
 def train_new_model():
     """train a new model version"""
-    print("\n[INFO] Starting model training...")
+    print("\n" + "="*40)
+    print("   TRAIN NEW MODEL")
+    print("="*40)
+    
+    # ask for feature mode
+    print("\nSelect feature extraction mode:")
+    print("  1. Angles (25 features) - joint angles + positions")
+    print("  2. Coordinates (99 features) - raw landmark coordinates")
+    
+    mode_choice = input("\nEnter choice (1 or 2) [default=1]: ").strip()
+    
+    if mode_choice == '2':
+        feature_mode = 'coordinates'
+    else:
+        feature_mode = 'angles'
+    
+    print(f"\n[INFO] Using {feature_mode.upper()} mode")
     print("[INFO] Running training script...\n")
     
     import subprocess
     training_script = os.path.join(current_dir, 'training.py')
     
-    # run training.py as subprocess
+    # set feature mode via environment variable
+    env = os.environ.copy()
+    env['FEATURE_MODE'] = feature_mode
+    
+    # run training.py as subprocess with mode
     result = subprocess.run(
         [sys.executable, training_script],
-        cwd=project_root
+        cwd=project_root,
+        env=env
     )
     
     if result.returncode == 0:

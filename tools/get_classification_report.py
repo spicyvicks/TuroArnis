@@ -22,14 +22,29 @@ def generate_classification_report():
     
     current_dir = os.path.dirname(os.path.abspath(__file__))
     project_root = os.path.dirname(current_dir)
+    models_dir = os.path.join(project_root, 'models')
+    active_model_file = os.path.join(models_dir, 'active_model.json')
     
-    model_path = os.path.join(project_root, 'models', 'arnis_coordinates_classifier.keras')
-    encoder_path = os.path.join(project_root, 'models', 'label_encoder.joblib')
+    # try to load from active_model.json (new versioned system)
+    if os.path.exists(active_model_file):
+        import json
+        with open(active_model_file, 'r') as f:
+            active_config = json.load(f)
+        model_path = active_config['model_path']
+        encoder_path = active_config['encoder_path']
+        version_dir = active_config['path']
+        print(f"[INFO] Using model version: {active_config['version']}")
+    else:
+        # fallback to legacy paths
+        model_path = os.path.join(models_dir, 'arnis_coordinates_classifier.keras')
+        encoder_path = os.path.join(models_dir, 'label_encoder.joblib')
+        version_dir = models_dir
+        print("[INFO] Using legacy model paths")
+    
     data_path = os.path.join(project_root, 'arnis_poses_coordinates.csv')
-    report_save_path = os.path.join(project_root, 'models', 'classification_report.txt')
+    report_save_path = os.path.join(version_dir, 'classification_report.txt')
     
     print("[INFO] Loading model and encoder...")
-    # patch InputLayer for keras version compatibility
     patch_input_layer()
     
     try:

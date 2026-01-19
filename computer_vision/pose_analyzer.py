@@ -59,23 +59,38 @@ class PoseAnalyzer:
         )
 
         try:
-            model_path = os.path.join(project_root, 'models', 'arnis_coordinates_classifier.keras')
-            encoder_path = os.path.join(project_root, 'models', 'label_encoder.joblib')
-            scaler_path = os.path.join(project_root, 'models', 'scaler.joblib')
+            models_dir = os.path.join(project_root, 'models')
+            active_model_file = os.path.join(models_dir, 'active_model.json')
+            
+            # try to load from active_model.json (new versioned system)
+            if os.path.exists(active_model_file):
+                import json
+                with open(active_model_file, 'r') as f:
+                    active_config = json.load(f)
+                model_path = active_config['model_path']
+                encoder_path = active_config['encoder_path']
+                scaler_path = active_config.get('scaler_path')
+                print(f"[info] using model version: {active_config['version']}")
+            else:
+                # fallback to legacy paths
+                model_path = os.path.join(models_dir, 'arnis_coordinates_classifier.keras')
+                encoder_path = os.path.join(models_dir, 'label_encoder.joblib')
+                scaler_path = os.path.join(models_dir, 'scaler.joblib')
+                print("[info] using legacy model paths")
 
             if not os.path.exists(model_path) or not os.path.exists(encoder_path):
-                raise FileNotFoundError("Model or encoder file not found in the 'models' directory.")
+                raise FileNotFoundError("model or encoder not found")
 
             self.pose_classifier_model = tf.keras.models.load_model(model_path)
             self.label_encoder = joblib.load(encoder_path)
             
-            # load scaler if available (for newer trained models)
-            if os.path.exists(scaler_path):
+            # load scaler if available
+            if scaler_path and os.path.exists(scaler_path):
                 self.scaler = joblib.load(scaler_path)
                 print("[info] feature scaler loaded")
             else:
                 self.scaler = None
-                print("[warning] no scaler found - using unscaled features")
+                print("[warning] no scaler found")
             
             if not self.pose_classifier_model.optimizer:
                 self.pose_classifier_model.compile(optimizer='adam', loss='sparse_categorical_crossentropy', metrics=['accuracy'])

@@ -1,0 +1,8 @@
+{
+  "version": "v001_20260119_130958",
+  "path": "c:\\Users\\HP\\Documents\\GitHub\\TuroArnis\\models\\v001_20260119_130958",
+  "model_path": "c:\\Users\\HP\\Documents\\GitHub\\TuroArnis\\models\\v001_20260119_130958\\model.keras",
+  "encoder_path": "c:\\Users\\HP\\Documents\\GitHub\\TuroArnis\\models\\v001_20260119_130958\\label_encoder.joblib",
+  "scaler_path": "c:\\Users\\HP\\Documents\\GitHub\\TuroArnis\\models\\v001_20260119_130958\\scaler.joblib",
+  "set_at": "2026-01-19T13:12:07.065941"
+}

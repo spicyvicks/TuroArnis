@@ -116,10 +116,36 @@ if __name__ == "__main__":
     dataset_folder = os.path.join(project_root, 'dataset')
     csv_output_file = os.path.join(project_root, 'arnis_poses_coordinates.csv')
     models_dir = os.path.join(project_root, 'models')
-    model_save_path = os.path.join(models_dir, 'arnis_coordinates_classifier.keras')
-    encoder_path = os.path.join(models_dir, 'label_encoder.joblib')
-
+    
+    # versioned model saving
+    from datetime import datetime
+    import json
+    
+    def get_next_version():
+        existing = [d for d in os.listdir(models_dir) if os.path.isdir(os.path.join(models_dir, d)) and d.startswith('v')]
+        if not existing:
+            return 1
+        versions = []
+        for d in existing:
+            try:
+                versions.append(int(d.split('_')[0][1:]))
+            except:
+                pass
+        return max(versions) + 1 if versions else 1
+    
     os.makedirs(models_dir, exist_ok=True)
+    
+    version_num = get_next_version()
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    version_name = f"v{version_num:03d}_{timestamp}"
+    version_dir = os.path.join(models_dir, version_name)
+    os.makedirs(version_dir, exist_ok=True)
+    
+    model_save_path = os.path.join(version_dir, 'model.keras')
+    encoder_path = os.path.join(version_dir, 'label_encoder.joblib')
+    scaler_path = os.path.join(version_dir, 'scaler.joblib')
+    
+    print(f"\n[INFO] Training version: {version_name}")
     
     # Initialize experiment tracking
     exp = CustomExperimentManager(
@@ -241,9 +267,8 @@ if __name__ == "__main__":
     X_test = scaler.transform(X_test)
     
     # save scaler for inference
-    scaler_path = os.path.join(models_dir, 'scaler.joblib')
     joblib.dump(scaler, scaler_path)
-    print(f"  - Feature scaler saved to: {scaler_path}")
+    print(f"  - Feature scaler saved")
 
     # Log experiment configuration
     exp.log_config({
@@ -354,7 +379,7 @@ if __name__ == "__main__":
     print("      FINAL EVALUATION AND SAVING")
     print("="*50)
     val_loss, val_acc = model.evaluate(X_test, y_test, verbose=0)
-    print(f"\nFinal Model Accuracy on Test Set: {val_acc:.4f}\n")
+    print(f"\nFinal Model Accuracy on Test Set: {val_acc*100:.2f}%\n")
 
     y_pred_proba = model.predict(X_test)
     y_pred = np.argmax(y_pred_proba, axis=1)
@@ -363,34 +388,62 @@ if __name__ == "__main__":
     print(classification_report(y_test, y_pred, target_names=class_names, zero_division=0))
     
     print("\n[INFO] Generating and saving evaluation plots...")
-    history_plot_path = os.path.join(models_dir, 'training_history.png')
+    history_plot_path = os.path.join(version_dir, 'training_history.png')
     plot_training_history(history, history_plot_path, plt)
     
-    cm_plot_path = os.path.join(models_dir, 'confusion_matrix.png')
+    cm_plot_path = os.path.join(version_dir, 'confusion_matrix.png')
     plot_confusion_matrix(y_test, y_pred, class_names, cm_plot_path, plt, sns, confusion_matrix)
 
     print("\n[INFO] Saving final model and label encoder...")
     model.save(model_save_path)
     joblib.dump(label_encoder, encoder_path)
     
-    # Save to experiment folder
+    # save metadata
+    metadata = {
+        'version': version_name,
+        'trained_at': datetime.now().isoformat(),
+        'test_accuracy': float(val_acc),
+        'test_loss': float(val_loss),
+        'num_classes': num_classes,
+        'num_features': num_features,
+        'train_samples': len(X_train),
+        'val_samples': len(X_val),
+        'test_samples': len(X_test),
+        'epochs_trained': len(history.history['accuracy']),
+        'class_names': class_names
+    }
+    with open(os.path.join(version_dir, 'metadata.json'), 'w') as f:
+        json.dump(metadata, f, indent=2)
+    
+    # set as active model
+    active_model_path = os.path.join(models_dir, 'active_model.json')
+    active_config = {
+        'version': version_name,
+        'path': version_dir,
+        'model_path': model_save_path,
+        'encoder_path': encoder_path,
+        'scaler_path': scaler_path,
+        'set_at': datetime.now().isoformat()
+    }
+    with open(active_model_path, 'w') as f:
+        json.dump(active_config, f, indent=2)
+    
+    # save to experiment folder
     exp.save_model(model_save_path, "final_model.keras")
     exp.save_model(encoder_path, "label_encoder.joblib")
     exp.save_artifact(history_plot_path, subfolder="plots")
     exp.save_artifact(cm_plot_path, subfolder="plots")
     
-    # Add final notes
-    exp.add_note(f"Final test accuracy: {val_acc:.4f}")
+    exp.add_note(f"Final test accuracy: {val_acc*100:.2f}%")
     exp.add_note(f"Total epochs trained: {len(history.history['accuracy'])}")
     
-    # Finalize experiment
     exp.finalize(
         status="completed",
         notes=f"Achieved {val_acc:.2%} accuracy on test set with {num_classes} classes"
     )
 
-    print(f"\n[SUCCESS] Process complete.")
-    print(f"  - Best Keras model saved to: {model_save_path}")
-    print(f"  - Label encoder saved to: {encoder_path}")
-    print(f"  - Feature scaler saved to: {scaler_path}")
-    print(f"  - Experiment tracked in: {exp.experiment_dir}")
+    print(f"\n[SUCCESS] Training complete!")
+    print(f"  - Version: {version_name}")
+    print(f"  - Accuracy: {val_acc:.2%}")
+    print(f"  - Model saved to: {version_dir}")
+    print(f"  - Set as active model")

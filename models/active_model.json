@@ -1,8 +1,9 @@
 {
-  "version": "v006_20260119_163249",
-  "path": "c:\\Users\\HP\\Documents\\GitHub\\TuroArnis\\models\\v006_20260119_163249",
-  "model_path": "c:\\Users\\HP\\Documents\\GitHub\\TuroArnis\\models\\v006_20260119_163249\\model.keras",
-  "encoder_path": "c:\\Users\\HP\\Documents\\GitHub\\TuroArnis\\models\\v006_20260119_163249\\label_encoder.joblib",
-  "scaler_path": "c:\\Users\\HP\\Documents\\GitHub\\TuroArnis\\models\\v006_20260119_163249\\scaler.joblib",
-  "set_at": "2026-01-19T22:21:03.321156"
+  "version": "v008_20260120_223936",
+  "path": "c:\\Users\\HP\\Documents\\GitHub\\TuroArnis\\models\\v008_20260120_223936",
+  "model_path": "c:\\Users\\HP\\Documents\\GitHub\\TuroArnis\\models\\v008_20260120_223936\\model.keras",
+  "encoder_path": "c:\\Users\\HP\\Documents\\GitHub\\TuroArnis\\models\\v008_20260120_223936\\label_encoder.joblib",
+  "scaler_path": "c:\\Users\\HP\\Documents\\GitHub\\TuroArnis\\models\\v008_20260120_223936\\scaler.joblib",
+  "test_accuracy": 0.5507518649101257,
+  "set_at": "2026-01-20T23:21:31.658500"
 }

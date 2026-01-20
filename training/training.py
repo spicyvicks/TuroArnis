@@ -207,8 +207,8 @@ if __name__ == "__main__":
     project_root = os.path.dirname(current_dir)
     sys.path.append(project_root)
 
-    dataset_folder = os.path.join(project_root, 'dataset')
-    csv_output_file = os.path.join(project_root, 'arnis_poses_coordinates.csv')
+    dataset_folder = os.path.join(project_root, 'dataset_aug')
+    csv_output_file = os.path.join(project_root, 'arnis_poses_coordinates_aug.csv')
     models_dir = os.path.join(project_root, 'models')
     
     # versioned model saving

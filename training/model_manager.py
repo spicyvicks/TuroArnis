@@ -110,9 +110,56 @@ def train_new_model():
     print("   TRAIN NEW MODEL")
     print("="*40)
     
-    # ask for feature mode
+    # ask for architecture
+    print("\nSelect model architecture:")
+    print("  1. DNN (Dense Neural Network) - current default")
+    print("  2. Random Forest - often better for tabular data")
+    print("  3. XGBoost - gradient boosting, often best accuracy")
+    
+    arch_choice = input("\nEnter choice (1-3) [default=1]: ").strip()
+    
+    if arch_choice == '2':
+        # Random Forest
+        print("\n[INFO] Training Random Forest...")
+        from training_alt import train_random_forest
+        csv_path = os.path.join(project_root, 'arnis_poses_angles.csv')
+        models_dir = os.path.join(project_root, 'models')
+        
+        if not os.path.exists(csv_path):
+            print(f"[ERROR] CSV not found: {csv_path}")
+            print("[INFO] Run DNN training first to extract features.")
+            return
+        
+        acc, version = train_random_forest(csv_path, models_dir)
+        if acc:
+            print(f"\n[OK] Random Forest training complete! Accuracy: {acc*100:.2f}%")
+        return
+        
+    elif arch_choice == '3':
+        # XGBoost
+        print("\n[INFO] Training XGBoost...")
+        from training_alt import train_xgboost, HAS_XGBOOST
+        
+        if not HAS_XGBOOST:
+            print("[ERROR] XGBoost not installed. Run: pip install xgboost")
+            return
+            
+        csv_path = os.path.join(project_root, 'arnis_poses_angles.csv')
+        models_dir = os.path.join(project_root, 'models')
+        
+        if not os.path.exists(csv_path):
+            print(f"[ERROR] CSV not found: {csv_path}")
+            print("[INFO] Run DNN training first to extract features.")
+            return
+        
+        acc, version = train_xgboost(csv_path, models_dir)
+        if acc:
+            print(f"\n[OK] XGBoost training complete! Accuracy: {acc*100:.2f}%")
+        return
+    
+    # DNN training (default)
     print("\nSelect feature extraction mode:")
-    print("  1. Angles (25 features) - joint angles + positions")
+    print("  1. Angles (33 features) - joint angles + positions")
     print("  2. Coordinates (99 features) - raw landmark coordinates")
     
     mode_choice = input("\nEnter choice (1 or 2) [default=1]: ").strip()
@@ -122,7 +169,7 @@ def train_new_model():
     else:
         feature_mode = 'angles'
     
-    print(f"\n[INFO] Using {feature_mode.upper()} mode")
+    print(f"\n[INFO] Using DNN with {feature_mode.upper()} mode")
     print("[INFO] Running training script...\n")
     
     import subprocess

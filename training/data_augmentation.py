@@ -6,7 +6,7 @@ import numpy as np
 from tqdm import tqdm
 
 # configuration
-INPUT_DATASET_FOLDER = "crop"
+INPUT_DATASET_FOLDER = "dataset"
 OUTPUT_DATASET_FOLDER = "dataset_aug"
 IMAGES_PER_ORIGINAL = 15  # increased from 10
 

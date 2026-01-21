@@ -118,11 +118,37 @@ def train_new_model():
     
     arch_choice = input("\nEnter choice (1-3) [default=1]: ").strip()
     
+    # ask for model name and feature mode (for RF and XGBoost)
+    model_name = None
+    feature_mode = 'angles'
+    if arch_choice in ['2', '3']:
+        # feature mode selection
+        print("\nSelect feature mode:")
+        print("  1. Angles (33 features) - joint angles + positions")
+        print("  2. Coordinates (99 features) - raw landmark coordinates")
+        mode_choice = input("Enter choice (1 or 2) [default=1]: ").strip()
+        if mode_choice == '2':
+            feature_mode = 'coordinates'
+        
+        # model name
+        print("\nEnter a name for this model (for organization):")
+        print("  Examples: 'test1', 'aug_data', 'final'")
+        model_name = input("Name (or press Enter to skip): ").strip()
+        if model_name:
+            model_name = model_name.replace(' ', '_').replace('-', '_')
+            model_name = ''.join(c for c in model_name if c.isalnum() or c == '_')
+    
+    # set csv path based on feature mode
+    if feature_mode == 'coordinates':
+        csv_filename = 'arnis_poses_coordinates.csv'
+    else:
+        csv_filename = 'arnis_poses_angles.csv'
+    
     if arch_choice == '2':
         # Random Forest
-        print("\n[INFO] Training Random Forest...")
+        print(f"\n[INFO] Training Random Forest with {feature_mode.upper()} features...")
         from training_alt import train_random_forest
-        csv_path = os.path.join(project_root, 'arnis_poses_angles.csv')
+        csv_path = os.path.join(project_root, csv_filename)
         models_dir = os.path.join(project_root, 'models')
         
         if not os.path.exists(csv_path):
@@ -130,21 +156,21 @@ def train_new_model():
             print("[INFO] Run DNN training first to extract features.")
             return
         
-        acc, version = train_random_forest(csv_path, models_dir)
+        acc, version = train_random_forest(csv_path, models_dir, model_name)
         if acc:
             print(f"\n[OK] Random Forest training complete! Accuracy: {acc*100:.2f}%")
         return
         
     elif arch_choice == '3':
         # XGBoost
-        print("\n[INFO] Training XGBoost...")
+        print(f"\n[INFO] Training XGBoost with {feature_mode.upper()} features...")
         from training_alt import train_xgboost, HAS_XGBOOST
         
         if not HAS_XGBOOST:
             print("[ERROR] XGBoost not installed. Run: pip install xgboost")
             return
             
-        csv_path = os.path.join(project_root, 'arnis_poses_angles.csv')
+        csv_path = os.path.join(project_root, csv_filename)
         models_dir = os.path.join(project_root, 'models')
         
         if not os.path.exists(csv_path):
@@ -152,7 +178,7 @@ def train_new_model():
             print("[INFO] Run DNN training first to extract features.")
             return
         
-        acc, version = train_xgboost(csv_path, models_dir)
+        acc, version = train_xgboost(csv_path, models_dir, model_name)
         if acc:
             print(f"\n[OK] XGBoost training complete! Accuracy: {acc*100:.2f}%")
         return

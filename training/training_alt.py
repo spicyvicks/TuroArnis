@@ -39,7 +39,7 @@ def get_next_version(models_dir):
             pass
     return max(versions) + 1 if versions else 1
 
-def train_random_forest(csv_path, models_dir):
+def train_random_forest(csv_path, models_dir, model_name=None):
     """train random forest classifier"""
     print("\n" + "="*50)
     print("  RANDOM FOREST TRAINING")
@@ -71,34 +71,71 @@ def train_random_forest(csv_path, models_dir):
     X_val = scaler.transform(X_val)
     X_test = scaler.transform(X_test)
     
-    # hyperparameters (good defaults for pose classification)
-    model = RandomForestClassifier(
-        n_estimators=200,       # number of trees
-        max_depth=20,           # prevent overfitting
-        min_samples_split=5,    # minimum samples to split
-        min_samples_leaf=2,     # minimum samples in leaf
-        max_features='sqrt',    # features per split
-        class_weight='balanced', # handle imbalanced classes
+    # combine train and val for grid search
+    X_train_full = np.vstack([X_train, X_val])
+    y_train_full = np.hstack([y_train, y_val])
+    
+    # enhanced hyperparameters with grid search
+    from sklearn.model_selection import GridSearchCV
+    
+    # base model
+    rf_base = RandomForestClassifier(
         random_state=42,
-        n_jobs=-1               # use all cores
+        n_jobs=-1,
+        class_weight='balanced',
+        oob_score=True,                # out-of-bag score
+        bootstrap=True                 # use bootstrap sampling
     )
     
-    print("\n  Training Random Forest...")
-    model.fit(X_train, y_train)
+    # parameter grid for tuning
+    param_grid = {
+        'n_estimators': [200, 300, 500],
+        'max_depth': [10, 15, 20, 25, None],
+        'min_samples_split': [2, 5, 10],
+        'min_samples_leaf': [1, 2, 4],
+        'max_features': ['sqrt', 'log2', 0.3],
+        'criterion': ['gini', 'entropy']
+    }
     
-    # evaluate
-    train_acc = accuracy_score(y_train, model.predict(X_train))
-    val_acc = accuracy_score(y_val, model.predict(X_val))
+    print("\n  Performing Grid Search (this may take a while)...")
+    print(f"  Testing {np.prod([len(v) for v in param_grid.values()])} parameter combinations")
+    
+    # grid search with cross-validation
+    grid_search = GridSearchCV(
+        rf_base,
+        param_grid,
+        cv=3,                          # 3-fold cross validation
+        scoring='accuracy',
+        n_jobs=-1,
+        verbose=1
+    )
+    
+    grid_search.fit(X_train_full, y_train_full)
+    
+    print(f"\n  Best parameters found:")
+    for param, value in grid_search.best_params_.items():
+        print(f"    {param}: {value}")
+    print(f"  Best CV Score: {grid_search.best_score_*100:.2f}%")
+    
+    # use best model
+    model = grid_search.best_estimator_
+    
+    # evaluate on test set (not used in grid search)
+    train_acc = accuracy_score(y_train_full, model.predict(X_train_full))
     test_acc = accuracy_score(y_test, model.predict(X_test))
+    val_acc = grid_search.best_score_  # use CV score as val
     
     print(f"\n  Train Accuracy: {train_acc*100:.2f}%")
-    print(f"  Val Accuracy:   {val_acc*100:.2f}%")
+    print(f"  CV Accuracy:    {val_acc*100:.2f}%")
     print(f"  Test Accuracy:  {test_acc*100:.2f}%")
     
     # save model
     version_num = get_next_version(models_dir)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    version_name = f"v{version_num:03d}_{timestamp}"
+    if model_name:
+        version_name = f"v{version_num:03d}_{model_name}_rf"
+    else:
+        version_name = f"v{version_num:03d}_{timestamp}_rf"
     version_dir = os.path.join(models_dir, version_name)
     os.makedirs(version_dir, exist_ok=True)
     
@@ -137,7 +174,7 @@ def train_random_forest(csv_path, models_dir):
     return test_acc, version_name
 
 
-def train_xgboost(csv_path, models_dir):
+def train_xgboost(csv_path, models_dir, model_name=None):
     """train xgboost classifier"""
     if not HAS_XGBOOST:
         print("\n[ERROR] XGBoost not installed. Run: pip install xgboost")
@@ -167,50 +204,85 @@ def train_xgboost(csv_path, models_dir):
     
     print(f"  Split: {len(X_train)} train, {len(X_val)} val, {len(X_test)} test")
     
-    # scale features (XGBoost doesn't need scaling but helps consistency)
+    # scale features
     scaler = StandardScaler()
     X_train = scaler.fit_transform(X_train)
     X_val = scaler.transform(X_val)
     X_test = scaler.transform(X_test)
     
-    # hyperparameters (good defaults for pose classification)
-    model = xgb.XGBClassifier(
-        n_estimators=200,       # number of boosting rounds
-        max_depth=6,            # tree depth (lower = less overfit)
-        learning_rate=0.1,      # step size
-        subsample=0.8,          # sample ratio per tree
-        colsample_bytree=0.8,   # feature ratio per tree
-        min_child_weight=3,     # minimum sum of instance weight
-        gamma=0.1,              # minimum loss reduction
-        reg_alpha=0.1,          # L1 regularization
-        reg_lambda=1.0,         # L2 regularization
+    # combine train and val for grid search
+    X_train_full = np.vstack([X_train, X_val])
+    y_train_full = np.hstack([y_train, y_val])
+    
+    # enhanced hyperparameters with grid search
+    from sklearn.model_selection import GridSearchCV
+    
+    # base model
+    xgb_base = xgb.XGBClassifier(
         objective='multi:softmax',
         num_class=len(class_names),
         random_state=42,
         n_jobs=-1,
-        verbosity=0
+        verbosity=0,
+        use_label_encoder=False,
+        eval_metric='mlogloss'
     )
     
-    print("\n  Training XGBoost...")
-    model.fit(
-        X_train, y_train,
-        eval_set=[(X_val, y_val)],
-        verbose=False
+    # parameter grid for tuning
+    param_grid = {
+        'n_estimators': [200, 300, 500],
+        'max_depth': [4, 6, 8, 10],
+        'learning_rate': [0.01, 0.05, 0.1, 0.2],
+        'subsample': [0.7, 0.8, 0.9],
+        'colsample_bytree': [0.7, 0.8, 0.9],
+        'min_child_weight': [1, 3, 5],
+        'gamma': [0, 0.1, 0.2],
+        'reg_alpha': [0, 0.1, 0.5],
+        'reg_lambda': [0.5, 1.0, 2.0]
+    }
+    
+    # use RandomizedSearchCV for faster tuning (full grid is too large)
+    from sklearn.model_selection import RandomizedSearchCV
+    
+    print("\n  Performing Randomized Search (testing 100 combinations)...")
+    
+    random_search = RandomizedSearchCV(
+        xgb_base,
+        param_grid,
+        n_iter=100,                    # test 100 random combinations
+        cv=3,                          # 3-fold cross validation
+        scoring='accuracy',
+        n_jobs=-1,
+        verbose=1,
+        random_state=42
     )
     
-    # evaluate
-    train_acc = accuracy_score(y_train, model.predict(X_train))
-    val_acc = accuracy_score(y_val, model.predict(X_val))
+    random_search.fit(X_train_full, y_train_full)
+    
+    print(f"\n  Best parameters found:")
+    for param, value in random_search.best_params_.items():
+        print(f"    {param}: {value}")
+    print(f"  Best CV Score: {random_search.best_score_*100:.2f}%")
+    
+    # use best model
+    model = random_search.best_estimator_
+    
+    # evaluate on test set
+    train_acc = accuracy_score(y_train_full, model.predict(X_train_full))
+    val_acc = random_search.best_score_
     test_acc = accuracy_score(y_test, model.predict(X_test))
     
     print(f"\n  Train Accuracy: {train_acc*100:.2f}%")
-    print(f"  Val Accuracy:   {val_acc*100:.2f}%")
+    print(f"  CV Accuracy:    {val_acc*100:.2f}%")
     print(f"  Test Accuracy:  {test_acc*100:.2f}%")
     
     # save model
     version_num = get_next_version(models_dir)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    version_name = f"v{version_num:03d}_{timestamp}"
+    if model_name:
+        version_name = f"v{version_num:03d}_{model_name}_xgb"
+    else:
+        version_name = f"v{version_num:03d}_{timestamp}_xgb"
     version_dir = os.path.join(models_dir, version_name)
     os.makedirs(version_dir, exist_ok=True)
     

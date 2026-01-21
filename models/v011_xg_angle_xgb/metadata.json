@@ -1,0 +1,29 @@
+{
+  "version": "v011_xg_angle_xgb",
+  "model_type": "xgboost",
+  "trained_at": "2026-01-21T11:29:36.284273",
+  "test_accuracy": 0.6137218045112782,
+  "val_accuracy": 0.6176470588235294,
+  "num_classes": 12,
+  "num_features": 33,
+  "train_samples": 8521,
+  "class_names": [
+    "crown_thrust_correct",
+    "left_chest_thrust_correct",
+    "left_elbow_block_correct",
+    "left_eye_thrust_correct",
+    "left_knee_block_correct",
+    "left_temple_block_correct",
+    "right_chest_thrust_correct",
+    "right_elbow_block_correct",
+    "right_eye_thrust_correct",
+    "right_knee_block_correct",
+    "right_temple_block_correct",
+    "solar_plexus_thrust_correct"
+  ],
+  "hyperparameters": {
+    "n_estimators": 200,
+    "max_depth": 6,
+    "learning_rate": 0.1
+  }
+}

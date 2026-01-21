@@ -1,0 +1,27 @@
+{
+  "version": "v010_20260121_090842",
+  "trained_at": "2026-01-21T10:39:17.491452",
+  "feature_mode": "coordinates",
+  "test_accuracy": 0.5046992301940918,
+  "test_loss": 1.3885111808776855,
+  "num_classes": 12,
+  "num_features": 99,
+  "train_samples": 8521,
+  "val_samples": 1054,
+  "test_samples": 1064,
+  "epochs_trained": 359,
+  "class_names": [
+    "crown_thrust_correct",
+    "left_chest_thrust_correct",
+    "left_elbow_block_correct",
+    "left_eye_thrust_correct",
+    "left_knee_block_correct",
+    "left_temple_block_correct",
+    "right_chest_thrust_correct",
+    "right_elbow_block_correct",
+    "right_eye_thrust_correct",
+    "right_knee_block_correct",
+    "right_temple_block_correct",
+    "solar_plexus_thrust_correct"
+  ]
+}

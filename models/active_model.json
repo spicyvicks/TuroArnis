@@ -1,10 +1,10 @@
 {
-  "version": "v011_xg_angle_xgb",
-  "path": "c:\\Users\\HP\\Documents\\GitHub\\TuroArnis\\models\\v011_xg_angle_xgb",
-  "model_path": "c:\\Users\\HP\\Documents\\GitHub\\TuroArnis\\models\\v011_xg_angle_xgb\\model_xgb.joblib",
-  "model_type": "xgboost",
-  "encoder_path": "c:\\Users\\HP\\Documents\\GitHub\\TuroArnis\\models\\v011_xg_angle_xgb\\label_encoder.joblib",
-  "scaler_path": "c:\\Users\\HP\\Documents\\GitHub\\TuroArnis\\models\\v011_xg_angle_xgb\\scaler.joblib",
-  "test_accuracy": 0.6137218045112782,
-  "set_at": "2026-01-21T11:29:36.286356"
+  "version": "v013_rf_angle_rf",
+  "path": "c:\\Users\\HP\\Documents\\GitHub\\TuroArnis\\models\\v013_rf_angle_rf",
+  "model_path": "c:\\Users\\HP\\Documents\\GitHub\\TuroArnis\\models\\v013_rf_angle_rf\\model_rf.joblib",
+  "model_type": "random_forest",
+  "encoder_path": "c:\\Users\\HP\\Documents\\GitHub\\TuroArnis\\models\\v013_rf_angle_rf\\label_encoder.joblib",
+  "scaler_path": "c:\\Users\\HP\\Documents\\GitHub\\TuroArnis\\models\\v013_rf_angle_rf\\scaler.joblib",
+  "test_accuracy": 0.6710526315789473,
+  "set_at": "2026-01-21T12:34:40.843728"
 }

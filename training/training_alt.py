@@ -87,13 +87,13 @@ def train_random_forest(csv_path, models_dir, model_name=None):
         bootstrap=True                 # use bootstrap sampling
     )
     
-    # parameter grid for tuning
+    # parameter grid for tuning (reduced for faster training)
     param_grid = {
-        'n_estimators': [200, 300, 500],
-        'max_depth': [10, 15, 20, 25, None],
-        'min_samples_split': [2, 5, 10],
-        'min_samples_leaf': [1, 2, 4],
-        'max_features': ['sqrt', 'log2', 0.3],
+        'n_estimators': [200, 400],
+        'max_depth': [15, 25],
+        'min_samples_split': [2, 5],
+        'min_samples_leaf': [1, 2],
+        'max_features': ['sqrt', 'log2'],
         'criterion': ['gini', 'entropy']
     }
     
@@ -228,28 +228,28 @@ def train_xgboost(csv_path, models_dir, model_name=None):
         eval_metric='mlogloss'
     )
     
-    # parameter grid for tuning
+    # parameter grid for tuning (reduced for faster training)
     param_grid = {
-        'n_estimators': [200, 300, 500],
-        'max_depth': [4, 6, 8, 10],
-        'learning_rate': [0.01, 0.05, 0.1, 0.2],
-        'subsample': [0.7, 0.8, 0.9],
-        'colsample_bytree': [0.7, 0.8, 0.9],
-        'min_child_weight': [1, 3, 5],
-        'gamma': [0, 0.1, 0.2],
-        'reg_alpha': [0, 0.1, 0.5],
-        'reg_lambda': [0.5, 1.0, 2.0]
+        'n_estimators': [200, 400],
+        'max_depth': [4, 6, 8],
+        'learning_rate': [0.05, 0.1],
+        'subsample': [0.8, 0.9],
+        'colsample_bytree': [0.8, 0.9],
+        'min_child_weight': [1, 3],
+        'gamma': [0, 0.1],
+        'reg_alpha': [0, 0.1],
+        'reg_lambda': [0.5, 1.0]
     }
     
-    # use RandomizedSearchCV for faster tuning (full grid is too large)
+    # use RandomizedSearchCV for faster tuning
     from sklearn.model_selection import RandomizedSearchCV
     
-    print("\n  Performing Randomized Search (testing 100 combinations)...")
+    print("\n  Performing Randomized Search (testing 30 combinations)...")
     
     random_search = RandomizedSearchCV(
         xgb_base,
         param_grid,
-        n_iter=100,                    # test 100 random combinations
+        n_iter=30,                     # reduced from 100 for speed
         cv=3,                          # 3-fold cross validation
         scoring='accuracy',
         n_jobs=-1,

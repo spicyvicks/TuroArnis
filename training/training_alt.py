@@ -228,28 +228,28 @@ def train_xgboost(csv_path, models_dir, model_name=None):
         eval_metric='mlogloss'
     )
     
-    # parameter grid for tuning (reduced for faster training)
+    # parameter grid for tuning (expanded for better search)
     param_grid = {
-        'n_estimators': [200, 400],
-        'max_depth': [4, 6, 8],
-        'learning_rate': [0.05, 0.1],
-        'subsample': [0.8, 0.9],
-        'colsample_bytree': [0.8, 0.9],
-        'min_child_weight': [1, 3],
-        'gamma': [0, 0.1],
-        'reg_alpha': [0, 0.1],
-        'reg_lambda': [0.5, 1.0]
+        'n_estimators': [200, 300, 400, 500],
+        'max_depth': [3, 4, 5, 6, 8, 10],
+        'learning_rate': [0.01, 0.05, 0.1, 0.15],
+        'subsample': [0.7, 0.8, 0.9, 1.0],
+        'colsample_bytree': [0.6, 0.7, 0.8, 0.9],
+        'min_child_weight': [1, 2, 3, 5],
+        'gamma': [0, 0.05, 0.1, 0.2],
+        'reg_alpha': [0, 0.01, 0.1, 0.5],
+        'reg_lambda': [0.5, 1.0, 1.5, 2.0]
     }
     
     # use RandomizedSearchCV for faster tuning
     from sklearn.model_selection import RandomizedSearchCV
     
-    print("\n  Performing Randomized Search (testing 30 combinations)...")
+    print("\n  Performing Randomized Search (testing 60 combinations)...")
     
     random_search = RandomizedSearchCV(
         xgb_base,
         param_grid,
-        n_iter=30,                     # reduced from 100 for speed
+        n_iter=60,                     # increased from 30
         cv=3,                          # 3-fold cross validation
         scoring='accuracy',
         n_jobs=-1,

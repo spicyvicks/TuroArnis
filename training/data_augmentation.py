@@ -6,8 +6,8 @@ import numpy as np
 from tqdm import tqdm
 
 # configuration
-INPUT_DATASET_FOLDER = "dataset"
-OUTPUT_DATASET_FOLDER = "dataset_aug"
+INPUT_DATASET_FOLDER = "archive"
+OUTPUT_DATASET_FOLDER = "archive_aug"
 IMAGES_PER_ORIGINAL = 15  # increased from 10
 
 def get_pose_augmentation_pipeline():

@@ -118,25 +118,18 @@ def train_new_model():
     
     arch_choice = input("\nEnter choice (1-3) [default=1]: ").strip()
     
-    # ask for model name and feature mode (for RF and XGBoost)
+    # common settings for all architectures
     model_name = None
     feature_mode = 'angles'
-    if arch_choice in ['2', '3']:
-        # feature mode selection
-        print("\nSelect feature mode:")
-        print("  1. Angles (33 features) - joint angles + positions")
-        print("  2. Coordinates (99 features) - raw landmark coordinates")
-        mode_choice = input("Enter choice (1 or 2) [default=1]: ").strip()
-        if mode_choice == '2':
-            feature_mode = 'coordinates'
-        
-        # model name
-        print("\nEnter a name for this model (for organization):")
-        print("  Examples: 'test1', 'aug_data', 'final'")
-        model_name = input("Name (or press Enter to skip): ").strip()
-        if model_name:
-            model_name = model_name.replace(' ', '_').replace('-', '_')
-            model_name = ''.join(c for c in model_name if c.isalnum() or c == '_')
+    do_extraction = False
+    
+    # feature mode selection (for all architectures)
+    print("\nSelect feature mode:")
+    print("  1. Angles (33 features) - joint angles + positions")
+    print("  2. Coordinates (99 features) - raw landmark coordinates")
+    mode_choice = input("Enter choice (1 or 2) [default=1]: ").strip()
+    if mode_choice == '2':
+        feature_mode = 'coordinates'
     
     # set csv path based on feature mode
     if feature_mode == 'coordinates':
@@ -144,17 +137,48 @@ def train_new_model():
     else:
         csv_filename = 'arnis_poses_angles.csv'
     
+    csv_path = os.path.join(project_root, csv_filename)
+    
+    # check if CSV exists and ask about extraction
+    if os.path.exists(csv_path):
+        print(f"\n[INFO] Found existing CSV: {csv_filename}")
+        print("  1. Use existing CSV (skip extraction)")
+        print("  2. Re-extract features from images")
+        extract_choice = input("Enter choice (1 or 2) [default=1]: ").strip()
+        if extract_choice == '2':
+            do_extraction = True
+    else:
+        print(f"\n[INFO] CSV not found: {csv_filename}")
+        print("[INFO] Will extract features from images...")
+        do_extraction = True
+    
+    # model name (for RF and XGBoost)
+    if arch_choice in ['2', '3']:
+        print("\nEnter a name for this model (for organization):")
+        print("  Examples: 'test1', 'aug_data', 'final'")
+        model_name = input("Name (or press Enter to skip): ").strip()
+        if model_name:
+            model_name = model_name.replace(' ', '_').replace('-', '_')
+            model_name = ''.join(c for c in model_name if c.isalnum() or c == '_')
+    
+    # perform extraction if needed
+    if do_extraction:
+        from feature_extraction import extract_features_from_dataset
+        dataset_path = os.path.join(project_root, 'dataset_aug')
+        
+        if not os.path.exists(dataset_path):
+            print(f"[ERROR] Dataset folder not found: {dataset_path}")
+            return
+        
+        extract_features_from_dataset(dataset_path, csv_path, feature_mode)
+    
+    models_dir = os.path.join(project_root, 'models')
+    os.makedirs(models_dir, exist_ok=True)
+    
     if arch_choice == '2':
         # Random Forest
         print(f"\n[INFO] Training Random Forest with {feature_mode.upper()} features...")
         from training_alt import train_random_forest
-        csv_path = os.path.join(project_root, csv_filename)
-        models_dir = os.path.join(project_root, 'models')
-        
-        if not os.path.exists(csv_path):
-            print(f"[ERROR] CSV not found: {csv_path}")
-            print("[INFO] Run DNN training first to extract features.")
-            return
         
         acc, version = train_random_forest(csv_path, models_dir, model_name)
         if acc:
@@ -169,14 +193,6 @@ def train_new_model():
         if not HAS_XGBOOST:
             print("[ERROR] XGBoost not installed. Run: pip install xgboost")
             return
-            
-        csv_path = os.path.join(project_root, csv_filename)
-        models_dir = os.path.join(project_root, 'models')
-        
-        if not os.path.exists(csv_path):
-            print(f"[ERROR] CSV not found: {csv_path}")
-            print("[INFO] Run DNN training first to extract features.")
-            return
         
         acc, version = train_xgboost(csv_path, models_dir, model_name)
         if acc:
@@ -184,17 +200,6 @@ def train_new_model():
         return
     
     # DNN training (default)
-    print("\nSelect feature extraction mode:")
-    print("  1. Angles (33 features) - joint angles + positions")
-    print("  2. Coordinates (99 features) - raw landmark coordinates")
-    
-    mode_choice = input("\nEnter choice (1 or 2) [default=1]: ").strip()
-    
-    if mode_choice == '2':
-        feature_mode = 'coordinates'
-    else:
-        feature_mode = 'angles'
-    
     print(f"\n[INFO] Using DNN with {feature_mode.upper()} mode")
     print("[INFO] Running training script...\n")
     

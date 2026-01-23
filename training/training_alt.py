@@ -13,6 +13,43 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.preprocessing import LabelEncoder, StandardScaler
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score, classification_report, confusion_matrix
+from tqdm import tqdm
+import threading
+
+
+class GridSearchProgress:
+    """Thread-safe progress tracker for GridSearchCV/RandomizedSearchCV"""
+    def __init__(self, total_fits, desc="Grid Search"):
+        self.total = total_fits
+        self.pbar = tqdm(total=total_fits, desc=f"  {desc}", 
+                         bar_format='{desc}: {percentage:3.0f}%|{bar:30}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}]')
+        self.count = 0
+        self._lock = threading.Lock()  # Thread-safe lock for n_jobs > 1
+    
+    def update(self):
+        with self._lock:
+            self.count += 1
+            self.pbar.update(1)
+    
+    def close(self):
+        self.pbar.close()
+
+
+# Global progress tracker
+_progress_tracker = None
+
+
+def _scoring_with_progress(estimator, X, y):
+    """Custom scoring function that updates progress bar (thread-safe)
+    
+    Note: This function has the signature (estimator, X, y) which means it
+    should be passed directly to GridSearchCV, NOT wrapped with make_scorer.
+    """
+    global _progress_tracker
+    score = accuracy_score(y, estimator.predict(X))
+    if _progress_tracker:
+        _progress_tracker.update()
+    return score
 
 # optional: xgboost
 try:
@@ -76,6 +113,7 @@ def train_random_forest(csv_path, models_dir, model_name=None):
     y_train_full = np.hstack([y_train, y_val])
     
     # enhanced hyperparameters with grid search
+    global _progress_tracker
     from sklearn.model_selection import GridSearchCV
     
     # base model
@@ -87,30 +125,43 @@ def train_random_forest(csv_path, models_dir, model_name=None):
         bootstrap=True                 # use bootstrap sampling
     )
     
-    # parameter grid for tuning (reduced for faster training)
+    # parameter grid for tuning (48 combinations)
     param_grid = {
-        'n_estimators': [200, 400],
-        'max_depth': [15, 25],
-        'min_samples_split': [2, 5],
-        'min_samples_leaf': [1, 2],
-        'max_features': ['sqrt', 'log2'],
-        'criterion': ['gini', 'entropy']
+        'n_estimators': [200, 300, 400, 500],   # 4 options
+        'max_depth': [10, 15, 20],              # 3 options
+        'min_samples_split': [2, 5],            # 2 options
+        'min_samples_leaf': [1, 2],             # 2 options
+        'criterion': ['gini', 'entropy']        # 2 options
     }
+    # Total: 4 × 3 × 2 × 2 × 2 = 96 combinations × 3 folds = 288 fits
     
-    print("\n  Performing Grid Search (this may take a while)...")
-    print(f"  Testing {np.prod([len(v) for v in param_grid.values()])} parameter combinations")
+    # calculate total fits for progress bar
+    n_combinations = np.prod([len(v) for v in param_grid.values()])
+    cv_folds = 3
+    total_fits = n_combinations * cv_folds  # 24 × 3 = 72 fits
     
-    # grid search with cross-validation
+    print("\n  Performing Grid Search...")
+    print(f"  Testing {n_combinations} parameter combinations ({total_fits} total fits)")
+    print()
+    
+    # initialize progress tracker
+    _progress_tracker = GridSearchProgress(total_fits, desc="RF Grid Search")
+    
+    # grid search with cross-validation and progress tracking
     grid_search = GridSearchCV(
         rf_base,
         param_grid,
-        cv=3,                          # 3-fold cross validation
-        scoring='accuracy',
-        n_jobs=-1,
-        verbose=1
+        cv=cv_folds,
+        scoring=_scoring_with_progress,  # custom scorer with progress
+        n_jobs=2,                         # parallelism with thread-safe progress
+        verbose=0                         # disable default verbose
     )
     
-    grid_search.fit(X_train_full, y_train_full)
+    try:
+        grid_search.fit(X_train_full, y_train_full)
+    finally:
+        _progress_tracker.close()
+        _progress_tracker = None
     
     print(f"\n  Best parameters found:")
     for param, value in grid_search.best_params_.items():
@@ -215,7 +266,8 @@ def train_xgboost(csv_path, models_dir, model_name=None):
     y_train_full = np.hstack([y_train, y_val])
     
     # enhanced hyperparameters with grid search
-    from sklearn.model_selection import GridSearchCV
+    global _progress_tracker
+    from sklearn.model_selection import GridSearchCV, RandomizedSearchCV
     
     # base model
     xgb_base = xgb.XGBClassifier(
@@ -241,23 +293,34 @@ def train_xgboost(csv_path, models_dir, model_name=None):
         'reg_lambda': [0.5, 1.0, 1.5, 2.0]
     }
     
-    # use RandomizedSearchCV for faster tuning
-    from sklearn.model_selection import RandomizedSearchCV
+    # calculate total fits for progress bar
+    n_iter = 100
+    cv_folds = 3
+    total_fits = n_iter * cv_folds  # 100 × 3 = 300 fits
     
-    print("\n  Performing Randomized Search (testing 60 combinations)...")
+    print("\n  Performing Randomized Search...")
+    print(f"  Testing {n_iter} random combinations ({total_fits} total fits)")
+    print()
+    
+    # initialize progress tracker
+    _progress_tracker = GridSearchProgress(total_fits, desc="XGB Random Search")
     
     random_search = RandomizedSearchCV(
         xgb_base,
         param_grid,
-        n_iter=60,                     # increased from 30
-        cv=3,                          # 3-fold cross validation
-        scoring='accuracy',
-        n_jobs=-1,
-        verbose=1,
+        n_iter=n_iter,
+        cv=cv_folds,
+        scoring=_scoring_with_progress,  # custom scorer with progress
+        n_jobs=2,                         # parallelism with thread-safe progress
+        verbose=0,                        # disable default verbose
         random_state=42
     )
     
-    random_search.fit(X_train_full, y_train_full)
+    try:
+        random_search.fit(X_train_full, y_train_full)
+    finally:
+        _progress_tracker.close()
+        _progress_tracker = None
     
     print(f"\n  Best parameters found:")
     for param, value in random_search.best_params_.items():

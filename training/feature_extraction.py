@@ -32,7 +32,7 @@ def calculate_angle_3d(a, b, c):
     return np.degrees(np.arccos(np.clip(dot_product / magnitude, -1.0, 1.0)))
 
 def extract_angles_from_image(image_path):
-    """extract joint angles and key positions (33 features)"""
+    """extract joint angles and key positions (54 features - expanded)"""
     global worker_pose_instance
     if worker_pose_instance is None:
         init_worker()
@@ -50,7 +50,7 @@ def extract_angles_from_image(image_path):
     try:
         lm = results.pose_world_landmarks.landmark
         
-        # joint angles (15 angles)
+        # ===== JOINT ANGLES (15 angles) =====
         angles = [
             # elbows
             calculate_angle_3d([lm[11].x, lm[11].y, lm[11].z], [lm[13].x, lm[13].y, lm[13].z], [lm[15].x, lm[15].y, lm[15].z]),
@@ -79,7 +79,19 @@ def extract_angles_from_image(image_path):
                               [(lm[23].x+lm[24].x)/2, (lm[23].y+lm[24].y)/2 + 0.1, (lm[23].z+lm[24].z)/2]),
         ]
         
-        # relative positions (18 features)
+        # ===== CROSS-BODY ANGLES (4 new) =====
+        cross_body_angles = [
+            # left hand relative to right shoulder plane
+            calculate_angle_3d([lm[12].x, lm[12].y, lm[12].z], [lm[11].x, lm[11].y, lm[11].z], [lm[15].x, lm[15].y, lm[15].z]),
+            # right hand relative to left shoulder plane
+            calculate_angle_3d([lm[11].x, lm[11].y, lm[11].z], [lm[12].x, lm[12].y, lm[12].z], [lm[16].x, lm[16].y, lm[16].z]),
+            # diagonal: left shoulder to right hip to right knee
+            calculate_angle_3d([lm[11].x, lm[11].y, lm[11].z], [lm[24].x, lm[24].y, lm[24].z], [lm[26].x, lm[26].y, lm[26].z]),
+            # diagonal: right shoulder to left hip to left knee
+            calculate_angle_3d([lm[12].x, lm[12].y, lm[12].z], [lm[23].x, lm[23].y, lm[23].z], [lm[25].x, lm[25].y, lm[25].z]),
+        ]
+        
+        # ===== RELATIVE POSITIONS (18 features - original) =====
         left_wrist_rel = [lm[15].x - lm[11].x, lm[15].y - lm[11].y, lm[15].z - lm[11].z]
         right_wrist_rel = [lm[16].x - lm[12].x, lm[16].y - lm[12].y, lm[16].z - lm[12].z]
         
@@ -95,10 +107,52 @@ def extract_angles_from_image(image_path):
         stance_width = abs(lm[27].x - lm[28].x)
         facing_direction = lm[11].z - lm[12].z
         
-        features = (angles + left_wrist_rel + right_wrist_rel + 
-                   left_hand_rel + right_hand_rel + 
-                   left_foot_rel + right_foot_rel +
-                   [shoulder_tilt, hip_tilt, stance_width, facing_direction])
+        # ===== DISTANCE FEATURES (8 new) =====
+        # hand-to-hand distance (important for blocking/striking)
+        hand_distance = np.sqrt((lm[19].x - lm[20].x)**2 + (lm[19].y - lm[20].y)**2 + (lm[19].z - lm[20].z)**2)
+        # wrist-to-wrist distance
+        wrist_distance = np.sqrt((lm[15].x - lm[16].x)**2 + (lm[15].y - lm[16].y)**2 + (lm[15].z - lm[16].z)**2)
+        # arm extension (wrist to hip)
+        left_arm_extension = np.sqrt((lm[15].x - lm[23].x)**2 + (lm[15].y - lm[23].y)**2)
+        right_arm_extension = np.sqrt((lm[16].x - lm[24].x)**2 + (lm[16].y - lm[24].y)**2)
+        # elbow to hip center
+        left_elbow_dist = np.sqrt((lm[13].x - hip_center[0])**2 + (lm[13].y - hip_center[1])**2)
+        right_elbow_dist = np.sqrt((lm[14].x - hip_center[0])**2 + (lm[14].y - hip_center[1])**2)
+        # knee spread
+        knee_distance = np.sqrt((lm[25].x - lm[26].x)**2 + (lm[25].y - lm[26].y)**2)
+        # foot spread (3D)
+        foot_distance = np.sqrt((lm[31].x - lm[32].x)**2 + (lm[31].y - lm[32].y)**2 + (lm[31].z - lm[32].z)**2)
+        
+        distances = [hand_distance, wrist_distance, left_arm_extension, right_arm_extension,
+                    left_elbow_dist, right_elbow_dist, knee_distance, foot_distance]
+        
+        # ===== SYMMETRY FEATURES (5 new) =====
+        elbow_symmetry = angles[0] - angles[1]  # left - right elbow angle diff
+        shoulder_symmetry = angles[2] - angles[3]  # shoulder angle diff
+        knee_symmetry = angles[8] - angles[9]  # knee angle diff
+        arm_raise_symmetry = angles[12] - angles[13]  # arm raise diff
+        wrist_height_diff = lm[15].y - lm[16].y  # wrist height difference
+        
+        symmetry = [elbow_symmetry, shoulder_symmetry, knee_symmetry, arm_raise_symmetry, wrist_height_diff]
+        
+        # ===== BODY PROPORTIONS (4 new) =====
+        arm_span = abs(lm[15].x - lm[16].x)
+        body_height = abs(lm[0].y - (lm[27].y + lm[28].y)/2)
+        arm_to_height_ratio = arm_span / (body_height + 0.001)  # avoid division by zero
+        stance_depth = abs(lm[27].z - lm[28].z)  # front-back foot difference
+        
+        proportions = [arm_span, body_height, arm_to_height_ratio, stance_depth]
+        
+        # ===== COMBINE ALL FEATURES (54 total) =====
+        features = (angles +                    # 15 features
+                   cross_body_angles +          # 4 features
+                   left_wrist_rel + right_wrist_rel +  # 6 features
+                   left_hand_rel + right_hand_rel +    # 4 features
+                   left_foot_rel + right_foot_rel +    # 4 features
+                   [shoulder_tilt, hip_tilt, stance_width, facing_direction] +  # 4 features
+                   distances +                  # 8 features
+                   symmetry +                   # 5 features
+                   proportions)                 # 4 features
         return features
         
     except Exception:
@@ -151,16 +205,29 @@ def extract_features_from_dataset(dataset_path, csv_output_path, feature_mode='a
     
     if feature_mode == 'angles':
         extraction_func = extract_angles_from_image
+        # 15 joint angles
         angle_names = ['left_elbow', 'right_elbow', 'left_shoulder', 'right_shoulder',
                       'left_wrist', 'right_wrist', 'left_hip', 'right_hip',
                       'left_knee', 'right_knee', 'left_ankle', 'right_ankle',
                       'left_arm_raise', 'right_arm_raise', 'torso_lean']
+        # 4 cross-body angles
+        cross_body_names = ['cross_left_hand', 'cross_right_hand', 'diagonal_left', 'diagonal_right']
+        # 18 relative positions
         position_names = ['lwrist_rel_x', 'lwrist_rel_y', 'lwrist_rel_z',
                          'rwrist_rel_x', 'rwrist_rel_y', 'rwrist_rel_z',
                          'lhand_rel_x', 'lhand_rel_y', 'rhand_rel_x', 'rhand_rel_y',
                          'lfoot_rel_x', 'lfoot_rel_y', 'rfoot_rel_x', 'rfoot_rel_y',
                          'shoulder_tilt', 'hip_tilt', 'stance_width', 'facing_direction']
-        header = ['class'] + angle_names + position_names
+        # 8 distance features
+        distance_names = ['hand_distance', 'wrist_distance', 'left_arm_ext', 'right_arm_ext',
+                         'left_elbow_dist', 'right_elbow_dist', 'knee_distance', 'foot_distance']
+        # 5 symmetry features
+        symmetry_names = ['elbow_symmetry', 'shoulder_symmetry', 'knee_symmetry', 
+                         'arm_raise_symmetry', 'wrist_height_diff']
+        # 4 body proportions
+        proportion_names = ['arm_span', 'body_height', 'arm_to_height_ratio', 'stance_depth']
+        
+        header = ['class'] + angle_names + cross_body_names + position_names + distance_names + symmetry_names + proportion_names
     else:
         extraction_func = extract_coordinates_from_image
         header = ['class'] + [f'{ax}_{i}' for i in range(33) for ax in ['x', 'y', 'z']]

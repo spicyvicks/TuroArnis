@@ -1,0 +1,28 @@
+{
+  "version": "v018_ang3_rf",
+  "model_type": "random_forest",
+  "trained_at": "2026-01-23T11:19:27.807455",
+  "test_accuracy": 0.6686440677966101,
+  "val_accuracy": 0.6223619414728546,
+  "num_classes": 12,
+  "num_features": 33,
+  "train_samples": 9448,
+  "class_names": [
+    "crown_thrust_correct",
+    "left_chest_thrust_correct",
+    "left_elbow_block_correct",
+    "left_eye_thrust_correct",
+    "left_knee_block_correct",
+    "left_temple_block_correct",
+    "right_chest_thrust_correct",
+    "right_elbow_block_correct",
+    "right_eye_thrust_correct",
+    "right_knee_block_correct",
+    "right_temple_block_correct",
+    "solar_plexus_thrust_correct"
+  ],
+  "hyperparameters": {
+    "n_estimators": 200,
+    "max_depth": 20
+  }
+}

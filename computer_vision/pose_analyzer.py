@@ -219,7 +219,7 @@ class PoseAnalyzer:
                 traceback.print_exc()
             return None, None
 
-    def process_frame(self, frame):
+    def process_frame(self, frame, skip_ml_inference=False):
         h, w, _ = frame.shape
 
         # Use YOLO's built-in ByteTrack tracking
@@ -293,23 +293,52 @@ class PoseAnalyzer:
                 live_angles = self._calculate_all_angles_3d(pose_results.pose_world_landmarks)
                 
                 predicted_class, confidence = "N/A", 0.0
-                if self.pose_classifier_model and self.label_encoder and live_angles:
-                    try:
-                        world_landmarks = pose_results.pose_world_landmarks.landmark
-                        landmarks_np = np.array([[lm.x, lm.y, lm.z] for lm in world_landmarks])
-                        hip_center = (landmarks_np[23] + landmarks_np[24]) / 2.0
-                        coords = (landmarks_np - hip_center).flatten()
-                        
-                        # apply scaler if available
-                        if self.scaler is not None:
-                            coords = self.scaler.transform(coords.reshape(1, -1))[0]
-                        
-                        pred_proba = self.pose_classifier_model.predict(np.expand_dims(coords, axis=0), verbose=0)[0]
-                        pred_index = np.argmax(pred_proba)
-                        confidence = pred_proba[pred_index]
-                        predicted_class = self.label_encoder.inverse_transform([pred_index])[0]
-                    except Exception:
-                        pass
+                
+                # Optimization: Skip ML inference if requested (use cached from last frame)
+                if not skip_ml_inference:
+                    if self.pose_classifier_model and self.label_encoder and live_angles:
+                        try:
+                            world_landmarks = pose_results.pose_world_landmarks.landmark
+                            landmarks_np = np.array([[lm.x, lm.y, lm.z] for lm in world_landmarks])
+                            hip_center = (landmarks_np[23] + landmarks_np[24]) / 2.0
+                            coords = (landmarks_np - hip_center).flatten()
+                            
+                            # apply scaler if available
+                            if self.scaler is not None:
+                                coords = self.scaler.transform(coords.reshape(1, -1))[0]
+                            
+                            pred_proba = self.pose_classifier_model.predict(np.expand_dims(coords, axis=0), verbose=0)[0]
+                            pred_index = np.argmax(pred_proba)
+                            confidence = pred_proba[pred_index]
+                            predicted_class = self.label_encoder.inverse_transform([pred_index])[0]
+                            
+                            # Cache for next skip cycle
+                            self._cached_prediction = (predicted_class, confidence)
+                        except Exception:
+                            pass
+                else:
+                    # Use cached prediction from previous frame
+                    if hasattr(self, '_cached_prediction'):
+                        predicted_class, confidence = self._cached_prediction
+                    else:
+                        # First frame, no cache yet - run inference anyway
+                        if self.pose_classifier_model and self.label_encoder and live_angles:
+                            try:
+                                world_landmarks = pose_results.pose_world_landmarks.landmark
+                                landmarks_np = np.array([[lm.x, lm.y, lm.z] for lm in world_landmarks])
+                                hip_center = (landmarks_np[23] + landmarks_np[24]) / 2.0
+                                coords = (landmarks_np - hip_center).flatten()
+                                
+                                if self.scaler is not None:
+                                    coords = self.scaler.transform(coords.reshape(1, -1))[0]
+                                
+                                pred_proba = self.pose_classifier_model.predict(np.expand_dims(coords, axis=0), verbose=0)[0]
+                                pred_index = np.argmax(pred_proba)
+                                confidence = pred_proba[pred_index]
+                                predicted_class = self.label_encoder.inverse_transform([pred_index])[0]
+                                self._cached_prediction = (predicted_class, confidence)
+                            except Exception:
+                                pass
                 
                 if self.debug_stick:
                     print(f"[DEBUG-PROCESS] Calling stick detection for person {person_id}")

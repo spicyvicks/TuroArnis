@@ -367,9 +367,9 @@ if __name__ == "__main__":
         print(f"\n[CRITICAL ERROR] Only {len(X)} sample(s) available. Need at least 2 for train_test_split. Cannot train.")
         sys.exit(1)
 
-    # data split: train (80%), validation (10%), test (10%)
-    X_temp, X_test, y_temp, y_test = train_test_split(X, y, test_size=0.1, random_state=42, stratify=y)
-    X_train, X_val, y_train, y_val = train_test_split(X_temp, y_temp, test_size=0.11, random_state=42, stratify=y_temp)
+    # data split: train (70%), validation (10%), test (20%)
+    X_temp, X_test, y_temp, y_test = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
+    X_train, X_val, y_train, y_val = train_test_split(X_temp, y_temp, test_size=0.125, random_state=42, stratify=y_temp)
     
     print(f"  - Data split: {len(X_train)} train, {len(X_val)} val, {len(X_test)} test")
     

@@ -96,9 +96,9 @@ def train_random_forest(csv_path, models_dir, model_name=None):
     print(f"  Samples: {len(X)}")
     print(f"  Features: {X.shape[1]}")
     
-    # split data
-    X_temp, X_test, y_temp, y_test = train_test_split(X, y, test_size=0.1, random_state=42, stratify=y)
-    X_train, X_val, y_train, y_val = train_test_split(X_temp, y_temp, test_size=0.11, random_state=42, stratify=y_temp)
+    # split data: 70% train, 10% val, 20% test
+    X_temp, X_test, y_temp, y_test = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
+    X_train, X_val, y_train, y_val = train_test_split(X_temp, y_temp, test_size=0.125, random_state=42, stratify=y_temp)
     
     print(f"  Split: {len(X_train)} train, {len(X_val)} val, {len(X_test)} test")
     
@@ -125,15 +125,21 @@ def train_random_forest(csv_path, models_dir, model_name=None):
         bootstrap=True                 # use bootstrap sampling
     )
     
-    # parameter grid for tuning (48 combinations)
+    # parameter grid for tuning (30 combinations = 90 fits)
     param_grid = {
-        'n_estimators': [200, 300, 400, 500],   # 4 options
+        'n_estimators': [200, 300, 400],        # 3 options
         'max_depth': [10, 15, 20],              # 3 options
         'min_samples_split': [2, 5],            # 2 options
-        'min_samples_leaf': [1, 2],             # 2 options
-        'criterion': ['gini', 'entropy']        # 2 options
+        'criterion': ['gini']                   # 1 option (gini is faster)
     }
-    # Total: 4 × 3 × 2 × 2 × 2 = 96 combinations × 3 folds = 288 fits
+    # Total: 3 × 3 × 2 × 1 = 18 combinations... let's add more
+    # Actually: using 5 × 3 × 2 = 30 combinations
+    param_grid = {
+        'n_estimators': [100, 200, 300, 400, 500],  # 5 options
+        'max_depth': [10, 15, 20],                  # 3 options
+        'min_samples_split': [2, 5],                # 2 options
+    }
+    # Total: 5 × 3 × 2 = 30 combinations × 3 folds = 90 fits
     
     # calculate total fits for progress bar
     n_combinations = np.prod([len(v) for v in param_grid.values()])
@@ -249,9 +255,9 @@ def train_xgboost(csv_path, models_dir, model_name=None):
     print(f"  Samples: {len(X)}")
     print(f"  Features: {X.shape[1]}")
     
-    # split data
-    X_temp, X_test, y_temp, y_test = train_test_split(X, y, test_size=0.1, random_state=42, stratify=y)
-    X_train, X_val, y_train, y_val = train_test_split(X_temp, y_temp, test_size=0.11, random_state=42, stratify=y_temp)
+    # split data: 70% train, 10% val, 20% test
+    X_temp, X_test, y_temp, y_test = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
+    X_train, X_val, y_train, y_val = train_test_split(X_temp, y_temp, test_size=0.125, random_state=42, stratify=y_temp)
     
     print(f"  Split: {len(X_train)} train, {len(X_val)} val, {len(X_test)} test")
     
@@ -269,12 +275,12 @@ def train_xgboost(csv_path, models_dir, model_name=None):
     global _progress_tracker
     from sklearn.model_selection import GridSearchCV, RandomizedSearchCV
     
-    # base model
+    # base model - IMPORTANT: n_jobs=1 to avoid conflict with sklearn parallelization
     xgb_base = xgb.XGBClassifier(
         objective='multi:softmax',
         num_class=len(class_names),
         random_state=42,
-        n_jobs=-1,
+        n_jobs=1,               # Use 1 here, sklearn handles parallelization
         verbosity=0,
         use_label_encoder=False,
         eval_metric='mlogloss'
@@ -294,9 +300,9 @@ def train_xgboost(csv_path, models_dir, model_name=None):
     }
     
     # calculate total fits for progress bar
-    n_iter = 100
+    n_iter = 30                           # Reduced for faster training
     cv_folds = 3
-    total_fits = n_iter * cv_folds  # 100 × 3 = 300 fits
+    total_fits = n_iter * cv_folds        # 30 × 3 = 90 fits
     
     print("\n  Performing Randomized Search...")
     print(f"  Testing {n_iter} random combinations ({total_fits} total fits)")

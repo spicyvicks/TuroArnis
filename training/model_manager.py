@@ -365,6 +365,46 @@ def set_active_model_menu():
     except ValueError:
         print("[ERROR] Invalid input")
 
+def generate_visualizations_menu():
+    """Generate visualizations for existing RF/XGBoost models"""
+    from generate_visualizations import generate_visualizations_for_model
+    
+    versions = get_all_model_versions()
+    
+    # Filter for RF/XGBoost only
+    rf_xgb_versions = [v for v in versions if v.get('model_type') in ['random_forest', 'xgboost']]
+    
+    if not rf_xgb_versions:
+        print("\n[ERROR] No Random Forest or XGBoost models found")
+        return
+    
+    print("\n" + "="*60)
+    print("  GENERATE VISUALIZATIONS (RF/XGBoost only)")
+    print("="*60)
+    print("\nSelect a model:")
+    print("  0. Generate for ALL RF/XGBoost models")
+    
+    for i, v in enumerate(rf_xgb_versions, 1):
+        model_type_str = "RF" if v.get('model_type') == 'random_forest' else "XGB"
+        acc = f"{v.get('test_accuracy', 0)*100:.1f}%" if v.get('test_accuracy') else "N/A"
+        print(f"  {i}. {v['name']} ({model_type_str}) - Accuracy: {acc}")
+    
+    try:
+        choice = int(input("\nEnter number: "))
+        
+        if choice == 0:
+            # Generate for all
+            print(f"\n[INFO] Generating visualizations for {len(rf_xgb_versions)} models...")
+            for v in rf_xgb_versions:
+                generate_visualizations_for_model(v['path'])
+        elif 1 <= choice <= len(rf_xgb_versions):
+            selected = rf_xgb_versions[choice - 1]
+            generate_visualizations_for_model(selected['path'])
+        else:
+            print("[ERROR] Invalid selection")
+    except ValueError:
+        print("[ERROR] Invalid input")
+
 def main_menu():
     """main CLI menu"""
     while True:
@@ -377,11 +417,12 @@ def main_menu():
         print("  4. Set active model")
         print("  5. Compare models")
         print("  6. Delete a model")
-        print("  7. Exit")
+        print("  7. Generate visualizations")
+        print("  8. Exit")
         print("="*40)
         
         try:
-            choice = input("Enter choice (1-7): ").strip()
+            choice = input("Enter choice (1-8): ").strip()
             
             if choice == '1':
                 train_new_model()
@@ -396,6 +437,8 @@ def main_menu():
             elif choice == '6':
                 delete_model()
             elif choice == '7':
+                generate_visualizations_menu()
+            elif choice == '8':
                 print("\n[INFO] Goodbye!")
                 break
             else:

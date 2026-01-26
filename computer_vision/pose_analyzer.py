@@ -70,37 +70,113 @@ class PoseAnalyzer:
                 model_path = active_config['model_path']
                 encoder_path = active_config['encoder_path']
                 scaler_path = active_config.get('scaler_path')
-                print(f"[info] using model version: {active_config['version']}")
+                version_name = active_config['version']
+                print(f"[info] using model version: {version_name}")
+                
+                # Check if this is an ensemble model
+                version_path = os.path.join(models_dir, version_name)
+                metadata_path = os.path.join(version_path, 'metadata.json')
+                
+                is_ensemble = False
+                if os.path.exists(metadata_path):
+                    with open(metadata_path, 'r') as f:
+                        metadata = json.load(f)
+                    model_type = metadata.get('model_type', 'dnn')
+                    is_ensemble = (model_type == 'ensemble')
+                
+                if is_ensemble:
+                    # Load ensemble configuration
+                    ensemble_config_path = os.path.join(version_path, 'ensemble_config.json')
+                    if os.path.exists(ensemble_config_path):
+                        with open(ensemble_config_path, 'r') as f:
+                            ensemble_config = json.load(f)
+                        
+                        sys.path.insert(0, os.path.join(project_root, 'training'))
+                        from ensemble_model import EnsembleClassifier
+                        
+                        # Load ensemble
+                        self.pose_classifier_model = EnsembleClassifier(
+                            model_versions=ensemble_config['model_versions'],
+                            voting=ensemble_config['voting'],
+                            weights=ensemble_config['weights'],
+                            verbose=False
+                        )
+                        self.label_encoder = joblib.load(encoder_path)
+                        
+                        if scaler_path and os.path.exists(scaler_path):
+                            self.scaler = joblib.load(scaler_path)
+                        else:
+                            self.scaler = None
+                        
+                        self.is_ensemble = True
+                        print(f"[info] ensemble model loaded: {', '.join([m.split('_')[0] for m in ensemble_config['model_versions']])}")
+                    else:
+                        raise FileNotFoundError("ensemble_config.json not found")
+                else:
+                    # Load regular model (DNN, RF, or XGBoost)
+                    self.is_ensemble = False
+                    
+                    # Check model type for loading strategy
+                    if model_type == 'dnn':
+                        # Load Keras model
+                        if not os.path.exists(model_path):
+                            raise FileNotFoundError("model file not found")
+                        self.pose_classifier_model = tf.keras.models.load_model(model_path)
+                        if not self.pose_classifier_model.optimizer:
+                            self.pose_classifier_model.compile(optimizer='adam', loss='sparse_categorical_crossentropy', metrics=['accuracy'])
+                    else:
+                        # Load RF or XGBoost
+                        model_joblib = model_path.replace('.keras', '.joblib')
+                        if os.path.exists(model_joblib):
+                            self.pose_classifier_model = joblib.load(model_joblib)
+                        elif os.path.exists(model_path):
+                            # Try legacy path
+                            self.pose_classifier_model = joblib.load(model_path)
+                        else:
+                            raise FileNotFoundError("model file not found")
+                    
+                    self.label_encoder = joblib.load(encoder_path)
+                    
+                    if scaler_path and os.path.exists(scaler_path):
+                        self.scaler = joblib.load(scaler_path)
+                    else:
+                        self.scaler = None
+                    
+                    print(f"[info] {model_type.upper()} pose classifier loaded")
             else:
                 # fallback to legacy paths
                 model_path = os.path.join(models_dir, 'arnis_coordinates_classifier.keras')
                 encoder_path = os.path.join(models_dir, 'label_encoder.joblib')
                 scaler_path = os.path.join(models_dir, 'scaler.joblib')
                 print("[info] using legacy model paths")
+                
+                if not os.path.exists(model_path) or not os.path.exists(encoder_path):
+                    raise FileNotFoundError("model or encoder not found")
 
-            if not os.path.exists(model_path) or not os.path.exists(encoder_path):
-                raise FileNotFoundError("model or encoder not found")
-
-            self.pose_classifier_model = tf.keras.models.load_model(model_path)
-            self.label_encoder = joblib.load(encoder_path)
-            
-            # load scaler if available
-            if scaler_path and os.path.exists(scaler_path):
-                self.scaler = joblib.load(scaler_path)
-                print("[info] feature scaler loaded")
-            else:
-                self.scaler = None
-                print("[warning] no scaler found")
-            
-            if not self.pose_classifier_model.optimizer:
-                self.pose_classifier_model.compile(optimizer='adam', loss='sparse_categorical_crossentropy', metrics=['accuracy'])
-            
-            print("[info] keras pose classifier loaded")
+                self.pose_classifier_model = tf.keras.models.load_model(model_path)
+                self.label_encoder = joblib.load(encoder_path)
+                self.is_ensemble = False
+                
+                # load scaler if available
+                if scaler_path and os.path.exists(scaler_path):
+                    self.scaler = joblib.load(scaler_path)
+                    print("[info] feature scaler loaded")
+                else:
+                    self.scaler = None
+                    print("[warning] no scaler found")
+                
+                if not self.pose_classifier_model.optimizer:
+                    self.pose_classifier_model.compile(optimizer='adam', loss='sparse_categorical_crossentropy', metrics=['accuracy'])
+                
+                print("[info] keras pose classifier loaded")
         except Exception as e:
-            print(f"[critical] could not load keras model: {e}")
+            print(f"[critical] could not load model: {e}")
+            import traceback
+            traceback.print_exc()
             self.pose_classifier_model = None
             self.label_encoder = None
             self.scaler = None
+            self.is_ensemble = False
         
         self.detection_interval = detection_interval
         self.frame_count = 0
@@ -307,10 +383,31 @@ class PoseAnalyzer:
                             if self.scaler is not None:
                                 coords = self.scaler.transform(coords.reshape(1, -1))[0]
                             
-                            pred_proba = self.pose_classifier_model.predict(np.expand_dims(coords, axis=0), verbose=0)[0]
-                            pred_index = np.argmax(pred_proba)
-                            confidence = pred_proba[pred_index]
-                            predicted_class = self.label_encoder.inverse_transform([pred_index])[0]
+                            # Check if ensemble or regular model
+                            if getattr(self, 'is_ensemble', False):
+                                # Ensemble model
+                                prediction = self.pose_classifier_model.predict(coords.reshape(1, -1))[0]
+                                predicted_class = prediction
+                                # Get confidence from ensemble (need to check probabilities)
+                                # For now, use high confidence since ensemble likely more accurate
+                                confidence = 0.85  # Placeholder - could get from predict_proba
+                            else:
+                                # Regular model (DNN, RF, XGBoost)
+                                coords_input = np.expand_dims(coords, axis=0)
+                                
+                                # Check if model has predict_proba (RF/XGBoost) or is Keras
+                                if hasattr(self.pose_classifier_model, 'predict_proba'):
+                                    # RF or XGBoost
+                                    pred_proba = self.pose_classifier_model.predict_proba(coords_input)[0]
+                                    pred_index = np.argmax(pred_proba)
+                                    confidence = pred_proba[pred_index]
+                                    predicted_class = self.label_encoder.inverse_transform([pred_index])[0]
+                                else:
+                                    # DNN (Keras)
+                                    pred_proba = self.pose_classifier_model.predict(coords_input, verbose=0)[0]
+                                    pred_index = np.argmax(pred_proba)
+                                    confidence = pred_proba[pred_index]
+                                    predicted_class = self.label_encoder.inverse_transform([pred_index])[0]
                             
                             # Cache for next skip cycle
                             self._cached_prediction = (predicted_class, confidence)

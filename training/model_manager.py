@@ -365,6 +365,17 @@ def set_active_model_menu():
     except ValueError:
         print("[ERROR] Invalid input")
 
+
+def create_ensemble_menu():
+    """Create and save a new ensemble model"""
+    from ensemble_model import create_ensemble_model
+    create_ensemble_model()
+
+def evaluate_ensemble_menu():
+    """Run ensemble model evaluation"""
+    from ensemble_model import interactive_ensemble
+    interactive_ensemble()
+
 def generate_visualizations_menu():
     """Generate visualizations for existing RF/XGBoost models"""
     from generate_visualizations import generate_visualizations_for_model
@@ -418,11 +429,13 @@ def main_menu():
         print("  5. Compare models")
         print("  6. Delete a model")
         print("  7. Generate visualizations")
-        print("  8. Exit")
+        print("  8. Create ensemble model")
+        print("  9. Evaluate ensemble model")
+        print("  10. Exit")
         print("="*40)
         
         try:
-            choice = input("Enter choice (1-8): ").strip()
+            choice = input("Enter choice (1-10): ").strip()
             
             if choice == '1':
                 train_new_model()
@@ -439,6 +452,10 @@ def main_menu():
             elif choice == '7':
                 generate_visualizations_menu()
             elif choice == '8':
+                create_ensemble_menu()
+            elif choice == '9':
+                evaluate_ensemble_menu()
+            elif choice == '10':
                 print("\n[INFO] Goodbye!")
                 break
             else:

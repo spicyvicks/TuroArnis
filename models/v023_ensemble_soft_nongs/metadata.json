@@ -1,0 +1,13 @@
+{
+  "model_type": "ensemble",
+  "test_accuracy": 0.8461864406779661,
+  "trained_at": "2026-01-26T14:02:03.684323",
+  "num_classes": 12,
+  "train_samples": null,
+  "csv_used": "arnis_poses_angles.csv",
+  "component_models": [
+    "v020_ang4_rf",
+    "v019_ang4_xgb"
+  ],
+  "voting_strategy": "soft"
+}

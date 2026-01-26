@@ -222,37 +222,52 @@ def train_new_model():
     else:
         print(f"\n[ERROR] Training failed with code {result.returncode}")
 
-def generate_report():
-    """generate classification report for a model"""
+def generate_analysis():
+    """Generate reports/visualizations for any model type (unified)"""
     versions = get_all_model_versions()
     
     if not versions:
         print("\n[ERROR] No models found. Train a model first.")
         return
     
-    print("\nSelect a model version:")
+    print("\n" + "="*60)
+    print("  GENERATE MODEL ANALYSIS")
+    print("="*60)
+    print("\nSelect a model:")
     for i, v in enumerate(versions, 1):
+        model_type = v.get('model_type', 'unknown').upper()
         acc = f"{v.get('test_accuracy', 0)*100:.1f}%" if v.get('test_accuracy') else "N/A"
-        print(f"  {i}. {v['name']} (Accuracy: {acc})")
+        print(f"  {i}. {v['name']} ({model_type}) - {acc}")
     
     try:
         choice = int(input("\nEnter number: ")) - 1
         if 0 <= choice < len(versions):
             selected = versions[choice]
-            print(f"\n[INFO] Generating report for {selected['name']}...")
+            model_type = selected.get('model_type', 'dnn')
             
-            # run report generation with selected model
-            model_path = os.path.join(selected['path'], 'model.keras')
-            encoder_path = os.path.join(selected['path'], 'label_encoder.joblib')
+            print(f"\n[INFO] Generating analysis for {selected['name']} ({model_type.upper()})...")
             
-            if not os.path.exists(model_path):
-                print(f"[ERROR] Model file not found: {model_path}")
-                return
-            
-            # use the get_classification_report tool
-            sys.path.insert(0, os.path.join(project_root, 'tools'))
-            from get_classification_report import generate_classification_report
-            generate_classification_report()
+            if model_type == 'dnn':
+                # Generate classification report for DNN
+                model_path = os.path.join(selected['path'], 'model.keras')
+                if not os.path.exists(model_path):
+                    print(f"[ERROR] Model file not found: {model_path}")
+                    return
+                
+                sys.path.insert(0, os.path.join(project_root, 'tools'))
+                from get_classification_report import generate_classification_report
+                generate_classification_report()
+                
+            elif model_type in ['random_forest', 'xgboost']:
+                # Generate visualizations for RF/XGBoost
+                from generate_visualizations import generate_visualizations_for_model
+                generate_visualizations_for_model(selected['path'])
+                
+            elif model_type == 'ensemble':
+                print("\n[INFO] Ensemble models can be evaluated using option 8")
+                
+            else:
+                print(f"[WARN] Unknown model type: {model_type}")
         else:
             print("[ERROR] Invalid selection")
     except ValueError:
@@ -376,46 +391,6 @@ def evaluate_ensemble_menu():
     from ensemble_model import interactive_ensemble
     interactive_ensemble()
 
-def generate_visualizations_menu():
-    """Generate visualizations for existing RF/XGBoost models"""
-    from generate_visualizations import generate_visualizations_for_model
-    
-    versions = get_all_model_versions()
-    
-    # Filter for RF/XGBoost only
-    rf_xgb_versions = [v for v in versions if v.get('model_type') in ['random_forest', 'xgboost']]
-    
-    if not rf_xgb_versions:
-        print("\n[ERROR] No Random Forest or XGBoost models found")
-        return
-    
-    print("\n" + "="*60)
-    print("  GENERATE VISUALIZATIONS (RF/XGBoost only)")
-    print("="*60)
-    print("\nSelect a model:")
-    print("  0. Generate for ALL RF/XGBoost models")
-    
-    for i, v in enumerate(rf_xgb_versions, 1):
-        model_type_str = "RF" if v.get('model_type') == 'random_forest' else "XGB"
-        acc = f"{v.get('test_accuracy', 0)*100:.1f}%" if v.get('test_accuracy') else "N/A"
-        print(f"  {i}. {v['name']} ({model_type_str}) - Accuracy: {acc}")
-    
-    try:
-        choice = int(input("\nEnter number: "))
-        
-        if choice == 0:
-            # Generate for all
-            print(f"\n[INFO] Generating visualizations for {len(rf_xgb_versions)} models...")
-            for v in rf_xgb_versions:
-                generate_visualizations_for_model(v['path'])
-        elif 1 <= choice <= len(rf_xgb_versions):
-            selected = rf_xgb_versions[choice - 1]
-            generate_visualizations_for_model(selected['path'])
-        else:
-            print("[ERROR] Invalid selection")
-    except ValueError:
-        print("[ERROR] Invalid input")
-
 def main_menu():
     """main CLI menu"""
     while True:
@@ -423,24 +398,23 @@ def main_menu():
         print("   TUROARNIS MODEL MANAGER")
         print("="*40)
         print("  1. Train new model")
-        print("  2. Generate classification report")
+        print("  2. Generate analysis (reports/visualizations)")
         print("  3. List all models")
         print("  4. Set active model")
         print("  5. Compare models")
         print("  6. Delete a model")
-        print("  7. Generate visualizations")
-        print("  8. Create ensemble model")
-        print("  9. Evaluate ensemble model")
-        print("  10. Exit")
+        print("  7. Create ensemble model")
+        print("  8. Evaluate ensemble model")
+        print("  9. Exit")
         print("="*40)
         
         try:
-            choice = input("Enter choice (1-10): ").strip()
+            choice = input("Enter choice (1-9): ").strip()
             
             if choice == '1':
                 train_new_model()
             elif choice == '2':
-                generate_report()
+                generate_analysis()
             elif choice == '3':
                 list_models()
             elif choice == '4':
@@ -450,12 +424,10 @@ def main_menu():
             elif choice == '6':
                 delete_model()
             elif choice == '7':
-                generate_visualizations_menu()
-            elif choice == '8':
                 create_ensemble_menu()
-            elif choice == '9':
+            elif choice == '8':
                 evaluate_ensemble_menu()
-            elif choice == '10':
+            elif choice == '9':
                 print("\n[INFO] Goodbye!")
                 break
             else:

@@ -34,6 +34,7 @@ TYPICAL ACCURACY GAINS: 2-10% improvement over best individual model
 import os
 import sys
 import json
+import shutil
 import joblib
 import numpy as np
 import pandas as pd
@@ -190,12 +191,19 @@ class EnsembleClassifier:
                     print(f"[WARN] Skipping {version_name}: model.keras not found")
                     continue
             else:
-                # Random Forest or XGBoost (both use joblib)
-                model_path = os.path.join(version_path, 'model.joblib')
+                # Random Forest or XGBoost (use type-specific filenames)
+                if model_type == 'random_forest':
+                    model_path = os.path.join(version_path, 'model_rf.joblib')
+                elif model_type == 'xgboost':
+                    model_path = os.path.join(version_path, 'model_xgb.joblib')
+                else:
+                    # Fallback for other types
+                    model_path = os.path.join(version_path, 'model.joblib')
+                
                 if os.path.exists(model_path):
                     model = joblib.load(model_path)
                 else:
-                    print(f"[WARN] Skipping {version_name}: model.joblib not found")
+                    print(f"[WARN] Skipping {version_name}: {os.path.basename(model_path)} not found")
                     continue
             
             # Load scaler (use first model's scaler)
@@ -761,6 +769,8 @@ def create_ensemble_model():
         if weights is None:
             print("[ERROR] Weight optimization failed")
             return
+        # Extract model versions from ensemble
+        model_versions = [info['name'] for info in ensemble.model_info]
     else:
         # Use equal weights
         ensemble, accuracy = evaluate_ensemble(csv_path, model_versions, voting, None)

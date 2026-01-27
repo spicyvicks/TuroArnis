@@ -12,7 +12,6 @@ MODELS_DIR = os.path.join(project_root, 'models')
 ACTIVE_MODEL_FILE = os.path.join(MODELS_DIR, 'active_model.json')
 
 def get_all_model_versions():
-    """get all versioned model folders"""
     versions = []
     if not os.path.exists(MODELS_DIR):
         return versions
@@ -35,7 +34,6 @@ def get_all_model_versions():
     return versions
 
 def get_next_version_number():
-    """get next version number"""
     versions = get_all_model_versions()
     if not versions:
         return 1
@@ -51,14 +49,12 @@ def get_next_version_number():
     return max_version + 1
 
 def get_active_model():
-    """get currently active model"""
     if os.path.exists(ACTIVE_MODEL_FILE):
         with open(ACTIVE_MODEL_FILE, 'r') as f:
             return json.load(f)
     return None
 
 def set_active_model(version_name):
-    """set a model version as active"""
     version_path = os.path.join(MODELS_DIR, version_name)
     if not os.path.exists(version_path):
         print(f"[ERROR] Version {version_name} not found")
@@ -80,7 +76,6 @@ def set_active_model(version_name):
     return True
 
 def list_models():
-    """list all model versions"""
     versions = get_all_model_versions()
     active = get_active_model()
     active_version = active['version'] if active else None
@@ -105,7 +100,6 @@ def list_models():
     print("="*70)
 
 def train_new_model():
-    """train a new model version"""
     print("\n" + "="*40)
     print("   TRAIN NEW MODEL")
     print("="*40)
@@ -223,7 +217,6 @@ def train_new_model():
         print(f"\n[ERROR] Training failed with code {result.returncode}")
 
 def generate_analysis():
-    """Generate reports/visualizations for any model type (unified)"""
     versions = get_all_model_versions()
     
     if not versions:
@@ -264,7 +257,9 @@ def generate_analysis():
                 generate_visualizations_for_model(selected['path'])
                 
             elif model_type == 'ensemble':
-                print("\n[INFO] Ensemble models can be evaluated using option 8")
+                # Generate visualizations for ensemble
+                from ensemble_model import generate_ensemble_visualizations
+                generate_ensemble_visualizations(selected['path'])
                 
             else:
                 print(f"[WARN] Unknown model type: {model_type}")
@@ -274,7 +269,6 @@ def generate_analysis():
         print("[ERROR] Invalid input")
 
 def compare_models():
-    """compare two model versions"""
     versions = get_all_model_versions()
     
     if len(versions) < 2:
@@ -317,7 +311,6 @@ def compare_models():
         print("[ERROR] Invalid input")
 
 def delete_model():
-    """delete a model version"""
     versions = get_all_model_versions()
     active = get_active_model()
     
@@ -356,7 +349,6 @@ def delete_model():
         print("[ERROR] Invalid input")
 
 def set_active_model_menu():
-    """menu to set active model"""
     versions = get_all_model_versions()
     
     if not versions:
@@ -382,17 +374,14 @@ def set_active_model_menu():
 
 
 def create_ensemble_menu():
-    """Create and save a new ensemble model"""
     from ensemble_model import create_ensemble_model
     create_ensemble_model()
 
 def evaluate_ensemble_menu():
-    """Run ensemble model evaluation"""
     from ensemble_model import interactive_ensemble
     interactive_ensemble()
 
 def main_menu():
-    """main CLI menu"""
     while True:
         print("\n" + "="*40)
         print("   TUROARNIS MODEL MANAGER")

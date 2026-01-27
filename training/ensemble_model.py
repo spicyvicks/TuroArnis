@@ -1,35 +1,4 @@
-"""
-Ensemble Model for TuroArnis Pose Classification
-Combines multiple model architectures to improve prediction accuracy
 
-ENSEMBLE METHODOLOGY:
-An ensemble model combines predictions from multiple diverse models to achieve
-better performance than any single model. The key principles are:
-
-1. DIVERSITY: Use different model architectures (DNN, XGBoost)
-   - Each learns different patterns in the data
-   - Errors from different models are less correlated
-   
-2. VOTING STRATEGIES:
-   a) Soft Voting (Weighted Averaging):
-      - Each model outputs probability distributions
-      - Average the probabilities with optional weights
-      - Take class with highest averaged probability
-      - Best when models output well-calibrated probabilities
-   
-   b) Hard Voting (Majority Vote):
-      - Each model outputs single class prediction
-      - Count votes for each class
-      - Take class with most votes
-      - More robust to poorly calibrated probabilities
-
-3. WHY IT WORKS:
-   - Reduces overfitting (averaging smooths out individual model biases)
-   - Captures different aspects of data (DNN: complex patterns, XGB: gradient boosting)
-   - More stable predictions (less sensitive to data variations)
-
-TYPICAL ACCURACY GAINS: 2-10% improvement over best individual model
-"""
 
 import os
 import sys
@@ -42,7 +11,7 @@ from datetime import datetime
 from sklearn.metrics import accuracy_score, classification_report, confusion_matrix
 from sklearn.model_selection import train_test_split
 
-# Add project root to path
+
 current_dir = os.path.dirname(os.path.abspath(__file__))
 project_root = os.path.dirname(current_dir)
 sys.path.append(project_root)
@@ -51,29 +20,8 @@ MODELS_DIR = os.path.join(project_root, 'models')
 
 
 class EnsembleClassifier:
-    """
-    Ensemble classifier that combines multiple model types
-    
-    LOGIC:
-    1. Load models from versioned directories
-    2. For each prediction:
-       - Get predictions from all models
-       - Combine using selected voting strategy
-       - Return final prediction
-    """
     
     def __init__(self, model_versions=None, voting='soft', weights=None, verbose=True):
-        """
-        Initialize ensemble classifier
-        
-        Args:
-            model_versions: List of version names (e.g. ['v017_ang3_xgb', 'v015_dnn'])
-                           If None, will auto-select best DNN and XGBoost models
-            voting: 'soft' (probability averaging) or 'hard' (majority vote)
-            weights: List of weights for each model (only for soft voting)
-                    If None, uses equal weights
-            verbose: Print loading info
-        """
         self.voting = voting
         self.weights = weights
         self.verbose = verbose
@@ -82,36 +30,27 @@ class EnsembleClassifier:
         self.scaler = None
         self.label_encoder = None
         
-        # Load models
+
         if model_versions is None:
             model_versions = self._auto_select_models()
         
         self._load_models(model_versions)
         
-        # Validate weights
+
         if self.weights is not None:
             if len(self.weights) != len(self.models):
                 raise ValueError(f"Number of weights ({len(self.weights)}) must match number of models ({len(self.models)})")
-            # Normalize weights
+
             self.weights = np.array(self.weights) / np.sum(self.weights)
         else:
-            # Equal weights
+
             self.weights = np.ones(len(self.models)) / len(self.models)
     
     def _auto_select_models(self):
-        """
-        Auto-select best model of each type based on accuracy
-        
-        LOGIC:
-        - Find all models grouped by type (random_forest, xgboost)
-        - Select highest accuracy model from each type
-        - Exclude DNN models
-        - Returns list of version names
-        """
         if not os.path.exists(MODELS_DIR):
             raise ValueError(f"Models directory not found: {MODELS_DIR}")
         
-        # Group models by type (excluding DNN)
+
         model_groups = {
             'random_forest': [],
             'xgboost': []
@@ -128,7 +67,7 @@ class EnsembleClassifier:
                     model_type = metadata.get('model_type', 'dnn')
                     accuracy = metadata.get('test_accuracy', 0)
                     
-                    # Skip DNN models - only use RF and XGBoost
+
                     if model_type != 'dnn' and model_type in model_groups:
                         model_groups[model_type].append({
                             'name': item,
@@ -136,11 +75,11 @@ class EnsembleClassifier:
                             'metadata': metadata
                         })
         
-        # Select best from each type
+
         selected = []
         for model_type, models in model_groups.items():
             if models:
-                # Sort by accuracy descending
+
                 models.sort(key=lambda x: x['accuracy'], reverse=True)
                 best = models[0]
                 selected.append(best['name'])
@@ -153,15 +92,6 @@ class EnsembleClassifier:
         return selected
     
     def _load_models(self, model_versions):
-        """
-        Load models, encoders, and scalers from version directories
-        
-        LOGIC:
-        - For each version, load the appropriate model file
-        - DNN models: .keras files (TensorFlow)
-        - RF/XGBoost: .joblib files (scikit-learn)
-        - Also load shared label encoder and scaler
-        """
         print(f"\n{'='*60}")
         print(f"  LOADING ENSEMBLE MODELS ({self.voting.upper()} VOTING)")
         print(f"{'='*60}")
@@ -174,30 +104,25 @@ class EnsembleClassifier:
                 print(f"[WARN] Skipping {version_name}: metadata.json not found")
                 continue
             
-            # Load metadata
             with open(metadata_path, 'r') as f:
                 metadata = json.load(f)
             
             model_type = metadata.get('model_type', 'dnn')
             
-            # Load model based on type
             if model_type == 'dnn':
                 model_path = os.path.join(version_path, 'model.keras')
                 if os.path.exists(model_path):
-                    # Import TensorFlow only if needed
                     import tensorflow as tf
                     model = tf.keras.models.load_model(model_path)
                 else:
                     print(f"[WARN] Skipping {version_name}: model.keras not found")
                     continue
             else:
-                # Random Forest or XGBoost (use type-specific filenames)
                 if model_type == 'random_forest':
                     model_path = os.path.join(version_path, 'model_rf.joblib')
                 elif model_type == 'xgboost':
                     model_path = os.path.join(version_path, 'model_xgb.joblib')
                 else:
-                    # Fallback for other types
                     model_path = os.path.join(version_path, 'model.joblib')
                 
                 if os.path.exists(model_path):
@@ -206,13 +131,11 @@ class EnsembleClassifier:
                     print(f"[WARN] Skipping {version_name}: {os.path.basename(model_path)} not found")
                     continue
             
-            # Load scaler (use first model's scaler)
             if self.scaler is None:
                 scaler_path = os.path.join(version_path, 'scaler.joblib')
                 if os.path.exists(scaler_path):
                     self.scaler = joblib.load(scaler_path)
             
-            # Load label encoder (use first model's encoder)
             if self.label_encoder is None:
                 encoder_path = os.path.join(version_path, 'label_encoder.joblib')
                 if os.path.exists(encoder_path):
@@ -240,21 +163,6 @@ class EnsembleClassifier:
             raise ValueError("Could not load scaler or label encoder")
     
     def predict_proba(self, X):
-        """
-        Predict class probabilities using ensemble
-        
-        LOGIC (Soft Voting):
-        1. Scale input features
-        2. Get probability predictions from each model
-        3. Weight and average probabilities
-        4. Return averaged probability distribution
-        
-        Args:
-            X: Feature array (n_samples, n_features)
-        
-        Returns:
-            Averaged probability array (n_samples, n_classes)
-        """
         # Scale features
         X_scaled = self.scaler.transform(X)
         
@@ -284,19 +192,6 @@ class EnsembleClassifier:
         return weighted_probas
     
     def predict(self, X):
-        """
-        Predict class labels using ensemble
-        
-        LOGIC:
-        - Soft voting: Use predict_proba and take argmax
-        - Hard voting: Get predictions from each model and majority vote
-        
-        Args:
-            X: Feature array (n_samples, n_features)
-        
-        Returns:
-            Predicted class labels
-        """
         if self.voting == 'soft':
             # Get averaged probabilities and take argmax
             probas = self.predict_proba(X)
@@ -336,12 +231,6 @@ class EnsembleClassifier:
         return predictions
     
     def evaluate(self, X, y):
-        """
-        Evaluate ensemble on test data
-        
-        Returns:
-            accuracy, predictions, classification report
-        """
         predictions = self.predict(X)
         accuracy = accuracy_score(y, predictions)
         report = classification_report(y, predictions)
@@ -349,11 +238,6 @@ class EnsembleClassifier:
         return accuracy, predictions, report
     
     def get_model_contributions(self, X):
-        """
-        Analyze individual model contributions to predictions
-        
-        Returns dict with per-model predictions and confidences
-        """
         X_scaled = self.scaler.transform(X)
         contributions = []
         
@@ -381,23 +265,6 @@ class EnsembleClassifier:
 
 
 def evaluate_ensemble(csv_path=None, model_versions=None, voting='soft', weights=None):
-    """
-    Evaluate ensemble model on test data
-    
-    SCRIPT LOGIC:
-    1. Load dataset (features + labels)
-    2. Split into train/test
-    3. Create ensemble classifier
-    4. Evaluate on test set
-    5. Compare with individual model performances
-    6. Print detailed report
-    
-    Args:
-        csv_path: Path to CSV with features (default: arnis_poses_angles.csv)
-        model_versions: List of model versions to use (default: auto-select)
-        voting: 'soft' or 'hard'
-        weights: Model weights (default: equal)
-    """
     # Default CSV path
     if csv_path is None:
         csv_path = os.path.join(project_root, 'arnis_poses_angles.csv')
@@ -464,23 +331,6 @@ def evaluate_ensemble(csv_path=None, model_versions=None, voting='soft', weights
 
 
 def optimize_ensemble_weights(csv_path=None, model_versions=None, voting='soft'):
-    """
-    Optimize ensemble weights using grid search
-    
-    LOGIC:
-    1. Split data into train/val/test
-    2. Try different weight combinations on validation set
-    3. Select weights that give best validation accuracy
-    4. Report test accuracy with optimal weights
-    
-    Args:
-        csv_path: Path to CSV with features
-        model_versions: List of model versions (default: auto-select)
-        voting: 'soft' or 'hard'
-    
-    Returns:
-        best_weights, best_accuracy, ensemble
-    """
     # Default CSV path
     if csv_path is None:
         csv_path = os.path.join(project_root, 'arnis_poses_angles.csv')
@@ -587,27 +437,6 @@ def optimize_ensemble_weights(csv_path=None, model_versions=None, voting='soft')
 
 
 def save_ensemble_model(model_versions, weights, voting, accuracy, csv_path, models_dir, name_suffix=None):
-    """
-    Save ensemble configuration as a versioned model
-    
-    LOGIC:
-    1. Create version directory (v{N}_ensemble_{suffix})
-    2. Save ensemble_config.json with model list, weights, voting
-    3. Save metadata.json (compatible with existing system)
-    4. Copy scaler and label_encoder from component models
-    
-    Args:
-        model_versions: List of model version names in ensemble
-        weights: List of weights for each model
-        voting: 'soft' or 'hard'
-        accuracy: Test accuracy of ensemble
-        csv_path: CSV used for training/evaluation
-        models_dir: Directory to save ensemble
-        name_suffix: Optional suffix for version name
-    
-    Returns:
-        version_name, version_path
-    """
     # Get next version number
     from model_manager import get_next_version_number
     version_num = get_next_version_number()
@@ -682,15 +511,6 @@ def save_ensemble_model(model_versions, weights, voting, accuracy, csv_path, mod
 
 
 def create_ensemble_model():
-    """
-    Interactive function to create and save an ensemble model
-    
-    WORKFLOW:
-    1. Select component models
-    2. Choose to optimize weights or use equal weights
-    3. Evaluate ensemble
-    4. Save ensemble configuration
-    """
     print("\n" + "="*60)
     print("  CREATE ENSEMBLE MODEL")
     print("="*60)
@@ -874,6 +694,370 @@ def interactive_ensemble():
     
     # Run evaluation
     evaluate_ensemble(csv_path, model_versions, voting, weights)
+
+
+def generate_ensemble_visualizations(version_path, csv_path=None):
+    """
+    Generate visualizations for a saved ensemble model
+    
+    Creates:
+    1. Confusion Matrix
+    2. Model Contribution Chart (weights)
+    3. Performance Comparison Chart
+    
+    Args:
+        version_path: Path to ensemble model directory
+        csv_path: Path to CSV with features (default: from metadata or angles)
+    """
+    print(f"\n{'='*60}")
+    print(f"  GENERATING ENSEMBLE VISUALIZATIONS")
+    print(f"{'='*60}")
+    print(f"  Ensemble: {os.path.basename(version_path)}")
+    print(f"{'='*60}\n")
+    
+    # Load ensemble configuration
+    config_path = os.path.join(version_path, 'ensemble_config.json')
+    metadata_path = os.path.join(version_path, 'metadata.json')
+    
+    if not os.path.exists(config_path) or not os.path.exists(metadata_path):
+        print("[ERROR] Ensemble configuration files not found")
+        return False
+    
+    with open(config_path, 'r') as f:
+        config = json.load(f)
+    
+    with open(metadata_path, 'r') as f:
+        metadata = json.load(f)
+    
+    # Get CSV path
+    if csv_path is None:
+        csv_path = metadata.get('csv_used', 'arnis_poses_angles.csv')
+        if not os.path.isabs(csv_path):
+            csv_path = os.path.join(project_root, csv_path)
+    
+    if not os.path.exists(csv_path):
+        print(f"[ERROR] CSV not found: {csv_path}")
+        return False
+    
+    # Load data
+    print(f"[INFO] Loading data from: {os.path.basename(csv_path)}")
+    df = pd.read_csv(csv_path)
+    X = df.drop('class', axis=1).values
+    y = df['class'].values
+    
+    # Split data (same as training)
+    X_train, X_test, y_train, y_test = train_test_split(
+        X, y, test_size=0.2, random_state=42, stratify=y
+    )
+    
+    # Load ensemble
+    print("[INFO] Loading ensemble model...")
+    ensemble = EnsembleClassifier(
+        model_versions=config['model_versions'],
+        voting=config['voting'],
+        weights=config['weights'],
+        verbose=False
+    )
+    
+    # Get predictions
+    print("[INFO] Generating predictions...")
+    y_pred = ensemble.predict(X_test)
+    
+    # Import plotting libraries
+    import matplotlib
+    matplotlib.use('Agg')
+    import matplotlib.pyplot as plt
+    import seaborn as sns
+    
+    # 1. Confusion Matrix
+    print("[INFO] Creating confusion matrix...")
+    cm = confusion_matrix(y_test, y_pred)
+    class_names = ensemble.label_encoder.classes_
+    
+    plt.figure(figsize=(14, 12))
+    sns.heatmap(cm, annot=True, fmt='d', cmap='Blues',
+                xticklabels=class_names, yticklabels=class_names,
+                cbar_kws={'label': 'Count'})
+    plt.xlabel('Predicted Class', fontsize=12)
+    plt.ylabel('Actual Class', fontsize=12)
+    plt.title('Ensemble Model - Confusion Matrix', fontsize=14, fontweight='bold')
+    plt.xticks(rotation=45, ha='right')
+    plt.yticks(rotation=0)
+    plt.tight_layout()
+    plt.savefig(os.path.join(version_path, 'confusion_matrix.png'), dpi=150, bbox_inches='tight')
+    plt.close()
+    print(f"  ✓ Saved: confusion_matrix.png")
+    
+    # 2. Model Contribution Chart (Weights)
+    print("[INFO] Creating model contribution chart...")
+    model_names = [info['name'] for info in ensemble.model_info]
+    model_types = [info['type'].upper() for info in ensemble.model_info]
+    weights = ensemble.weights
+    
+    fig, ax = plt.subplots(figsize=(10, 6))
+    colors = plt.cm.viridis(np.linspace(0.3, 0.9, len(model_names)))
+    bars = ax.bar(range(len(model_names)), weights, color=colors)
+    
+    ax.set_xlabel('Model', fontsize=12)
+    ax.set_ylabel('Weight (Contribution)', fontsize=12)
+    ax.set_title('Ensemble Model Contributions', fontsize=14, fontweight='bold')
+    ax.set_xticks(range(len(model_names)))
+    ax.set_xticklabels([f"{name}\n({mtype})" for name, mtype in zip(model_names, model_types)], 
+                       rotation=45, ha='right')
+    ax.grid(axis='y', alpha=0.3)
+    
+    # Add value labels on bars
+    for bar in bars:
+        height = bar.get_height()
+        ax.text(bar.get_x() + bar.get_width()/2., height,
+                f'{height:.3f}',
+                ha='center', va='bottom', fontsize=10)
+    
+    plt.tight_layout()
+    plt.savefig(os.path.join(version_path, 'model_contributions.png'), dpi=150, bbox_inches='tight')
+    plt.close()
+    print(f"  ✓ Saved: model_contributions.png")
+    
+    # 3. Performance Comparison
+    print("[INFO] Creating performance comparison chart...")
+    ensemble_acc = metadata.get('test_accuracy', 0)
+    individual_accs = [info['accuracy'] for info in ensemble.model_info]
+    all_accs = individual_accs + [ensemble_acc]
+    all_labels = [f"{name}\n({mtype})" for name, mtype in zip(model_names, model_types)] + ['Ensemble']
+    
+    fig, ax = plt.subplots(figsize=(12, 6))
+    colors = ['#3498db'] * len(individual_accs) + ['#e74c3c']  # Blue for individuals, red for ensemble
+    bars = ax.bar(range(len(all_labels)), [acc * 100 for acc in all_accs], color=colors)
+    
+    ax.set_xlabel('Model', fontsize=12)
+    ax.set_ylabel('Accuracy (%)', fontsize=12)
+    ax.set_title('Model Performance Comparison', fontsize=14, fontweight='bold')
+    ax.set_xticks(range(len(all_labels)))
+    ax.set_xticklabels(all_labels, rotation=45, ha='right')
+    ax.grid(axis='y', alpha=0.3)
+    ax.set_ylim([0, 100])
+    
+    # Add value labels on bars
+    for bar in bars:
+        height = bar.get_height()
+        ax.text(bar.get_x() + bar.get_width()/2., height,
+                f'{height:.1f}%',
+                ha='center', va='bottom', fontsize=10, fontweight='bold')
+    
+    # Add legend
+    from matplotlib.patches import Patch
+    legend_elements = [Patch(facecolor='#3498db', label='Individual Models'),
+                      Patch(facecolor='#e74c3c', label='Ensemble')]
+    ax.legend(handles=legend_elements, loc='upper right')
+    
+    plt.tight_layout()
+    plt.savefig(os.path.join(version_path, 'performance_comparison.png'), dpi=150, bbox_inches='tight')
+    plt.close()
+    print(f"  ✓ Saved: performance_comparison.png")
+    
+    # 4. Error Distribution by Class
+    print("[INFO] Creating error distribution chart...")
+    
+    # Calculate per-class error rates for ensemble
+    ensemble_errors = {}
+    for class_name in class_names:
+        class_mask = y_test == class_name
+        class_preds = y_pred[class_mask]
+        error_rate = 1 - np.mean(class_preds == class_name)
+        ensemble_errors[class_name] = error_rate
+    
+    # Get individual model predictions
+    individual_errors = {info['name']: {} for info in ensemble.model_info}
+    for i, info in enumerate(ensemble.model_info):
+        model = ensemble.models[i]
+        model_type = info['type']
+        
+        # Get predictions from individual model
+        X_test_scaled = ensemble.scaler.transform(X_test)
+        if model_type == 'dnn':
+            proba = model.predict(X_test_scaled, verbose=0)
+            y_pred_model = np.argmax(proba, axis=1)
+        else:
+            y_pred_model = model.predict(X_test_scaled)
+        
+        # Convert to labels
+        y_pred_model_labels = ensemble.label_encoder.inverse_transform(y_pred_model)
+        
+        # Calculate per-class errors
+        for class_name in class_names:
+            class_mask = y_test == class_name
+            class_preds = y_pred_model_labels[class_mask]
+            error_rate = 1 - np.mean(class_preds == class_name)
+            individual_errors[info['name']][class_name] = error_rate
+    
+    # Plot error distribution
+    fig, ax = plt.subplots(figsize=(14, 8))
+    
+    x = np.arange(len(class_names))
+    width = 0.8 / (len(ensemble.model_info) + 1)
+    
+    # Plot individual models
+    for i, (model_name, errors) in enumerate(individual_errors.items()):
+        error_values = [errors[c] * 100 for c in class_names]
+        offset = (i - len(individual_errors)/2) * width
+        ax.bar(x + offset, error_values, width, label=model_name, alpha=0.7)
+    
+    # Plot ensemble
+    ensemble_error_values = [ensemble_errors[c] * 100 for c in class_names]
+    offset = (len(individual_errors) - len(individual_errors)/2) * width
+    ax.bar(x + offset, ensemble_error_values, width, label='Ensemble', 
+           color='#e74c3c', alpha=0.9, edgecolor='black', linewidth=1.5)
+    
+    ax.set_xlabel('Class', fontsize=12)
+    ax.set_ylabel('Error Rate (%)', fontsize=12)
+    ax.set_title('Error Distribution by Class', fontsize=14, fontweight='bold')
+    ax.set_xticks(x)
+    ax.set_xticklabels(class_names, rotation=45, ha='right')
+    ax.legend(loc='upper right')
+    ax.grid(axis='y', alpha=0.3)
+    ax.set_ylim([0, 100])
+    
+    plt.tight_layout()
+    plt.savefig(os.path.join(version_path, 'error_distribution.png'), dpi=150, bbox_inches='tight')
+    plt.close()
+    print(f"  ✓ Saved: error_distribution.png")
+    
+    # 5. Classification Report (save as both text and visual table)
+    print("[INFO] Generating classification report...")
+    from sklearn.metrics import classification_report, precision_recall_fscore_support
+    
+    report_text = classification_report(y_test, y_pred, target_names=class_names)
+    
+    # Save to text file
+    report_path = os.path.join(version_path, 'classification_report.txt')
+    with open(report_path, 'w') as f:
+        f.write("="*60 + "\n")
+        f.write("  ENSEMBLE MODEL CLASSIFICATION REPORT\n")
+        f.write("="*60 + "\n\n")
+        f.write(f"Ensemble: {os.path.basename(version_path)}\n")
+        f.write(f"Voting Strategy: {config['voting']}\n")
+        f.write(f"Component Models: {', '.join(config['model_versions'])}\n")
+        f.write(f"Overall Accuracy: {metadata.get('test_accuracy', 0)*100:.2f}%\n\n")
+        f.write("="*60 + "\n")
+        f.write("Per-Class Metrics:\n")
+        f.write("="*60 + "\n\n")
+        f.write(report_text)
+        f.write("\n" + "="*60 + "\n")
+    
+    print(f"  ✓ Saved: classification_report.txt")
+    
+    # Create visual table
+    print("[INFO] Creating classification report table...")
+    
+    # Get metrics
+    precision, recall, f1, support = precision_recall_fscore_support(
+        y_test, y_pred, labels=class_names, zero_division=0
+    )
+    
+    # Calculate accuracy per class
+    accuracy_per_class = []
+    for i, class_name in enumerate(class_names):
+        class_mask = y_test == class_name
+        class_preds = y_pred[class_mask]
+        acc = np.mean(class_preds == class_name) if class_mask.sum() > 0 else 0
+        accuracy_per_class.append(acc)
+    
+    # Create table data
+    table_data = []
+    for i, class_name in enumerate(class_names):
+        # Shorten class names for display
+        display_name = class_name.replace('_correct', '').replace('_', ' ').title()
+        if len(display_name) > 25:
+            display_name = display_name[:22] + '...'
+        
+        table_data.append([
+            display_name,
+            f'{precision[i]:.3f}',
+            f'{recall[i]:.3f}',
+            f'{f1[i]:.3f}',
+            f'{accuracy_per_class[i]:.3f}',
+            f'{int(support[i])}'
+        ])
+    
+    # Add overall metrics
+    overall_accuracy = metadata.get('test_accuracy', 0)
+    weighted_precision = np.average(precision, weights=support)
+    weighted_recall = np.average(recall, weights=support)
+    weighted_f1 = np.average(f1, weights=support)
+    
+    table_data.append([
+        '---',
+        '---',
+        '---',
+        '---',
+        '---',
+        '---'
+    ])
+    table_data.append([
+        'Weighted Avg',
+        f'{weighted_precision:.3f}',
+        f'{weighted_recall:.3f}',
+        f'{weighted_f1:.3f}',
+        f'{overall_accuracy:.3f}',
+        f'{int(support.sum())}'
+    ])
+    
+    fig, ax = plt.subplots(figsize=(12, max(8, len(class_names) * 0.5 + 2)))
+    ax.axis('tight')
+    ax.axis('off')
+    
+    # Create table
+    table = ax.table(cellText=table_data,
+                     colLabels=['Class', 'Precision', 'Recall', 'F1-Score', 'Accuracy', 'Support'],
+                     cellLoc='left',
+                     loc='center',
+                     colWidths=[0.35, 0.13, 0.13, 0.13, 0.13, 0.13])
+    
+    table.auto_set_font_size(False)
+    table.set_fontsize(9)
+    table.scale(1, 2)
+    
+    # Style header
+    for i in range(6):
+        cell = table[(0, i)]
+        cell.set_facecolor('#4472C4')
+        cell.set_text_props(weight='bold', color='white')
+    
+    # Style rows
+    for i in range(1, len(table_data) + 1):
+        for j in range(6):
+            cell = table[(i, j)]
+            if i == len(table_data) or i == len(table_data) - 1:
+                # Separator and weighted avg row
+                cell.set_facecolor('#E7E6E6')
+                if i == len(table_data):
+                    cell.set_text_props(weight='bold')
+            elif i % 2 == 0:
+                cell.set_facecolor('#F2F2F2')
+            else:
+                cell.set_facecolor('white')
+    
+    # Add title
+    title_text = f'Classification Report - {os.path.basename(version_path)}\n'
+    title_text += f'Voting: {config["voting"]} | Overall Accuracy: {overall_accuracy*100:.2f}%'
+    plt.title(title_text, fontsize=14, fontweight='bold', pad=20)
+    
+    plt.tight_layout()
+    plt.savefig(os.path.join(version_path, 'classification_report.png'), dpi=150, bbox_inches='tight')
+    plt.close()
+    print(f"  ✓ Saved: classification_report.png")
+    
+    # Print summary to console
+    print(f"\n{'-'*60}")
+    print("CLASSIFICATION REPORT SUMMARY:")
+    print(f"{'-'*60}")
+    print(report_text)
+    
+    print(f"\n{'='*60}")
+    print("  VISUALIZATION GENERATION COMPLETE")
+    print(f"{'='*60}\n")
+    
+    return True
 
 
 if __name__ == "__main__":

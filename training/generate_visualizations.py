@@ -15,7 +15,6 @@ project_root = os.path.dirname(current_dir)
 sys.path.append(project_root)
 
 def plot_gridsearch_results(cv_results, save_path, n_iter=None):
-    """Plot GridSearch/RandomizedSearch CV results"""
     mean_scores = cv_results['mean_test_score']
     std_scores = cv_results['std_test_score']
     
@@ -42,7 +41,6 @@ def plot_gridsearch_results(cv_results, save_path, n_iter=None):
     print(f"[INFO] Saved: {os.path.basename(save_path)}")
 
 def plot_feature_importance(model, feature_names, save_path, top_n=20):
-    """Plot feature importance for tree-based models"""
     importances = model.feature_importances_
     indices = np.argsort(importances)[::-1][:top_n]
     
@@ -63,7 +61,6 @@ def plot_feature_importance(model, feature_names, save_path, top_n=20):
     print(f"[INFO] Saved: {os.path.basename(save_path)}")
 
 def plot_confusion_matrix_heatmap(y_true, y_pred, class_names, save_path):
-    """Plot confusion matrix heatmap"""
     cm = confusion_matrix(y_true, y_pred)
     
     plt.figure(figsize=(14, 12))
@@ -82,7 +79,6 @@ def plot_confusion_matrix_heatmap(y_true, y_pred, class_names, save_path):
     print(f"[INFO] Saved: {os.path.basename(save_path)}")
 
 def plot_parameter_importance(cv_results, param_grid, save_path):
-    """Plot hyperparameter importance analysis"""
     results_df = pd.DataFrame(cv_results)
     
     # Analyze each parameter's impact
@@ -118,12 +114,10 @@ def plot_parameter_importance(cv_results, param_grid, save_path):
     print(f"[INFO] Saved: {os.path.basename(save_path)}")
 
 def get_feature_names(csv_path):
-    """Extract feature names from CSV header"""
     df = pd.read_csv(csv_path, nrows=0)
     return df.columns[1:].tolist()  # Skip 'class' column
 
 def generate_visualizations_for_model(version_dir):
-    """Generate all visualizations for a trained model"""
     print(f"\n{'='*60}")
     print(f"  GENERATING VISUALIZATIONS")
     print(f"{'='*60}")
@@ -241,7 +235,6 @@ def generate_visualizations_for_model(version_dir):
     return True
 
 def main():
-    """Main function for standalone execution"""
     import argparse
     
     parser = argparse.ArgumentParser(description='Generate visualizations for trained RF/XGBoost models')

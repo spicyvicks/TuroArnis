@@ -1,6 +1,4 @@
-"""
-Quick verification script to check ensemble_model.py content
-"""
+
 with open('training/ensemble_model.py', 'r') as f:
     lines = f.readlines()
     

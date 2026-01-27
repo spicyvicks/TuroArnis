@@ -1,0 +1,33 @@
+============================================================
+  ENSEMBLE MODEL CLASSIFICATION REPORT
+============================================================
+
+Ensemble: v023_ensemble_soft_nongs
+Voting Strategy: soft
+Component Models: v020_ang4_rf, v019_ang4_xgb
+Overall Accuracy: 84.62%
+
+============================================================
+Per-Class Metrics:
+============================================================
+
+                             precision    recall  f1-score   support
+
+       crown_thrust_correct       0.83      0.84      0.84       193
+  left_chest_thrust_correct       0.89      0.83      0.86       194
+   left_elbow_block_correct       0.81      0.76      0.79       185
+    left_eye_thrust_correct       0.85      0.86      0.86       191
+    left_knee_block_correct       0.91      0.94      0.93       197
+  left_temple_block_correct       0.85      0.84      0.84       182
+ right_chest_thrust_correct       0.84      0.82      0.83       191
+  right_elbow_block_correct       0.75      0.82      0.79       278
+   right_eye_thrust_correct       0.87      0.87      0.87       176
+   right_knee_block_correct       0.88      0.89      0.89       196
+ right_temple_block_correct       0.84      0.81      0.82       184
+solar_plexus_thrust_correct       0.88      0.87      0.88       193
+
+                   accuracy                           0.85      2360
+                  macro avg       0.85      0.85      0.85      2360
+               weighted avg       0.85      0.85      0.85      2360
+
+============================================================

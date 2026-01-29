@@ -24,3 +24,6 @@ imgaug>=0.4.0
 
 # Progress Bars
 tqdm>=4.66.0
+
+# Packaging
+pyinstaller>=5.13.0

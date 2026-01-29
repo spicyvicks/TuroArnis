@@ -14,6 +14,7 @@ from gui.results_window import ResultsWindow
 from gui.user_dialog import show_user_dialog
 from computer_vision.pose_analyzer import PoseAnalyzer
 from database.db_manager import DatabaseManager
+from utils.resource_path import get_resource_path, get_app_data_path
 
 class TuroArnisGUI:
     def __init__(self, window, window_title):
@@ -26,7 +27,10 @@ class TuroArnisGUI:
         
         self.window.withdraw()
 
-        self.db = DatabaseManager('turaarnis.db')
+        #app data directory for database (persists across updates)
+        db_path = os.path.join(get_app_data_path(), 'turoarnis.db')
+        self.db = DatabaseManager(db_path)
+        print(f"[INFO] Database location: {db_path}")
         self.current_user = None
         self.current_session_id = None
         
@@ -38,9 +42,9 @@ class TuroArnisGUI:
             return
 
         self.frame_counter = 0
-        self.processing_interval = 5  # Optimized: reduced from 3 to 5 (40% less processing)
+        self.processing_interval = 5  #reduced from 3 to 5 (40% less processing)
         self.last_known_results = []
-        self.last_ml_inference_frame = 0  # Track when we last ran ML classifier
+        self.last_ml_inference_frame = 0  # when we ran ML classifier
         
         # state tracking configuration
         self.MIN_STATE_FRAMES = 10  # Reduced from 15 for faster response (0.1-0.3s)
@@ -50,7 +54,9 @@ class TuroArnisGUI:
         self.last_pose_state = None
         self.state_frame_count = 0
 
-        stick_model_path = 'runs/pose/arnis_stick_detector/weights/best.pt'
+        # Use resource path for stick detector model
+        stick_model_relative = 'runs/pose/arnis_stick_detector/weights/best.pt'
+        stick_model_path = get_resource_path(stick_model_relative)
         self.analyzer = PoseAnalyzer(
             detection_interval=self.processing_interval,
             stick_model_path=stick_model_path if os.path.exists(stick_model_path) else None,

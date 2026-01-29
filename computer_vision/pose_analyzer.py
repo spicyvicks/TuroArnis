@@ -8,14 +8,16 @@ import tensorflow as tf
 
 from ultralytics import YOLO
 
-current_dir = os.path.dirname(os.path.abspath(__file__))
-project_root = os.path.dirname(current_dir)
-sys.path.append(project_root)
+# Import resource path helper for PyInstaller compatibility
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from utils.resource_path import get_resource_path
 
 class PoseAnalyzer:
     def __init__(self, detection_interval=3, stick_model_path=None, debug_stick=False):
         print("[info] initializing computer vision components...")
-        self.yolo_model = YOLO('yolov8n.pt')
+        # Use resource path helper for PyInstaller compatibility
+        yolo_base_path = get_resource_path('yolov8n.pt')
+        self.yolo_model = YOLO(yolo_base_path)
         
         self.stick_detector = None
         self.debug_stick = debug_stick  
@@ -59,7 +61,7 @@ class PoseAnalyzer:
         )
 
         try:
-            models_dir = os.path.join(project_root, 'models')
+            models_dir = get_resource_path('models')
             active_model_file = os.path.join(models_dir, 'active_model.json')
             
             # try to load from active_model.json (new versioned system)
@@ -67,14 +69,26 @@ class PoseAnalyzer:
                 import json
                 with open(active_model_file, 'r') as f:
                     active_config = json.load(f)
+                
+                # Support both relative and absolute paths (for backwards compatibility)
+                # If path is absolute and exists, use it; otherwise treat as relative
                 model_path = active_config['model_path']
                 encoder_path = active_config['encoder_path']
                 scaler_path = active_config.get('scaler_path')
                 version_name = active_config['version']
+                
+                # Convert to resource paths if not absolute or doesn't exist
+                if not os.path.isabs(model_path) or not os.path.exists(model_path):
+                    model_path = get_resource_path(os.path.join('models', version_name, os.path.basename(model_path)))
+                if not os.path.isabs(encoder_path) or not os.path.exists(encoder_path):
+                    encoder_path = get_resource_path(os.path.join('models', version_name, os.path.basename(encoder_path)))
+                if scaler_path and (not os.path.isabs(scaler_path) or not os.path.exists(scaler_path)):
+                    scaler_path = get_resource_path(os.path.join('models', version_name, os.path.basename(scaler_path)))
+                
                 print(f"[info] using model version: {version_name}")
                 
                 # Check if this is an ensemble model
-                version_path = os.path.join(models_dir, version_name)
+                version_path = get_resource_path(os.path.join('models', version_name))
                 metadata_path = os.path.join(version_path, 'metadata.json')
                 
                 is_ensemble = False
@@ -91,7 +105,9 @@ class PoseAnalyzer:
                         with open(ensemble_config_path, 'r') as f:
                             ensemble_config = json.load(f)
                         
-                        sys.path.insert(0, os.path.join(project_root, 'training'))
+                        # Add training module to path
+                        training_path = get_resource_path('training')
+                        sys.path.insert(0, training_path)
                         from ensemble_model import EnsembleClassifier
                         
                         # Load ensemble
@@ -145,9 +161,9 @@ class PoseAnalyzer:
                     print(f"[info] {model_type.upper()} pose classifier loaded")
             else:
                 # fallback to legacy paths
-                model_path = os.path.join(models_dir, 'arnis_coordinates_classifier.keras')
-                encoder_path = os.path.join(models_dir, 'label_encoder.joblib')
-                scaler_path = os.path.join(models_dir, 'scaler.joblib')
+                model_path = get_resource_path('models/arnis_coordinates_classifier.keras')
+                encoder_path = get_resource_path('models/label_encoder.joblib')
+                scaler_path = get_resource_path('models/scaler.joblib')
                 print("[info] using legacy model paths")
                 
                 if not os.path.exists(model_path) or not os.path.exists(encoder_path):

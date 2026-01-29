@@ -12,9 +12,10 @@ import numpy as np
 
 from gui.results_window import ResultsWindow
 from computer_vision.pose_analyzer import PoseAnalyzer
+from utils.resource_path import get_resource_path
 
-# image testing config
-TEST_IMAGE_PATH = 'Left Temple Block.jpg' 
+# image testing config - uses resource path for deployment
+TEST_IMAGE_PATH = get_resource_path('Left Temple Block.jpg')
 DEFAULT_TEST_POSE_PRETTY_NAME = "Left Temple Block"
 
 class TuroArnisGUI:
@@ -39,7 +40,9 @@ class TuroArnisGUI:
         self.state_frame_count = 0
         self.min_state_frames = 15
 
-        stick_model_path = 'runs/pose/arnis_stick_detector/weights/best.pt'
+        # use resource path for stick detector
+        stick_model_relative = 'runs/pose/arnis_stick_detector/weights/best.pt'
+        stick_model_path = get_resource_path(stick_model_relative)
         self.analyzer = PoseAnalyzer(
             detection_interval=self.processing_interval,
             stick_model_path=stick_model_path if os.path.exists(stick_model_path) else None,

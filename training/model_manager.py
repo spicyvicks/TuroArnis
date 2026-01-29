@@ -60,12 +60,14 @@ def set_active_model(version_name):
         print(f"[ERROR] Version {version_name} not found")
         return False
     
+    # Use relative paths for PyInstaller compatibility
+    # These will be resolved at runtime by pose_analyzer.py using get_resource_path()
     active_config = {
         'version': version_name,
-        'path': version_path,
-        'model_path': os.path.join(version_path, 'model.keras'),
-        'encoder_path': os.path.join(version_path, 'label_encoder.joblib'),
-        'scaler_path': os.path.join(version_path, 'scaler.joblib'),
+        'path': os.path.join('models', version_name),  # Relative path
+        'model_path': os.path.join('models', version_name, 'model.keras'),  # Relative
+        'encoder_path': os.path.join('models', version_name, 'label_encoder.joblib'),  # Relative
+        'scaler_path': os.path.join('models', version_name, 'scaler.joblib'),  # Relative
         'set_at': datetime.now().isoformat()
     }
     
@@ -73,6 +75,7 @@ def set_active_model(version_name):
         json.dump(active_config, f, indent=2)
     
     print(f"[OK] Active model set to: {version_name}")
+    print(f"[INFO] Config written with relative paths for deployment compatibility")
     return True
 
 def list_models():

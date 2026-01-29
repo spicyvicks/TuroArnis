@@ -138,7 +138,7 @@ class UserManagementDialog:
         
         ttk.Button(
             button_frame,
-            text="Cancel",
+            text="Exit",
             command=self.dialog.destroy,
             bootstyle=SECONDARY,
             width=10

@@ -1,7 +1,7 @@
 # -*- mode: python ; coding: utf-8 -*-
 """
-PyInstaller spec file for TuroArnis Desktop App
-Bundles all dependencies, models, and assets into single executable
+PyInstaller spec file for TuroArnis Image Tester
+Bundles all dependencies, models, and test image into single executable
 """
 
 import sys
@@ -9,17 +9,32 @@ from PyInstaller.utils.hooks import collect_data_files, collect_submodules
 
 block_cipher = None
 
-# Collect all necessary data files
 import os
 
-# Collect MediaPipe data files (includes model .tflite files)
+# Collect MediaPipe data files
 datas = collect_data_files('mediapipe')
+
+# Add test image
+if os.path.exists('Left Temple Block.jpg'):
+    datas.append(('Left Temple Block.jpg', '.'))
+if os.path.exists('Right Eye Thrust.jpg'):
+    datas.append(('Right Eye Thrust.jpg', '.'))
 
 # Add your models if they exist
 if os.path.exists('models/arnis_coordinates_classifier.keras'):
     datas.append(('models/arnis_coordinates_classifier.keras', 'models'))
 if os.path.exists('models/label_encoder.joblib'):
     datas.append(('models/label_encoder.joblib', 'models'))
+
+# Add all ensemble model directories
+for item in os.listdir('models'):
+    item_path = os.path.join('models', item)
+    if os.path.isdir(item_path) and item.startswith('v0'):
+        datas.append((item_path, f'models/{item}'))
+
+# Add active_model.json
+if os.path.exists('models/active_model.json'):
+    datas.append(('models/active_model.json', 'models'))
 
 # Add stick detector model if it exists
 if os.path.exists('runs/pose/arnis_stick_detector/weights/best.pt'):
@@ -53,11 +68,10 @@ hiddenimports = [
     'yaml',
 ] + collect_submodules('mediapipe') + collect_submodules('ultralytics')
 
-# Collect binary files
 binaries = []
 
 a = Analysis(
-    ['main_app.py'],
+    ['main_image.py'],
     pathex=[],
     binaries=binaries,
     datas=datas,
@@ -81,18 +95,18 @@ exe = EXE(
     a.zipfiles,
     a.datas,
     [],
-    name='TuroArnis',
+    name='TuroArnis_ImageTest',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
     upx=True,
     upx_exclude=[],
     runtime_tmpdir=None,
-    console=False,  # No console window (GUI only)
+    console=False,  # No console window
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon='assets/TA.ico',  # Application icon
+    icon='assets/TA.ico',
 )

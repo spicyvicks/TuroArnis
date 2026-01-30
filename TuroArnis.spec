@@ -15,25 +15,25 @@ import os
 # Collect MediaPipe data files (includes model .tflite files)
 datas = collect_data_files('mediapipe')
 
-# Add your models if they exist
-if os.path.exists('models/arnis_coordinates_classifier.keras'):
-    datas.append(('models/arnis_coordinates_classifier.keras', 'models'))
-if os.path.exists('models/label_encoder.joblib'):
-    datas.append(('models/label_encoder.joblib', 'models'))
+# Add your models if they exist (now in ml/models/)
+if os.path.exists('ml/models/arnis_coordinates_classifier.keras'):
+    datas.append(('ml/models/arnis_coordinates_classifier.keras', 'models'))
+if os.path.exists('ml/models/label_encoder.joblib'):
+    datas.append(('ml/models/label_encoder.joblib', 'models'))
 
-# Add stick detector model if it exists
-if os.path.exists('runs/pose/arnis_stick_detector/weights/best.pt'):
-    datas.append(('runs/pose/arnis_stick_detector/weights/best.pt', 'runs/pose/arnis_stick_detector/weights'))
+# Add stick detector model if it exists (now in ml/runs/)
+if os.path.exists('ml/runs/pose/arnis_stick_detector/weights/best.pt'):
+    datas.append(('ml/runs/pose/arnis_stick_detector/weights/best.pt', 'runs/pose/arnis_stick_detector/weights'))
 
-# Add YOLO base models
-if os.path.exists('yolov8n-pose.pt'):
-    datas.append(('yolov8n-pose.pt', '.'))
-if os.path.exists('yolov8n.pt'):
-    datas.append(('yolov8n.pt', '.'))
+# Add YOLO base models (now in ml/)
+if os.path.exists('ml/yolov8n-pose.pt'):
+    datas.append(('ml/yolov8n-pose.pt', '.'))
+if os.path.exists('ml/yolov8n.pt'):
+    datas.append(('ml/yolov8n.pt', '.'))
 
-# Add assets if folder exists
-if os.path.exists('assets'):
-    datas.append(('assets', 'assets'))
+# Add assets if folder exists (now in app/assets/)
+if os.path.exists('app/assets'):
+    datas.append(('app/assets', 'assets'))
 
 # Collect hidden imports
 hiddenimports = [
@@ -57,7 +57,7 @@ hiddenimports = [
 binaries = []
 
 a = Analysis(
-    ['main_app.py'],
+    ['app/main_app.py'],  # Updated path
     pathex=[],
     binaries=binaries,
     datas=datas,
@@ -94,5 +94,5 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon='assets/TA.ico',  # Application icon
+    icon='app/assets/TA.ico',  # Updated path
 )

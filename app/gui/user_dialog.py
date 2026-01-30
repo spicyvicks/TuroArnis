@@ -6,7 +6,7 @@ from ttkbootstrap.dialogs import Messagebox
 
 #add parent directory to path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from database.db_manager import DatabaseManager
+from app.database.db_manager import DatabaseManager
 
 
 class UserManagementDialog:

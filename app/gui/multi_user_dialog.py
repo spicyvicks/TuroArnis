@@ -4,7 +4,7 @@ Multi-user management dialog for assigning users to detected people in frame
 import ttkbootstrap as ttk
 from ttkbootstrap.constants import *
 from ttkbootstrap.dialogs import Messagebox
-from database.db_manager import DatabaseManager
+from app.database.db_manager import DatabaseManager
 
 
 class MultiUserDialog:

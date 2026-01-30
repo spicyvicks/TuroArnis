@@ -10,7 +10,7 @@ from ultralytics import YOLO
 
 #import resource path helper for pyinstaller compatibility
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from utils.resource_path import get_resource_path
+from app.utils.resource_path import get_resource_path
 
 class PoseAnalyzer:
     def __init__(self, detection_interval=3, stick_model_path=None, debug_stick=False):

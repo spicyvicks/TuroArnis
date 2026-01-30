@@ -10,14 +10,13 @@ from ttkbootstrap.constants import *
 import queue
 import numpy as np
 
-from gui.results_window import ResultsWindow
-from gui.user_dialog import show_user_dialog
-from gui.toast import ToastNotification
-from gui.loading_spinner import LoadingSpinner
-from gui.status_bar import StatusBar
-from computer_vision.pose_analyzer import PoseAnalyzer
-from database.db_manager import DatabaseManager
-from utils.resource_path import get_resource_path, get_app_data_path
+from app.gui.results_window import ResultsWindow
+from app.computer_vision.pose_analyzer import PoseAnalyzer
+from app.utils.resource_path import get_resource_path
+
+#image testing config - uses resource path for deployment
+TEST_IMAGE_PATH = get_resource_path('Left Temple Block.jpg')
+DEFAULT_TEST_POSE_PRETTY_NAME = "Left Temple Block"
 
 class TuroArnisGUI:
     def __init__(self, window, window_title):
@@ -33,90 +32,35 @@ class TuroArnisGUI:
         self.screen_width = self.window.winfo_screenwidth()
         self.screen_height = self.window.winfo_screenheight()
         
-        self.window.withdraw()
-
-        #app data directory for database (persists across updates)
-        db_path = os.path.join(get_app_data_path(), 'turoarnis.db')
-        self.db = DatabaseManager(db_path)
-        print(f"[INFO] Database location: {db_path}")
-        self.current_user = None
+        #test user, no db
+        self.current_user = {'id': 0, 'name': 'Test User (Image Mode)'}
         self.current_session_id = None
-        
-        print("[DEBUG-INIT] Showing user selection dialog...")
-        self.show_user_selection()
-        
-        print(f"[DEBUG-INIT] After show_user_selection, current_user = {self.current_user}")
-        
-        if not self.current_user:
-            print("[INFO] no user selected, exiting...")
-            self.window.destroy()
-            return
 
-        print(f"[DEBUG-INIT] User validated: {self.current_user['name']}")
-        print("[DEBUG-INIT] Initializing frame counters...")
         self.frame_counter = 0
-        self.processing_interval = 1  #process every frame for smooth skeleton
-        self.ml_inference_interval = 8  #run ml classification less frequently
-        self.stick_detection_interval = 4  #run stick detection every 4th frame
+        self.processing_interval = 3
         self.last_known_results = []
-        self.last_ml_inference_frame = 0  #when we ran ml classifier
-        self.last_stick_detection_frame = 0  #when we ran stick detector
         
-        print("[DEBUG-INIT] Initializing state tracking...")
-        #state tracking configuration
-        self.MIN_STATE_FRAMES = 10  #reduced from 15 for faster response (0.1-0.3s)
-        self.MAX_STATE_DURATION = 300  #timeout after ~3-10s depending on fps
-        
-        #state tracking variables
+        #state tracking
         self.last_pose_state = None
         self.state_frame_count = 0
+        self.min_state_frames = 15
 
-        #initialize ux components first (before heavy loading)
-        print("[DEBUG-INIT] Initializing UX components...")
-        self.toast = ToastNotification(self.window)
-        self.spinner = LoadingSpinner(self.window)
-        
-        #show loading spinner for initialization
-        self.spinner.show("Initializing TuroArnis...")
-        self.window.update()
-
-        print("[DEBUG-INIT] Loading stick detector model...")
-        self.spinner.update_message("Loading stick detector...")
-        self.window.update()
-        
-        #use resource path for stick detector model
+        #use resource path for stick detector
         stick_model_relative = 'runs/pose/arnis_stick_detector/weights/best.pt'
         stick_model_path = get_resource_path(stick_model_relative)
-        print(f"[DEBUG-INIT] Stick model path: {stick_model_path}")
-        
-        print("[DEBUG-INIT] Initializing PoseAnalyzer...")
-        self.spinner.update_message("Loading pose detection models...")
-        self.window.update()
-        
         self.analyzer = PoseAnalyzer(
             detection_interval=self.processing_interval,
             stick_model_path=stick_model_path if os.path.exists(stick_model_path) else None,
-            debug_stick=False
+            debug_stick=True
         )
         
-        print("[DEBUG-INIT] Opening camera...")
-        self.spinner.update_message("Connecting to camera...")
-        self.window.update()
+        #load test image
+        self.static_image_original = cv2.imread(TEST_IMAGE_PATH)
+        if self.static_image_original is None:
+            print(f"[ERROR] could not load image: {TEST_IMAGE_PATH}")
+            sys.exit(1)
+        self.cap = None
         
-        self.cap = cv2.VideoCapture(0)
-        
-        #check if camera opened successfully
-        if not self.cap.isOpened():
-            self.spinner.hide()
-            self.toast.show("Camera not detected. Please check your camera connection.", "error", duration=5000)
-            print("[ERROR] Camera failed to open")
-        else:
-            #get camera resolution
-            cam_width = int(self.cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-            cam_height = int(self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-            print(f"[INFO] Camera opened: {cam_width}x{cam_height}")
-        
-        print("[DEBUG-INIT] Setting up GUI components...")
         self.queue = queue.Queue(maxsize=1)
         self.target_form = None
         
@@ -137,25 +81,14 @@ class TuroArnisGUI:
 
         user_frame = ttk.Labelframe(self.controls_panel, text="Current User", padding=10)
         user_frame.pack(fill=X, pady=5)
-        
-        print(f"[DEBUG-INIT] Creating user label with name: {self.current_user['name']}")
-        ttk.Label(user_frame, text=self.current_user['name'], font=("-size 12 -weight bold"), bootstyle="success").pack(anchor=W)
-        ttk.Label(user_frame, text=f"ID: {self.current_user['id']}", font=("-size 9"), bootstyle="secondary").pack(anchor=W)
+        ttk.Label(user_frame, text=self.current_user['name'], font=("-size 12 -weight bold"), bootstyle="info").pack(anchor=W)
+        ttk.Label(user_frame, text="Image Testing Mode", font=("-size 9"), bootstyle="secondary").pack(anchor=W)
 
         session_frame = ttk.Labelframe(self.controls_panel, text="Session", padding=10)
         session_frame.pack(fill=X, pady=5)
         
-        self.session_status_label = ttk.Label(session_frame, text="No active session", font=("-size 9"), bootstyle="warning")
+        self.session_status_label = ttk.Label(session_frame, text="Image Testing - No Sessions", font=("-size 9"), bootstyle="secondary")
         self.session_status_label.pack(anchor=W, pady=2)
-        
-        session_btn_frame = ttk.Frame(session_frame)
-        session_btn_frame.pack(fill=X, pady=5)
-        
-        self.start_session_btn = ttk.Button(session_btn_frame, text="Start", command=self.manual_start_session, bootstyle="success", width=10)
-        self.start_session_btn.pack(side=LEFT, padx=2)
-        
-        self.end_session_btn = ttk.Button(session_btn_frame, text="End", command=self.end_session, bootstyle="danger", width=10, state=DISABLED)
-        self.end_session_btn.pack(side=LEFT, padx=2)
         
         ttk.Separator(self.controls_panel, orient=HORIZONTAL).pack(fill=X, pady=10)
         
@@ -184,13 +117,13 @@ class TuroArnisGUI:
         self.view_all_results_button = ttk.Button(self.controls_panel, text="View All Results", command=self.open_results_window, bootstyle="info")
         self.view_all_results_button.pack(fill=X, pady=10, side=BOTTOM)
 
-        print("[DEBUG-INIT] Creating status bar...")
-        self.status_bar = StatusBar(self.window)
-        self.status_bar.set_camera_status("Connected", is_ok=self.cap.isOpened())
-        self.status_bar.set_model_status("Loaded", is_ok=True)
-        self.status_bar.set_status(f"Welcome, {self.current_user['name']}!")
+        #auto-select default pose
+        if DEFAULT_TEST_POSE_PRETTY_NAME in self.practice_stances:
+            self.target_form = self.practice_stances[DEFAULT_TEST_POSE_PRETTY_NAME]
+            self.form_button.config(text=DEFAULT_TEST_POSE_PRETTY_NAME)
+            self.status_label.config(text=f"Status: Analyzing '{DEFAULT_TEST_POSE_PRETTY_NAME}' (Image Test)")
+            print(f"[INFO] targeting: '{self.target_form}'")
 
-        print("[DEBUG-INIT] Starting video thread...")
         self.is_running = True
         self.thread = threading.Thread(target=self.video_loop, daemon=True)
         self.thread.start()
@@ -198,7 +131,6 @@ class TuroArnisGUI:
         self.window.protocol("WM_DELETE_WINDOW", self.on_closing)
         self.process_queue()
         
-        print("[DEBUG-INIT] Setting window geometry...")
         #set window size and center it (must be done together)
         width = int(self.screen_width * 0.8)
         height = int(self.screen_height * 0.8)
@@ -206,14 +138,6 @@ class TuroArnisGUI:
         y = (self.screen_height // 2) - (height // 2)
         self.window.geometry(f"{width}x{height}+{x}+{y}")
         
-        print("[DEBUG-INIT] Showing window...")
-        self.window.deiconify()
-        
-        #hide spinner and show success
-        self.spinner.hide()
-        self.toast.show(f"Welcome, {self.current_user['name']}!", "success", duration=2000)
-        
-        print("[DEBUG-INIT] Initialization complete, starting mainloop...")
         self.window.mainloop()
     
     @staticmethod
@@ -258,32 +182,17 @@ class TuroArnisGUI:
         COLOR_BG_TRANSPARENT = (0, 0, 0)
 
         while self.is_running:
-            ret, frame = self.cap.read()
-            if not ret:
-                time.sleep(0.1)
-                continue
+            frame = self.static_image_original.copy()
             
             frame = cv2.flip(frame, 1)
-            #balance: 480x360 provides better mediapipe accuracy without major performance hit
-            #360x270 was too small and caused tracking issues
-            processing_frame = cv2.resize(frame, (480, 360))
+            processing_frame = cv2.resize(frame, (640, 480))
             
-            #optimization: run ml inference and stick detection less frequently
-            #but run mediapipe pose every frame for smooth skeleton
-            run_full_ml = (self.frame_counter - self.last_ml_inference_frame) >= self.ml_inference_interval
-            run_stick_detection = (self.frame_counter - self.last_stick_detection_frame) >= self.stick_detection_interval
-            
-            analysis_results = self.analyzer.process_frame(
-                processing_frame, 
-                skip_ml_inference=not run_full_ml,
-                skip_stick_detection=not run_stick_detection
-            )
+            analysis_results = self.analyzer.process_frame(processing_frame)
             if analysis_results:
                 self.last_known_results = analysis_results
-                if run_full_ml:
-                    self.last_ml_inference_frame = self.frame_counter
-                if run_stick_detection:
-                    self.last_stick_detection_frame = self.frame_counter
+                if analysis_results and len(analysis_results) > 0:
+                    result = analysis_results[0]
+                    print(f"[DEBUG] stick_endpoints: {result.get('stick_endpoints')}")
 
             feedback_x = processing_frame.shape[1] - 270; feedback_y = 30
             
@@ -322,35 +231,23 @@ class TuroArnisGUI:
                         is_correct = False
                         current_state = 'incorrect'
                     
-                    #state transition tracking (fixed logic)
-                    if self.current_session_id:
-                        if current_state != self.last_pose_state:
-                            #state changed - log the previous state if held long enough
-                            if self.last_pose_state is not None and self.state_frame_count >= self.MIN_STATE_FRAMES:
-                                is_correct = (self.last_pose_state == 'correct')
-                                self.save_performance(result, is_correct=is_correct)
-                                print(f"[ATTEMPT] {'Correct' if is_correct else 'Incorrect'} attempt completed ({self.state_frame_count} frames)")
-                            
-                            #start tracking new state
-                            self.last_pose_state = current_state
-                            self.state_frame_count = 1
-                        else:
-                            #same state - increment counter
-                            self.state_frame_count += 1
-                            
-                            #timeout detection for stuck incorrect states
-                            if self.state_frame_count >= self.MAX_STATE_DURATION and current_state == 'incorrect':
-                                self.save_performance(result, is_correct=False)
-                                print(f"[TIMEOUT] Logged failed attempt after {self.state_frame_count} frames (pose held too long)")
-                                #reset state to allow fresh attempt
-                                self.last_pose_state = None
-                                self.state_frame_count = 0
+                    #state transition tracking (logs only)
+                    if current_state != self.last_pose_state:
+                        if self.last_pose_state is not None and self.state_frame_count >= self.min_state_frames:
+                            if current_state == 'correct':
+                                print(f"[ATTEMPT] correct (from {self.last_pose_state})")
+                            elif self.last_pose_state == 'correct':
+                                print(f"[ATTEMPT] incorrect (from correct)")
+                        self.last_pose_state = current_state
+                        self.state_frame_count = 1
+                    else:
+                        self.state_frame_count += 1
                 
                 cv2.rectangle(processing_frame, (x1, y1), (x2, y2), box_color, 2)
                 
+                #use debug overlay for stick in test mode
                 if result['stick_endpoints']:
-                    pt1, pt2 = result['stick_endpoints']
-                    cv2.line(processing_frame, pt1, pt2, COLOR_PROMPT, 4)
+                    self.analyzer.draw_stick_debug(processing_frame, result['stick_endpoints'])
 
                 user_display_name = self.current_user['name'] if self.current_user else f"Person {person_id}"
                 self.draw_text_with_bg(img=processing_frame, text=user_display_name, pos=(x1, y1 - 10), font_face=cv2.FONT_HERSHEY_SIMPLEX, font_scale=0.9, text_color=COLOR_BLACK, bg_color=COLOR_WHITE, thickness=2)
@@ -405,11 +302,7 @@ class TuroArnisGUI:
             self.queue.put(final_frame)
             
             self.frame_counter += 1
-            
-            #update fps in status bar
-            self.status_bar.update_fps(time.time())
-            
-            time.sleep(0.01)
+            time.sleep(0.1)
 
     def process_queue(self):
         try:
@@ -428,122 +321,19 @@ class TuroArnisGUI:
     def on_action_selected(self, pretty_name):
         self.target_form = self.practice_stances[pretty_name]
         self.form_button.config(text=pretty_name)
-        self.status_label.config(text=f"Status: Analyzing '{pretty_name}'")
-        self.status_bar.set_status(f"Practicing: {pretty_name}")
+        self.status_label.config(text=f"Status: Analyzing '{pretty_name}' (Image Test)")
         print(f"[INFO] targeting: '{self.target_form}'")
-        
-        self.toast.show(f"Now practicing: {pretty_name}", "info", duration=2000)
-
-        if self.current_user and not self.current_session_id:
-            self.start_session()
-    
-    def show_user_selection(self):
-        print("[DEBUG-MAIN] Calling show_user_dialog...")
-        selected = show_user_dialog(self.window, self.db)
-        print(f"[DEBUG-MAIN] Dialog returned: {selected}")
-        print(f"[DEBUG-MAIN] Selected type: {type(selected)}")
-        
-        if selected:
-            print(f"[DEBUG-MAIN] User selected, setting current_user...")
-            self.current_user = selected
-            print(f"[DEBUG-MAIN] current_user set to: {self.current_user}")
-            print(f"[DEBUG-MAIN] User name: {self.current_user['name']}")
-            print(f"[DEBUG-MAIN] User ID: {self.current_user['id']}")
-            print(f"[DEBUG-MAIN] User active: {self.current_user.get('is_active', 'KEY NOT FOUND')}")
-        else:
-            print("[DEBUG-MAIN] No user selected (selected is None/False)")
-            self.current_user = None
-    
-    def start_session(self):
-        if not self.current_user:
-            return
-        
-        self.current_session_id = self.db.start_session(
-            user_id=self.current_user['id'],
-            target_pose=self.target_form
-        )
-        print(f"[INFO] session {self.current_session_id} started")
-
-        self.session_status_label.config(text=f"Session #{self.current_session_id} - active", bootstyle="success")
-        self.start_session_btn.config(state=DISABLED)
-        self.end_session_btn.config(state=NORMAL)
-        
-        #show toast notification
-        self.toast.show(f"Session #{self.current_session_id} started", "success", duration=2000)
-        self.status_bar.set_status("Session active - Good luck!")
-    
-    def manual_start_session(self):
-        if not self.target_form:
-            self.toast.show("Please select a target form first", "warning", duration=3000)
-            return
-        self.start_session()
-    
-    def end_session(self):
-        if self.current_session_id:
-            self.db.end_session(self.current_session_id)
-            print(f"[INFO] session {self.current_session_id} ended")
-
-            summary = self.db.get_session_summary(self.current_session_id)
-            
-            #show summary as toast
-            if summary['total_attempts'] > 0:
-                accuracy = (summary['correct_attempts']/summary['total_attempts']*100)
-                msg = f"Session Complete! {summary['correct_attempts']}/{summary['total_attempts']} correct ({accuracy:.1f}%)"
-                toast_type = "success" if accuracy >= 70 else "warning" if accuracy >= 50 else "info"
-            else:
-                msg = "Session ended - No attempts recorded"
-                toast_type = "info"
-            
-            self.toast.show(msg, toast_type, duration=5000)
-            self.status_bar.set_status("Session ended")
-
-            self.current_session_id = None
-
-            self.session_status_label.config(text="No active session", bootstyle="warning")
-            self.start_session_btn.config(state=NORMAL)
-            self.end_session_btn.config(state=DISABLED)
-    
-    def save_performance(self, result, is_correct):
-        if not self.current_session_id:
-            return
-        
-        predicted_class = result.get('predicted_class', 'N/A')
-        predicted_class = re.sub(r'^\d+\.\s*', '', predicted_class)
-        confidence = result.get('confidence', 0.0)
-        joint_angles = result.get('live_angles')
-        grip_angle = result.get('grip_angle')
-        stick_detected = result.get('stick_endpoints') is not None
-
-        self.db.save_performance(
-            session_id=self.current_session_id,
-            user_id=self.current_user['id'],
-            pose_detected=predicted_class,
-            confidence=float(confidence),
-            is_correct=is_correct,
-            joint_angles=joint_angles,
-            grip_angle=float(grip_angle) if grip_angle else None,
-            stick_detected=stick_detected
-        )
     
     def open_results_window(self):
-        results_window = ResultsWindow(self.window, db_manager=self.db, current_user=self.current_user)
-        self.center_window(results_window, 1200, 700)
+        from ttkbootstrap.dialogs import Messagebox
+        Messagebox.show_info("Image Testing Mode - No results database available", "Info")
     
     def on_closing(self):
         print("[INFO] closing...")
         self.is_running = False
         time.sleep(0.5)
-
-        self.end_session()
-
-        self.db.close()
-        
         self.analyzer.close()
-        self.cap.release()
         self.window.destroy()
-    
-    def on_user_selected(self, username):
-        pass
     
     def reset_feedback(self):
         self.target_form = None
@@ -554,8 +344,9 @@ if __name__ == "__main__":
     #windows: set app id so taskbar icon shows properly
     try:
         from ctypes import windll
+        import os
         #set unique app id for windows taskbar
-        windll.shell32.SetCurrentProcessExplicitAppUserModelID('TuroArnis.ArnisFormCorrection.1.0')
+        windll.shell32.SetCurrentProcessExplicitAppUserModelID('TuroArnis.ImageTest.1.0')
     except:
         pass  #not on windows or failed
     
@@ -563,11 +354,12 @@ if __name__ == "__main__":
     
     #set icon before creating the gui
     try:
-        from utils.resource_path import get_resource_path
+        from app.utils.resource_path import get_resource_path
+        import os
         icon_path = get_resource_path('assets/TA.ico')
         if os.path.exists(icon_path):
             root.iconbitmap(icon_path)
     except Exception as e:
         print(f"[WARNING] Could not set icon: {e}")
     
-    app = TuroArnisGUI(root, "TuroArnis - Arnis Form Correction")
+    app = TuroArnisGUI(root, "TuroArnis - Arnis Form Correction (Image Test)")

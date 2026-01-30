@@ -15,10 +15,10 @@ def get_resource_path(relative_path):
         Absolute path to the resource
     """
     try:
-        # PyInstaller creates a temp folder and stores path in _MEIPASS
+        #pyinstaller creates a temp folder and stores path in _meipass
         base_path = sys._MEIPASS
     except Exception:
-        # Development mode - use project root
+        #development mode - use project root
         base_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
     
     return os.path.join(base_path, relative_path)

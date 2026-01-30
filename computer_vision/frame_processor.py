@@ -32,22 +32,22 @@ class FrameProcessor:
         self.analyzer = analyzer
         self.frame_skip = frame_skip
         
-        # Queues for thread communication
+        #queues for thread communication
         self.raw_frame_queue = queue.Queue(maxsize=max_queue_size)
         self.result_queue = queue.Queue(maxsize=max_queue_size)
         
-        # Threading control
+        #threading control
         self.is_running = False
         self.capture_thread = None
         self.process_thread = None
         
-        # Performance tracking
+        #performance tracking
         self.frame_count = 0
         self.process_count = 0
         self.fps_counter = deque(maxlen=30)
         self.last_fps_time = time.time()
         
-        # Latest results cache
+        #latest results cache
         self.latest_result = None
         self.result_lock = threading.Lock()
         
@@ -129,26 +129,26 @@ class FrameProcessor:
             except queue.Empty:
                 continue
                 
-            # Only process frames marked for processing
+            #only process frames marked for processing
             if frame_type == 'process':
                 start_time = time.time()
                 
-                # Run pose detection and classification
+                #run pose detection and classification
                 results = self.analyzer.process_frame(frame)
                 
-                # Calculate processing time
+                #calculate processing time
                 process_time = time.time() - start_time
                 self.fps_counter.append(1.0 / process_time if process_time > 0 else 0)
                 
-                # Store results
+                #store results
                 with self.result_lock:
                     self.latest_result = results
                     
-                # Put in result queue for GUI
+                #put in result queue for gui
                 try:
                     self.result_queue.put_nowait(results)
                 except queue.Full:
-                    # Clear queue and add new result
+                    #clear queue and add new result
                     try:
                         self.result_queue.get_nowait()
                         self.result_queue.put_nowait(results)
@@ -183,14 +183,14 @@ class FrameProcessor:
         }
 
 
-# Quick optimization functions
+#quick optimization functions
 def optimize_mediapipe_settings(pose_instance):
     """
     Apply performance optimizations to MediaPipe Pose
     Call this after initializing PoseAnalyzer
     """
-    # These settings are applied during initialization in pose_analyzer.py
-    # But we can verify/adjust if needed
+    #these settings are applied during initialization in pose_analyzer.py
+    #but we can verify/adjust if needed
     print("[INFO] MediaPipe optimizations applied:")
     print("  - static_image_mode: False (faster for video)")
     print("  - model_complexity: 1 (balanced speed/accuracy)")
@@ -207,11 +207,11 @@ def get_optimal_frame_skip(target_fps=30):
     Returns:
         Recommended frame skip value
     """
-    # Assume processing takes ~100ms per frame
+    #assume processing takes ~100ms per frame
     processing_time_ms = 100
     available_time_ms = 1000 / target_fps
     
     if processing_time_ms <= available_time_ms:
-        return 1  # Can process every frame
+        return 1  #can process every frame
     else:
         return int(processing_time_ms / available_time_ms) + 1

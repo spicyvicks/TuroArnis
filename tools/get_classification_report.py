@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 
 def patch_input_layer():
-    # monkey-patch InputLayer to handle batch_shape from newer keras
+    #monkey-patch inputlayer to handle batch_shape from newer keras
     original_init = tf.keras.layers.InputLayer.__init__
     def patched_init(self, batch_shape=None, **kwargs):
         if batch_shape is not None:
@@ -25,7 +25,7 @@ def generate_classification_report():
     models_dir = os.path.join(project_root, 'models')
     active_model_file = os.path.join(models_dir, 'active_model.json')
     
-    # try to load from active_model.json (new versioned system)
+    #try to load from active_model.json (new versioned system)
     if os.path.exists(active_model_file):
         import json
         with open(active_model_file, 'r') as f:
@@ -35,7 +35,7 @@ def generate_classification_report():
         version_dir = active_config['path']
         print(f"[INFO] Using model version: {active_config['version']}")
     else:
-        # fallback to legacy paths
+        #fallback to legacy paths
         model_path = os.path.join(models_dir, 'arnis_coordinates_classifier.keras')
         encoder_path = os.path.join(models_dir, 'label_encoder.joblib')
         version_dir = models_dir
@@ -97,16 +97,16 @@ def generate_classification_report():
     
     plt.tight_layout()
     
-    # Save confusion matrix
+    #save confusion matrix
     plt.savefig(cm_save_path, dpi=300, bbox_inches='tight')
     print(f"[INFO] Confusion matrix saved to: {cm_save_path}")
     
-    # Calculate and display some additional metrics
+    #calculate and display some additional metrics
     print("\n=== Additional Metrics ===")
     print(f"Total samples: {len(y_true)}")
     print(f"Number of classes: {len(classes)}")
     
-    # Calculate per-class accuracy
+    #calculate per-class accuracy
     class_correct = {}
     class_total = {}
     

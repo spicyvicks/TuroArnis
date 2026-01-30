@@ -11,17 +11,17 @@ import mediapipe as mp
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 
-# paths
+#paths
 current_dir = os.path.dirname(os.path.abspath(__file__))
 project_root = os.path.dirname(current_dir)
 output_dir = os.path.join(current_dir, 'output')
 
-# ============================================
-# CONFIGURATION
-# ============================================
-DATASET_FOLDER = "dataset"   # dataset folder
-MAX_SAMPLES = 100            # limit for clarity
-# ============================================
+#============================================
+#configuration
+#============================================
+DATASET_FOLDER = "dataset"   #dataset folder
+MAX_SAMPLES = 100            #limit for clarity
+#============================================
 
 def extract_keypoints(image_path, pose):
     """extract 33 landmarks (same as training.py)"""
@@ -46,7 +46,7 @@ def visualize_3d_keypoints(all_landmarks, class_names):
     """visualize 3D keypoints distribution"""
     fig = plt.figure(figsize=(15, 10))
     
-    # 3D scatter plot
+    #3d scatter plot
     ax1 = fig.add_subplot(121, projection='3d')
     
     colors = plt.cm.tab10(np.linspace(0, 1, len(set(class_names))))
@@ -55,8 +55,8 @@ def visualize_3d_keypoints(all_landmarks, class_names):
     
     for landmarks, cls in zip(all_landmarks, class_names):
         color = color_map[cls]
-        # plot only key joints (shoulders, elbows, wrists, hips)
-        key_joints = [11, 12, 13, 14, 15, 16, 23, 24]  # shoulder, elbow, wrist, hip
+        #plot only key joints (shoulders, elbows, wrists, hips)
+        key_joints = [11, 12, 13, 14, 15, 16, 23, 24]  #shoulder, elbow, wrist, hip
         for j in key_joints:
             ax1.scatter(landmarks[j, 0], landmarks[j, 1], landmarks[j, 2], 
                        c=[color], s=10, alpha=0.5)
@@ -66,7 +66,7 @@ def visualize_3d_keypoints(all_landmarks, class_names):
     ax1.set_zlabel('Z')
     ax1.set_title(f'3D Keypoint Distribution ({len(all_landmarks)} samples)')
     
-    # 2D plot (X vs Y)
+    #2d plot (x vs y)
     ax2 = fig.add_subplot(122)
     
     for landmarks, cls in zip(all_landmarks, class_names):
@@ -78,9 +78,9 @@ def visualize_3d_keypoints(all_landmarks, class_names):
     ax2.set_xlabel('X')
     ax2.set_ylabel('Y')
     ax2.set_title('2D Keypoint Distribution (X vs Y)')
-    ax2.invert_yaxis()  # flip Y to match image coordinates
+    ax2.invert_yaxis()  #flip y to match image coordinates
     
-    # legend
+    #legend
     patches = [plt.Line2D([0], [0], marker='o', color='w', 
                markerfacecolor=color_map[cls], markersize=10, label=cls) 
                for cls in unique_classes]

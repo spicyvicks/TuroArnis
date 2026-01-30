@@ -21,6 +21,11 @@ class TuroArnisGUI:
         self.window = window
         self.window.title(window_title)
         
+        #set app icon for taskbar
+        icon_path = get_resource_path('assets/TA.ico')
+        if os.path.exists(icon_path):
+            self.window.iconbitmap(icon_path)
+        
         self.window.update_idletasks()
         self.screen_width = self.window.winfo_screenwidth()
         self.screen_height = self.window.winfo_screenheight()
@@ -42,19 +47,22 @@ class TuroArnisGUI:
             return
 
         self.frame_counter = 0
-        self.processing_interval = 5  #reduced from 3 to 5 (40% less processing)
+        self.processing_interval = 1  #process every frame for smooth skeleton
+        self.ml_inference_interval = 8  #run ml classification less frequently
+        self.stick_detection_interval = 4  #run stick detection every 4th frame
         self.last_known_results = []
-        self.last_ml_inference_frame = 0  # when we ran ML classifier
+        self.last_ml_inference_frame = 0  #when we ran ml classifier
+        self.last_stick_detection_frame = 0  #when we ran stick detector
         
-        # state tracking configuration
-        self.MIN_STATE_FRAMES = 10  # Reduced from 15 for faster response (0.1-0.3s)
-        self.MAX_STATE_DURATION = 300  # Timeout after ~3-10s depending on FPS
+        #state tracking configuration
+        self.MIN_STATE_FRAMES = 10  #reduced from 15 for faster response (0.1-0.3s)
+        self.MAX_STATE_DURATION = 300  #timeout after ~3-10s depending on fps
         
-        # state tracking variables
+        #state tracking variables
         self.last_pose_state = None
         self.state_frame_count = 0
 
-        # Use resource path for stick detector model
+        #use resource path for stick detector model
         stick_model_relative = 'runs/pose/arnis_stick_detector/weights/best.pt'
         stick_model_path = get_resource_path(stick_model_relative)
         self.analyzer = PoseAnalyzer(
@@ -136,10 +144,12 @@ class TuroArnisGUI:
         self.window.protocol("WM_DELETE_WINDOW", self.on_closing)
         self.process_queue()
         
+        #set window size and center it (must be done together)
         width = int(self.screen_width * 0.8)
         height = int(self.screen_height * 0.8)
-        self.window.geometry(f"{width}x{height}")
-        self.center_window(self.window, width, height)
+        x = (self.screen_width // 2) - (width // 2)
+        y = (self.screen_height // 2) - (height // 2)
+        self.window.geometry(f"{width}x{height}+{x}+{y}")
         
         self.window.deiconify()
         self.window.mainloop()
@@ -192,17 +202,26 @@ class TuroArnisGUI:
                 continue
             
             frame = cv2.flip(frame, 1)
-            # Optimized: reduced resolution from 640x480 to 480x360 (30-40% faster)
+            #balance: 480x360 provides better mediapipe accuracy without major performance hit
+            #360x270 was too small and caused tracking issues
             processing_frame = cv2.resize(frame, (480, 360))
             
-            # Optimization: Skip full ML inference on alternate processed frames
-            run_full_ml = (self.frame_counter - self.last_ml_inference_frame) >= (self.processing_interval * 2)
+            #optimization: run ml inference and stick detection less frequently
+            #but run mediapipe pose every frame for smooth skeleton
+            run_full_ml = (self.frame_counter - self.last_ml_inference_frame) >= self.ml_inference_interval
+            run_stick_detection = (self.frame_counter - self.last_stick_detection_frame) >= self.stick_detection_interval
             
-            analysis_results = self.analyzer.process_frame(processing_frame, skip_ml_inference=not run_full_ml)
+            analysis_results = self.analyzer.process_frame(
+                processing_frame, 
+                skip_ml_inference=not run_full_ml,
+                skip_stick_detection=not run_stick_detection
+            )
             if analysis_results:
                 self.last_known_results = analysis_results
                 if run_full_ml:
                     self.last_ml_inference_frame = self.frame_counter
+                if run_stick_detection:
+                    self.last_stick_detection_frame = self.frame_counter
 
             feedback_x = processing_frame.shape[1] - 270; feedback_y = 30
             
@@ -241,27 +260,27 @@ class TuroArnisGUI:
                         is_correct = False
                         current_state = 'incorrect'
                     
-                    # state transition tracking (fixed logic)
+                    #state transition tracking (fixed logic)
                     if self.current_session_id:
                         if current_state != self.last_pose_state:
-                            # State changed - log the PREVIOUS state if held long enough
+                            #state changed - log the previous state if held long enough
                             if self.last_pose_state is not None and self.state_frame_count >= self.MIN_STATE_FRAMES:
                                 is_correct = (self.last_pose_state == 'correct')
                                 self.save_performance(result, is_correct=is_correct)
                                 print(f"[ATTEMPT] {'Correct' if is_correct else 'Incorrect'} attempt completed ({self.state_frame_count} frames)")
                             
-                            # Start tracking new state
+                            #start tracking new state
                             self.last_pose_state = current_state
                             self.state_frame_count = 1
                         else:
-                            # Same state - increment counter
+                            #same state - increment counter
                             self.state_frame_count += 1
                             
-                            # Timeout detection for stuck incorrect states
+                            #timeout detection for stuck incorrect states
                             if self.state_frame_count >= self.MAX_STATE_DURATION and current_state == 'incorrect':
                                 self.save_performance(result, is_correct=False)
                                 print(f"[TIMEOUT] Logged failed attempt after {self.state_frame_count} frames (pose held too long)")
-                                # Reset state to allow fresh attempt
+                                #reset state to allow fresh attempt
                                 self.last_pose_state = None
                                 self.state_frame_count = 0
                 
@@ -367,7 +386,7 @@ class TuroArnisGUI:
         )
         print(f"[INFO] session {self.current_session_id} started")
 
-        self.session_status_label.config(text=f"Session #{self.current_session_id} - Active", bootstyle="success")
+        self.session_status_label.config(text=f"Session #{self.current_session_id} - active", bootstyle="success")
         self.start_session_btn.config(state=DISABLED)
         self.end_session_btn.config(state=NORMAL)
     
@@ -446,5 +465,23 @@ class TuroArnisGUI:
         self.status_label.config(text="Status: Select a form")
 
 if __name__ == "__main__":
+    #windows: set app id so taskbar icon shows properly
+    try:
+        from ctypes import windll
+        #set unique app id for windows taskbar
+        windll.shell32.SetCurrentProcessExplicitAppUserModelID('TuroArnis.ArnisFormCorrection.1.0')
+    except:
+        pass  #not on windows or failed
+    
     root = ttk.Window(themename="flatly")
+    
+    #set icon before creating the gui
+    try:
+        from utils.resource_path import get_resource_path
+        icon_path = get_resource_path('assets/TA.ico')
+        if os.path.exists(icon_path):
+            root.iconbitmap(icon_path)
+    except Exception as e:
+        print(f"[WARNING] Could not set icon: {e}")
+    
     app = TuroArnisGUI(root, "TuroArnis - Arnis Form Correction")

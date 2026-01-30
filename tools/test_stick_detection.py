@@ -21,8 +21,8 @@ def calculate_stick_angle(grip_point, tip_point):
     dx = tip_point[0] - grip_point[0]
     dy = tip_point[1] - grip_point[1]
     
-    # angle from vertical (0° = up, 90° = right, 180° = down, -90° = left)
-    angle = np.degrees(np.arctan2(dx, -dy))  # -dy because y increases downward
+    #angle from vertical (0° = up, 90° = right, 180° = down, -90° = left)
+    angle = np.degrees(np.arctan2(dx, -dy))  #-dy because y increases downward
     return angle
 
 def detect_stick(image_path, show_result=True):

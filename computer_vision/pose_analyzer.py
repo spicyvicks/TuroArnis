@@ -8,16 +8,19 @@ import tensorflow as tf
 
 from ultralytics import YOLO
 
-# Import resource path helper for PyInstaller compatibility
+#import resource path helper for pyinstaller compatibility
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from utils.resource_path import get_resource_path
 
 class PoseAnalyzer:
     def __init__(self, detection_interval=3, stick_model_path=None, debug_stick=False):
         print("[info] initializing computer vision components...")
-        # Use resource path helper for PyInstaller compatibility
+        #use resource path helper for pyinstaller compatibility
         yolo_base_path = get_resource_path('yolov8n.pt')
         self.yolo_model = YOLO(yolo_base_path)
+        
+        #cached stick detection results
+        self._cached_stick_results = {}
         
         self.stick_detector = None
         self.debug_stick = debug_stick  
@@ -38,46 +41,48 @@ class PoseAnalyzer:
         else:
             print(f"[DEBUG-INIT] Stick detector NOT loaded - path is None or doesn't exist")
         
-        # using ultralytics bytetrack
+        #using ultralytics bytetrack
         self.use_builtin_tracking = True
         self.track_history = {}
         self.id_mapping = {}
         self.next_stable_id = 1
         print("[info] using bytetrack for person tracking")
         
-        # stick keypoint smoothing buffer
+        #stick keypoint smoothing buffer
         self.stick_buffer = []
         self.stick_buffer_size = 5
         self.min_keypoint_confidence = 0.4
         
         self.mp_drawing = mp.solutions.drawing_utils
         self.mp_pose = mp.solutions.pose
-        # PERFORMANCE OPTIMIZATION: Use faster settings for video
+        #mediapipe configuration optimized for cpu-only systems
+        #model_complexity=1 balances accuracy and speed on cpu (0 is too inaccurate, 2 is too slow)
         self.pose = self.mp_pose.Pose(
-            static_image_mode=False,  # Changed from True - much faster for video
-            model_complexity=1,        # Changed from 2 - balanced speed/accuracy
-            min_detection_confidence=0.5,
-            smooth_landmarks=True      # Smoother output for video
+            static_image_mode=False,  #video mode for continuous tracking
+            model_complexity=1,        #general model - better accuracy than lite, still fast on cpu
+            min_detection_confidence=0.5,  #higher threshold reduces false detections and jitter
+            min_tracking_confidence=0.5,   #balanced with detection for consistent tracking
+            smooth_landmarks=True      #temporal smoothing for stable landmarks
         )
 
         try:
             models_dir = get_resource_path('models')
             active_model_file = os.path.join(models_dir, 'active_model.json')
             
-            # try to load from active_model.json (new versioned system)
+            #try to load from active_model.json (new versioned system)
             if os.path.exists(active_model_file):
                 import json
                 with open(active_model_file, 'r') as f:
                     active_config = json.load(f)
                 
-                # Support both relative and absolute paths (for backwards compatibility)
-                # If path is absolute and exists, use it; otherwise treat as relative
+                #support both relative and absolute paths (for backwards compatibility)
+                #if path is absolute and exists, use it; otherwise treat as relative
                 model_path = active_config['model_path']
                 encoder_path = active_config['encoder_path']
                 scaler_path = active_config.get('scaler_path')
                 version_name = active_config['version']
                 
-                # Convert to resource paths if not absolute or doesn't exist
+                #convert to resource paths if not absolute or doesn't exist
                 if not os.path.isabs(model_path) or not os.path.exists(model_path):
                     model_path = get_resource_path(os.path.join('models', version_name, os.path.basename(model_path)))
                 if not os.path.isabs(encoder_path) or not os.path.exists(encoder_path):
@@ -87,7 +92,7 @@ class PoseAnalyzer:
                 
                 print(f"[info] using model version: {version_name}")
                 
-                # Check if this is an ensemble model
+                #check if this is an ensemble model
                 version_path = get_resource_path(os.path.join('models', version_name))
                 metadata_path = os.path.join(version_path, 'metadata.json')
                 
@@ -99,18 +104,18 @@ class PoseAnalyzer:
                     is_ensemble = (model_type == 'ensemble')
                 
                 if is_ensemble:
-                    # Load ensemble configuration
+                    #load ensemble configuration
                     ensemble_config_path = os.path.join(version_path, 'ensemble_config.json')
                     if os.path.exists(ensemble_config_path):
                         with open(ensemble_config_path, 'r') as f:
                             ensemble_config = json.load(f)
                         
-                        # Add training module to path
+                        #add training module to path
                         training_path = get_resource_path('training')
                         sys.path.insert(0, training_path)
                         from ensemble_model import EnsembleClassifier
                         
-                        # Load ensemble
+                        #load ensemble
                         self.pose_classifier_model = EnsembleClassifier(
                             model_versions=ensemble_config['model_versions'],
                             voting=ensemble_config['voting'],
@@ -129,24 +134,24 @@ class PoseAnalyzer:
                     else:
                         raise FileNotFoundError("ensemble_config.json not found")
                 else:
-                    # Load regular model (DNN, RF, or XGBoost)
+                    #load regular model (dnn, rf, or xgboost)
                     self.is_ensemble = False
                     
-                    # Check model type for loading strategy
+                    #check model type for loading strategy
                     if model_type == 'dnn':
-                        # Load Keras model
+                        #load keras model
                         if not os.path.exists(model_path):
                             raise FileNotFoundError("model file not found")
                         self.pose_classifier_model = tf.keras.models.load_model(model_path)
                         if not self.pose_classifier_model.optimizer:
                             self.pose_classifier_model.compile(optimizer='adam', loss='sparse_categorical_crossentropy', metrics=['accuracy'])
                     else:
-                        # Load RF or XGBoost
+                        #load rf or xgboost
                         model_joblib = model_path.replace('.keras', '.joblib')
                         if os.path.exists(model_joblib):
                             self.pose_classifier_model = joblib.load(model_joblib)
                         elif os.path.exists(model_path):
-                            # Try legacy path
+                            #try legacy path
                             self.pose_classifier_model = joblib.load(model_path)
                         else:
                             raise FileNotFoundError("model file not found")
@@ -160,7 +165,7 @@ class PoseAnalyzer:
                     
                     print(f"[info] {model_type.upper()} pose classifier loaded")
             else:
-                # fallback to legacy paths
+                #fallback to legacy paths
                 model_path = get_resource_path('models/arnis_coordinates_classifier.keras')
                 encoder_path = get_resource_path('models/label_encoder.joblib')
                 scaler_path = get_resource_path('models/scaler.joblib')
@@ -173,7 +178,7 @@ class PoseAnalyzer:
                 self.label_encoder = joblib.load(encoder_path)
                 self.is_ensemble = False
                 
-                # load scaler if available
+                #load scaler if available
                 if scaler_path and os.path.exists(scaler_path):
                     self.scaler = joblib.load(scaler_path)
                     print("[info] feature scaler loaded")
@@ -224,7 +229,7 @@ class PoseAnalyzer:
             if debug:
                 print(f"[DEBUG-STICK] Running stick detector on frame...")
             
-            # Run stick detection
+            #run stick detection
             results = self.stick_detector(frame, verbose=False, conf=0.5)
             
             if debug:
@@ -253,7 +258,7 @@ class PoseAnalyzer:
                     print("[DEBUG-STICK] EXITING: No bounding boxes found")
                 return None, None
             
-            # Get stick bounding box
+            #get stick bounding box
             stick_box = result.boxes[0]
             stick_bbox = tuple(map(int, stick_box.xyxy[0].tolist()))
             confidence = stick_box.conf.item()
@@ -263,13 +268,13 @@ class PoseAnalyzer:
                 print(f"[DEBUG-STICK] Stick bbox: {stick_bbox}")
                 print(f"[DEBUG-STICK] Stick box class: {stick_box.cls.item() if stick_box.cls is not None else 'None'}")
             
-            # Get stick keypoints (grip and tip)
+            #get stick keypoints (grip and tip)
             if result.keypoints is not None and len(result.keypoints) > 0:
                 if debug:
                     print(f"[DEBUG-STICK] Keypoints object exists, length: {len(result.keypoints)}")
                     print(f"[DEBUG-STICK] Keypoints type: {type(result.keypoints)}")
                 
-                kpts = result.keypoints[0].data[0]  # First detection's keypoints
+                kpts = result.keypoints[0].data[0]  #first detection's keypoints
                 
                 if debug:
                     print(f"[DEBUG-STICK] Keypoints data shape: {kpts.shape if hasattr(kpts, 'shape') else 'N/A'}")
@@ -280,13 +285,13 @@ class PoseAnalyzer:
                 grip_conf = kpts[0][2].item()
                 tip_conf = kpts[1][2].item()
                 
-                # confidence filtering
+                #confidence filtering
                 if grip_conf < self.min_keypoint_confidence or tip_conf < self.min_keypoint_confidence:
                     if debug:
                         print(f"[DEBUG-STICK] low confidence - grip: {grip_conf:.2f}, tip: {tip_conf:.2f}")
                     return None, None
                 
-                # apply smoothing
+                #apply smoothing
                 smoothed = self._smooth_stick_keypoints(grip_point, tip_point)
                 if smoothed:
                     grip_point, tip_point = smoothed
@@ -311,18 +316,18 @@ class PoseAnalyzer:
                 traceback.print_exc()
             return None, None
 
-    def process_frame(self, frame, skip_ml_inference=False):
+    def process_frame(self, frame, skip_ml_inference=False, skip_stick_detection=False):
         h, w, _ = frame.shape
 
-        # Use YOLO's built-in ByteTrack tracking
+        #use yolo's built-in bytetrack tracking
         results_yolo = self.yolo_model.track(
             frame, 
-            persist=True,  # Persist tracks between frames
-            tracker="bytetrack.yaml",  # Use ByteTrack algorithm
+            persist=True,  #persist tracks between frames
+            tracker="bytetrack.yaml",  #use bytetrack algorithm
             verbose=False, 
-            classes=[0],  # Person class only
-            conf=0.3, 
-            imgsz=320
+            classes=[0],  #person class only
+            conf=0.4,      #higher conf for more stable detections (was 0.3)
+            imgsz=480      #larger size for better accuracy (was 256)
         )
         
         tracked_persons = []
@@ -333,7 +338,7 @@ class PoseAnalyzer:
                         x1, y1, x2, y2 = map(int, box.xyxy[0])
                         tracker_id = int(track_id)
                         
-                        # Map to stable IDs
+                        #map to stable ids
                         if tracker_id not in self.id_mapping:
                             self.id_mapping[tracker_id] = self.next_stable_id
                             self.next_stable_id += 1
@@ -386,7 +391,7 @@ class PoseAnalyzer:
                 
                 predicted_class, confidence = "N/A", 0.0
                 
-                # Optimization: Skip ML inference if requested (use cached from last frame)
+                #optimization: skip ml inference if requested (use cached from last frame)
                 if not skip_ml_inference:
                     if self.pose_classifier_model and self.label_encoder and live_angles:
                         try:
@@ -395,46 +400,46 @@ class PoseAnalyzer:
                             hip_center = (landmarks_np[23] + landmarks_np[24]) / 2.0
                             coords = (landmarks_np - hip_center).flatten()
                             
-                            # apply scaler if available
+                            #apply scaler if available
                             if self.scaler is not None:
                                 coords = self.scaler.transform(coords.reshape(1, -1))[0]
                             
-                            # Check if ensemble or regular model
+                            #check if ensemble or regular model
                             if getattr(self, 'is_ensemble', False):
-                                # Ensemble model
+                                #ensemble model
                                 prediction = self.pose_classifier_model.predict(coords.reshape(1, -1))[0]
                                 predicted_class = prediction
-                                # Get confidence from ensemble (need to check probabilities)
-                                # For now, use high confidence since ensemble likely more accurate
-                                confidence = 0.85  # Placeholder - could get from predict_proba
+                                #get confidence from ensemble (need to check probabilities)
+                                #for now, use high confidence since ensemble likely more accurate
+                                confidence = 0.85  #placeholder - could get from predict_proba
                             else:
-                                # Regular model (DNN, RF, XGBoost)
+                                #regular model (dnn, rf, xgboost)
                                 coords_input = np.expand_dims(coords, axis=0)
                                 
-                                # Check if model has predict_proba (RF/XGBoost) or is Keras
+                                #check if model has predict_proba (rf/xgboost) or is keras
                                 if hasattr(self.pose_classifier_model, 'predict_proba'):
-                                    # RF or XGBoost
+                                    #rf or xgboost
                                     pred_proba = self.pose_classifier_model.predict_proba(coords_input)[0]
                                     pred_index = np.argmax(pred_proba)
                                     confidence = pred_proba[pred_index]
                                     predicted_class = self.label_encoder.inverse_transform([pred_index])[0]
                                 else:
-                                    # DNN (Keras)
+                                    #dnn (keras)
                                     pred_proba = self.pose_classifier_model.predict(coords_input, verbose=0)[0]
                                     pred_index = np.argmax(pred_proba)
                                     confidence = pred_proba[pred_index]
                                     predicted_class = self.label_encoder.inverse_transform([pred_index])[0]
                             
-                            # Cache for next skip cycle
+                            #cache for next skip cycle
                             self._cached_prediction = (predicted_class, confidence)
                         except Exception:
                             pass
                 else:
-                    # Use cached prediction from previous frame
+                    #use cached prediction from previous frame
                     if hasattr(self, '_cached_prediction'):
                         predicted_class, confidence = self._cached_prediction
                     else:
-                        # First frame, no cache yet - run inference anyway
+                        #first frame, no cache yet - run inference anyway
                         if self.pose_classifier_model and self.label_encoder and live_angles:
                             try:
                                 world_landmarks = pose_results.pose_world_landmarks.landmark
@@ -453,16 +458,31 @@ class PoseAnalyzer:
                             except Exception:
                                 pass
                 
-                if self.debug_stick:
-                    print(f"[DEBUG-PROCESS] Calling stick detection for person {person_id}")
-                    print(f"[DEBUG-PROCESS] Person bbox: {(x1, y1, x2, y2)}")
-                
-                stick_endpoints, stick_bbox = self._detect_stick_with_yolo(frame, (x1, y1, x2, y2), debug=self.debug_stick)
-                
-                if self.debug_stick:
-                    print(f"[DEBUG-PROCESS] Stick detection returned:")
-                    print(f"[DEBUG-PROCESS]   stick_endpoints: {stick_endpoints}")
-                    print(f"[DEBUG-PROCESS]   stick_bbox: {stick_bbox}")
+                #optimization: skip stick detection if requested (use cached from last frame)
+                if not skip_stick_detection:
+                    if self.debug_stick:
+                        print(f"[DEBUG-PROCESS] Calling stick detection for person {person_id}")
+                        print(f"[DEBUG-PROCESS] Person bbox: {(x1, y1, x2, y2)}")
+                    
+                    stick_endpoints, stick_bbox = self._detect_stick_with_yolo(frame, (x1, y1, x2, y2), debug=self.debug_stick)
+                    
+                    #cache stick detection results
+                    self._cached_stick_results[person_id] = (stick_endpoints, stick_bbox)
+                    
+                    if self.debug_stick:
+                        print(f"[DEBUG-PROCESS] Stick detection returned:")
+                        print(f"[DEBUG-PROCESS]   stick_endpoints: {stick_endpoints}")
+                        print(f"[DEBUG-PROCESS]   stick_bbox: {stick_bbox}")
+                else:
+                    #use cached stick detection from previous frame
+                    if person_id in self._cached_stick_results:
+                        stick_endpoints, stick_bbox = self._cached_stick_results[person_id]
+                        if self.debug_stick:
+                            print(f"[DEBUG-PROCESS] Using cached stick detection for person {person_id}")
+                    else:
+                        #first frame, no cache yet - run detection anyway
+                        stick_endpoints, stick_bbox = self._detect_stick_with_yolo(frame, (x1, y1, x2, y2), debug=self.debug_stick)
+                        self._cached_stick_results[person_id] = (stick_endpoints, stick_bbox)
                 
                 if stick_endpoints:
                     if self.debug_stick:
@@ -543,18 +563,18 @@ class PoseAnalyzer:
         return np.degrees(np.arccos(np.clip(dot_product / (magnitude + 1e-6), -1.0, 1.0)))
 
     def _smooth_stick_keypoints(self, grip_point, tip_point):
-        # add to buffer
+        #add to buffer
         self.stick_buffer.append((grip_point, tip_point))
         
-        # keep buffer at max size
+        #keep buffer at max size
         if len(self.stick_buffer) > self.stick_buffer_size:
             self.stick_buffer.pop(0)
         
-        # need at least 2 points to smooth
+        #need at least 2 points to smooth
         if len(self.stick_buffer) < 2:
             return grip_point, tip_point
         
-        # average all points in buffer
+        #average all points in buffer
         avg_grip_x = int(np.mean([p[0][0] for p in self.stick_buffer]))
         avg_grip_y = int(np.mean([p[0][1] for p in self.stick_buffer]))
         avg_tip_x = int(np.mean([p[1][0] for p in self.stick_buffer]))
@@ -563,15 +583,15 @@ class PoseAnalyzer:
         return (avg_grip_x, avg_grip_y), (avg_tip_x, avg_tip_y)
     
     def draw_stick_debug(self, frame, stick_endpoints, stick_bbox=None):
-        # draw debug overlay for stick detection
+        #draw debug overlay for stick detection
         if stick_endpoints:
             grip, tip = stick_endpoints
-            # draw keypoints
-            cv2.circle(frame, grip, 8, (0, 255, 0), -1)  # green = grip
-            cv2.circle(frame, tip, 8, (0, 0, 255), -1)   # red = tip
-            # draw line
+            #draw keypoints
+            cv2.circle(frame, grip, 8, (0, 255, 0), -1)  #green = grip
+            cv2.circle(frame, tip, 8, (0, 0, 255), -1)   #red = tip
+            #draw line
             cv2.line(frame, grip, tip, (255, 255, 0), 3)
-            # labels
+            #labels
             cv2.putText(frame, "GRIP", (grip[0]-20, grip[1]-15), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
             cv2.putText(frame, "TIP", (tip[0]-15, tip[1]-15), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 2)
         
@@ -585,8 +605,8 @@ class PoseAnalyzer:
         self.stick_buffer = []
 
     def reset_tracker(self):
-        # Reset tracking by reinitializing the model (clears ByteTrack state)
-        self.yolo_model.predictor = None  # Clear predictor to reset tracking
+        #reset tracking by reinitializing the model (clears bytetrack state)
+        self.yolo_model.predictor = None  #clear predictor to reset tracking
         self.track_history = {}
         self.id_mapping = {}
         self.next_stable_id = 1

@@ -163,28 +163,28 @@ class EnsembleClassifier:
             raise ValueError("Could not load scaler or label encoder")
     
     def predict_proba(self, X):
-        # Scale features
+        #scale features
         X_scaled = self.scaler.transform(X)
         
-        # Collect probabilities from all models
+        #collect probabilities from all models
         all_probas = []
         
         for i, model in enumerate(self.models):
             model_type = self.model_info[i]['type']
             
             if model_type == 'dnn':
-                # DNN outputs probabilities directly
+                #dnn outputs probabilities directly
                 proba = model.predict(X_scaled, verbose=0)
             else:
-                # Random Forest and XGBoost both have predict_proba method
+                #random forest and xgboost both have predict_proba method
                 proba = model.predict_proba(X_scaled)
             
             all_probas.append(proba)
         
-        # Weight and average
-        all_probas = np.array(all_probas)  # Shape: (n_models, n_samples, n_classes)
+        #weight and average
+        all_probas = np.array(all_probas)  #shape: (n_models, n_samples, n_classes)
         
-        # Apply weights
+        #apply weights
         weighted_probas = np.zeros_like(all_probas[0])
         for i in range(len(self.models)):
             weighted_probas += self.weights[i] * all_probas[i]
@@ -193,14 +193,14 @@ class EnsembleClassifier:
     
     def predict(self, X):
         if self.voting == 'soft':
-            # Get averaged probabilities and take argmax
+            #get averaged probabilities and take argmax
             probas = self.predict_proba(X)
             predictions_encoded = np.argmax(probas, axis=1)
         else:
-            # Hard voting: majority vote
+            #hard voting: majority vote
             X_scaled = self.scaler.transform(X)
             
-            # Collect predictions from all models
+            #collect predictions from all models
             all_predictions = []
             
             for i, model in enumerate(self.models):
@@ -214,19 +214,19 @@ class EnsembleClassifier:
                 
                 all_predictions.append(pred)
             
-            all_predictions = np.array(all_predictions)  # Shape: (n_models, n_samples)
+            all_predictions = np.array(all_predictions)  #shape: (n_models, n_samples)
             
-            # Majority vote for each sample
+            #majority vote for each sample
             predictions_encoded = []
             for sample_idx in range(all_predictions.shape[1]):
                 votes = all_predictions[:, sample_idx]
-                # Count votes (using bincount)
+                #count votes (using bincount)
                 vote_counts = np.bincount(votes, weights=self.weights)
                 predictions_encoded.append(np.argmax(vote_counts))
             
             predictions_encoded = np.array(predictions_encoded)
         
-        # Decode to original labels
+        #decode to original labels
         predictions = self.label_encoder.inverse_transform(predictions_encoded)
         return predictions
     
@@ -265,7 +265,7 @@ class EnsembleClassifier:
 
 
 def evaluate_ensemble(csv_path=None, model_versions=None, voting='soft', weights=None):
-    # Default CSV path
+    #default csv path
     if csv_path is None:
         csv_path = os.path.join(project_root, 'arnis_poses_angles.csv')
     
@@ -276,11 +276,11 @@ def evaluate_ensemble(csv_path=None, model_versions=None, voting='soft', weights
     print(f"\n[INFO] Loading dataset from: {os.path.basename(csv_path)}")
     df = pd.read_csv(csv_path)
     
-    # Extract features and labels
+    #extract features and labels
     X = df.drop('class', axis=1).values
     y = df['class'].values
     
-    # Split data
+    #split data
     X_train, X_test, y_train, y_test = train_test_split(
         X, y, test_size=0.2, random_state=42, stratify=y
     )
@@ -288,7 +288,7 @@ def evaluate_ensemble(csv_path=None, model_versions=None, voting='soft', weights
     print(f"[INFO] Dataset: {len(X)} samples, {X.shape[1]} features")
     print(f"[INFO] Test set: {len(X_test)} samples\n")
     
-    # Create ensemble
+    #create ensemble
     ensemble = EnsembleClassifier(
         model_versions=model_versions,
         voting=voting,
@@ -296,7 +296,7 @@ def evaluate_ensemble(csv_path=None, model_versions=None, voting='soft', weights
         verbose=True
     )
     
-    # Evaluate ensemble
+    #evaluate ensemble
     print(f"\n{'='*60}")
     print(f"  ENSEMBLE EVALUATION")
     print(f"{'='*60}")
@@ -312,7 +312,7 @@ def evaluate_ensemble(csv_path=None, model_versions=None, voting='soft', weights
     print(f"{'-'*60}")
     print(report)
     
-    # Compare with individual models
+    #compare with individual models
     print(f"\n{'='*60}")
     print(f"  INDIVIDUAL MODEL COMPARISON")
     print(f"{'='*60}")
@@ -331,7 +331,7 @@ def evaluate_ensemble(csv_path=None, model_versions=None, voting='soft', weights
 
 
 def optimize_ensemble_weights(csv_path=None, model_versions=None, voting='soft'):
-    # Default CSV path
+    #default csv path
     if csv_path is None:
         csv_path = os.path.join(project_root, 'arnis_poses_angles.csv')
     
@@ -343,22 +343,22 @@ def optimize_ensemble_weights(csv_path=None, model_versions=None, voting='soft')
     print(f"  OPTIMIZING ENSEMBLE WEIGHTS")
     print(f"{'='*60}\n")
     
-    # Load data
+    #load data
     df = pd.read_csv(csv_path)
     X = df.drop('class', axis=1).values
     y = df['class'].values
     
-    # Split: 60% train, 20% validation, 20% test
+    #split: 60% train, 20% validation, 20% test
     X_temp, X_test, y_temp, y_test = train_test_split(
         X, y, test_size=0.2, random_state=42, stratify=y
     )
     X_train, X_val, y_train, y_val = train_test_split(
-        X_temp, y_temp, test_size=0.25, random_state=42, stratify=y_temp  # 0.25 * 0.8 = 0.2
+        X_temp, y_temp, test_size=0.25, random_state=42, stratify=y_temp  #0.25 * 0.8 = 0.2
     )
     
     print(f"[INFO] Train: {len(X_train)}, Val: {len(X_val)}, Test: {len(X_test)} samples\n")
     
-    # Create base ensemble to get model list
+    #create base ensemble to get model list
     base_ensemble = EnsembleClassifier(
         model_versions=model_versions,
         voting=voting,
@@ -372,7 +372,7 @@ def optimize_ensemble_weights(csv_path=None, model_versions=None, voting='soft')
         print("[ERROR] Need at least 2 models for ensemble")
         return None, 0, None
     
-    # Grid search for weights
+    #grid search for weights
     print(f"\n{'='*60}")
     print(f"  GRID SEARCH ({num_models} models)")
     print(f"{'='*60}\n")
@@ -380,26 +380,26 @@ def optimize_ensemble_weights(csv_path=None, model_versions=None, voting='soft')
     best_weights = None
     best_val_acc = 0
     
-    # Generate weight combinations
+    #generate weight combinations
     from itertools import product
     
     if num_models == 2:
-        # For 2 models: try weights from 0.1 to 0.9 in steps of 0.1
+        #for 2 models: try weights from 0.1 to 0.9 in steps of 0.1
         weight_range = [i/10 for i in range(1, 10)]
         combinations = [(w, 1-w) for w in weight_range]
     else:
-        # For 3+ models: coarser grid to avoid explosion
+        #for 3+ models: coarser grid to avoid explosion
         weight_range = [0.2, 0.3, 0.4, 0.5]
         combinations = []
         for combo in product(weight_range, repeat=num_models-1):
             last_weight = 1.0 - sum(combo)
-            if 0.1 <= last_weight <= 0.6:  # Last weight should also be reasonable
+            if 0.1 <= last_weight <= 0.6:  #last weight should also be reasonable
                 combinations.append(combo + (last_weight,))
     
     print(f"[INFO] Testing {len(combinations)} weight combinations...\n")
     
     for weights in combinations:
-        # Create ensemble with these weights
+        #create ensemble with these weights
         ensemble = EnsembleClassifier(
             model_versions=model_versions,
             voting=voting,
@@ -407,7 +407,7 @@ def optimize_ensemble_weights(csv_path=None, model_versions=None, voting='soft')
             verbose=False
         )
         
-        # Evaluate on validation set
+        #evaluate on validation set
         val_acc, _, _ = ensemble.evaluate(X_val, y_val)
         
         if val_acc > best_val_acc:
@@ -420,7 +420,7 @@ def optimize_ensemble_weights(csv_path=None, model_versions=None, voting='soft')
     print(f"Best weights: {[f'{w:.2f}' for w in best_weights]}")
     print(f"Validation accuracy: {best_val_acc*100:.2f}%\n")
     
-    # Test with optimal weights
+    #test with optimal weights
     final_ensemble = EnsembleClassifier(
         model_versions=model_versions,
         voting=voting,
@@ -437,11 +437,11 @@ def optimize_ensemble_weights(csv_path=None, model_versions=None, voting='soft')
 
 
 def save_ensemble_model(model_versions, weights, voting, accuracy, csv_path, models_dir, name_suffix=None):
-    # Get next version number
+    #get next version number
     from model_manager import get_next_version_number
     version_num = get_next_version_number()
     
-    # Create version name
+    #create version name
     if name_suffix:
         version_name = f"v{version_num:03d}_ensemble_{name_suffix}"
     else:
@@ -450,7 +450,7 @@ def save_ensemble_model(model_versions, weights, voting, accuracy, csv_path, mod
     version_path = os.path.join(models_dir, version_name)
     os.makedirs(version_path, exist_ok=True)
     
-    # Save ensemble configuration
+    #save ensemble configuration
     ensemble_config = {
         'model_versions': model_versions,
         'weights': weights,
@@ -462,38 +462,38 @@ def save_ensemble_model(model_versions, weights, voting, accuracy, csv_path, mod
     with open(config_path, 'w') as f:
         json.dump(ensemble_config, f, indent=2)
     
-    # Save metadata (compatible with model manager)
+    #save metadata (compatible with model manager)
     metadata = {
         'model_type': 'ensemble',
         'test_accuracy': accuracy,
         'trained_at': datetime.now().isoformat(),
-        'num_classes': None,  # Will be filled from component model
+        'num_classes': None,  #will be filled from component model
         'train_samples': None,
         'csv_used': os.path.basename(csv_path),
         'component_models': model_versions,
         'voting_strategy': voting
     }
     
-    # Copy scaler and encoder from first component model
+    #copy scaler and encoder from first component model
     first_model_path = os.path.join(models_dir, model_versions[0])
     
-    # Copy scaler
+    #copy scaler
     src_scaler = os.path.join(first_model_path, 'scaler.joblib')
     dst_scaler = os.path.join(version_path, 'scaler.joblib')
     if os.path.exists(src_scaler):
         shutil.copy(src_scaler, dst_scaler)
     
-    # Copy label encoder
+    #copy label encoder
     src_encoder = os.path.join(first_model_path, 'label_encoder.joblib')
     dst_encoder = os.path.join(version_path, 'label_encoder.joblib')
     if os.path.exists(src_encoder):
         shutil.copy(src_encoder, dst_encoder)
         
-        # Get num_classes from encoder
+        #get num_classes from encoder
         encoder = joblib.load(dst_encoder)
         metadata['num_classes'] = len(encoder.classes_)
     
-    # Save metadata
+    #save metadata
     metadata_path = os.path.join(version_path, 'metadata.json')
     with open(metadata_path, 'w') as f:
         json.dump(metadata, f, indent=2)
@@ -515,7 +515,7 @@ def create_ensemble_model():
     print("  CREATE ENSEMBLE MODEL")
     print("="*60)
     
-    # Get available non-ensemble models
+    #get available non-ensemble models
     available_models = []
     if os.path.exists(MODELS_DIR):
         for item in os.listdir(MODELS_DIR):
@@ -526,7 +526,7 @@ def create_ensemble_model():
                     with open(metadata_path, 'r') as f:
                         metadata = json.load(f)
                     
-                    # Exclude existing ensembles and DNN models - only RF and XGBoost allowed
+                    #exclude existing ensembles and dnn models - only rf and xgboost allowed
                     model_type = metadata.get('model_type', 'dnn')
                     if model_type != 'ensemble' and model_type != 'dnn':
                         available_models.append({
@@ -539,7 +539,7 @@ def create_ensemble_model():
         print("[ERROR] Need at least 2 trained models (RF/XGBoost) to create ensemble")
         return
     
-    # Sort by accuracy
+    #sort by accuracy
     available_models.sort(key=lambda x: x['accuracy'], reverse=True)
     
     print("\nAvailable models:")
@@ -555,7 +555,7 @@ def create_ensemble_model():
     model_versions = None
     
     if choice == '2':
-        # Manual selection
+        #manual selection
         indices = input("Enter model numbers separated by commas (e.g. 1,3): ").strip()
         try:
             indices = [int(x.strip()) - 1 for x in indices.split(',')]
@@ -568,38 +568,38 @@ def create_ensemble_model():
             print("[ERROR] Invalid input")
             return
     
-    # Voting strategy
+    #voting strategy
     voting = input("\nVoting strategy (soft/hard) [default=soft]: ").strip().lower()
     if voting not in ['soft', 'hard']:
         voting = 'soft'
     
-    # CSV path
+    #csv path
     csv_choice = input("\nUse angles or coordinates features? (angles/coordinates) [default=angles]: ").strip().lower()
     if csv_choice == 'coordinates':
         csv_path = os.path.join(project_root, 'arnis_poses_coordinates.csv')
     else:
         csv_path = os.path.join(project_root, 'arnis_poses_angles.csv')
     
-    # Weight optimization
+    #weight optimization
     optimize = input("\nOptimize weights using grid search? (y/n) [default=y]: ").strip().lower()
     
     if optimize != 'n':
-        # Optimize weights
+        #optimize weights
         weights, accuracy, ensemble = optimize_ensemble_weights(csv_path, model_versions, voting)
         if weights is None:
             print("[ERROR] Weight optimization failed")
             return
-        # Extract model versions from ensemble
+        #extract model versions from ensemble
         model_versions = [info['name'] for info in ensemble.model_info]
     else:
-        # Use equal weights
+        #use equal weights
         ensemble, accuracy = evaluate_ensemble(csv_path, model_versions, voting, None)
         if ensemble is None:
             return
         weights = list(ensemble.weights)
         model_versions = [info['name'] for info in ensemble.model_info]
     
-    # Ask for name suffix
+    #ask for name suffix
     name_suffix = input("\nEnter name for this ensemble (or press Enter to skip): ").strip()
     if name_suffix:
         name_suffix = name_suffix.replace(' ', '_').replace('-', '_')
@@ -607,13 +607,13 @@ def create_ensemble_model():
     else:
         name_suffix = None
     
-    # Save ensemble
+    #save ensemble
     version_name, version_path = save_ensemble_model(
         model_versions, weights, voting, accuracy, 
         csv_path, MODELS_DIR, name_suffix
     )
     
-    # Ask if set as active
+    #ask if set as active
     set_active = input("\nSet this ensemble as active model? (y/n) [default=n]: ").strip().lower()
     if set_active == 'y':
         from model_manager import set_active_model
@@ -628,7 +628,7 @@ def interactive_ensemble():
     print("  ENSEMBLE MODEL EVALUATION")
     print("="*60)
     
-    # Get available models
+    #get available models
     available_models = []
     if os.path.exists(MODELS_DIR):
         for item in os.listdir(MODELS_DIR):
@@ -648,7 +648,7 @@ def interactive_ensemble():
         print("[ERROR] No models found. Train models first.")
         return
     
-    # Sort by accuracy
+    #sort by accuracy
     available_models.sort(key=lambda x: x['accuracy'], reverse=True)
     
     print("\nAvailable models:")
@@ -665,13 +665,13 @@ def interactive_ensemble():
     weights = None
     
     if choice == '2':
-        # Manual selection
+        #manual selection
         indices = input("Enter model numbers separated by commas (e.g. 1,3,5): ").strip()
         try:
             indices = [int(x.strip()) - 1 for x in indices.split(',')]
             model_versions = [available_models[i]['name'] for i in indices if 0 <= i < len(available_models)]
             
-            # Ask for weights
+            #ask for weights
             use_weights = input("Use custom weights? (y/n) [default=n]: ").strip().lower()
             if use_weights == 'y':
                 weights_str = input(f"Enter {len(model_versions)} weights separated by commas: ").strip()
@@ -680,19 +680,19 @@ def interactive_ensemble():
             print("[ERROR] Invalid input. Using auto-select.")
             model_versions = None
     
-    # Voting strategy
+    #voting strategy
     voting = input("\nVoting strategy (soft/hard) [default=soft]: ").strip().lower()
     if voting not in ['soft', 'hard']:
         voting = 'soft'
     
-    # CSV path
+    #csv path
     csv_choice = input("\nUse angles or coordinates features? (angles/coordinates) [default=angles]: ").strip().lower()
     if csv_choice == 'coordinates':
         csv_path = os.path.join(project_root, 'arnis_poses_coordinates.csv')
     else:
         csv_path = os.path.join(project_root, 'arnis_poses_angles.csv')
     
-    # Run evaluation
+    #run evaluation
     evaluate_ensemble(csv_path, model_versions, voting, weights)
 
 
@@ -715,7 +715,7 @@ def generate_ensemble_visualizations(version_path, csv_path=None):
     print(f"  Ensemble: {os.path.basename(version_path)}")
     print(f"{'='*60}\n")
     
-    # Load ensemble configuration
+    #load ensemble configuration
     config_path = os.path.join(version_path, 'ensemble_config.json')
     metadata_path = os.path.join(version_path, 'metadata.json')
     
@@ -729,7 +729,7 @@ def generate_ensemble_visualizations(version_path, csv_path=None):
     with open(metadata_path, 'r') as f:
         metadata = json.load(f)
     
-    # Get CSV path
+    #get csv path
     if csv_path is None:
         csv_path = metadata.get('csv_used', 'arnis_poses_angles.csv')
         if not os.path.isabs(csv_path):
@@ -739,18 +739,18 @@ def generate_ensemble_visualizations(version_path, csv_path=None):
         print(f"[ERROR] CSV not found: {csv_path}")
         return False
     
-    # Load data
+    #load data
     print(f"[INFO] Loading data from: {os.path.basename(csv_path)}")
     df = pd.read_csv(csv_path)
     X = df.drop('class', axis=1).values
     y = df['class'].values
     
-    # Split data (same as training)
+    #split data (same as training)
     X_train, X_test, y_train, y_test = train_test_split(
         X, y, test_size=0.2, random_state=42, stratify=y
     )
     
-    # Load ensemble
+    #load ensemble
     print("[INFO] Loading ensemble model...")
     ensemble = EnsembleClassifier(
         model_versions=config['model_versions'],
@@ -759,17 +759,17 @@ def generate_ensemble_visualizations(version_path, csv_path=None):
         verbose=False
     )
     
-    # Get predictions
+    #get predictions
     print("[INFO] Generating predictions...")
     y_pred = ensemble.predict(X_test)
     
-    # Import plotting libraries
+    #import plotting libraries
     import matplotlib
     matplotlib.use('Agg')
     import matplotlib.pyplot as plt
     import seaborn as sns
     
-    # 1. Confusion Matrix
+    #1. confusion matrix
     print("[INFO] Creating confusion matrix...")
     cm = confusion_matrix(y_test, y_pred)
     class_names = ensemble.label_encoder.classes_
@@ -788,7 +788,7 @@ def generate_ensemble_visualizations(version_path, csv_path=None):
     plt.close()
     print(f"  ✓ Saved: confusion_matrix.png")
     
-    # 2. Model Contribution Chart (Weights)
+    #2. model contribution chart (weights)
     print("[INFO] Creating model contribution chart...")
     model_names = [info['name'] for info in ensemble.model_info]
     model_types = [info['type'].upper() for info in ensemble.model_info]
@@ -806,7 +806,7 @@ def generate_ensemble_visualizations(version_path, csv_path=None):
                        rotation=45, ha='right')
     ax.grid(axis='y', alpha=0.3)
     
-    # Add value labels on bars
+    #add value labels on bars
     for bar in bars:
         height = bar.get_height()
         ax.text(bar.get_x() + bar.get_width()/2., height,
@@ -818,7 +818,7 @@ def generate_ensemble_visualizations(version_path, csv_path=None):
     plt.close()
     print(f"  ✓ Saved: model_contributions.png")
     
-    # 3. Performance Comparison
+    #3. performance comparison
     print("[INFO] Creating performance comparison chart...")
     ensemble_acc = metadata.get('test_accuracy', 0)
     individual_accs = [info['accuracy'] for info in ensemble.model_info]
@@ -826,7 +826,7 @@ def generate_ensemble_visualizations(version_path, csv_path=None):
     all_labels = [f"{name}\n({mtype})" for name, mtype in zip(model_names, model_types)] + ['Ensemble']
     
     fig, ax = plt.subplots(figsize=(12, 6))
-    colors = ['#3498db'] * len(individual_accs) + ['#e74c3c']  # Blue for individuals, red for ensemble
+    colors = ['#3498db'] * len(individual_accs) + ['#e74c3c']  # blue for individuals, red for ensemble
     bars = ax.bar(range(len(all_labels)), [acc * 100 for acc in all_accs], color=colors)
     
     ax.set_xlabel('Model', fontsize=12)
@@ -837,17 +837,17 @@ def generate_ensemble_visualizations(version_path, csv_path=None):
     ax.grid(axis='y', alpha=0.3)
     ax.set_ylim([0, 100])
     
-    # Add value labels on bars
+    #add value labels on bars
     for bar in bars:
         height = bar.get_height()
         ax.text(bar.get_x() + bar.get_width()/2., height,
                 f'{height:.1f}%',
                 ha='center', va='bottom', fontsize=10, fontweight='bold')
     
-    # Add legend
+    #add legend
     from matplotlib.patches import Patch
-    legend_elements = [Patch(facecolor='#3498db', label='Individual Models'),
-                      Patch(facecolor='#e74c3c', label='Ensemble')]
+    legend_elements = [Patch(facecolor='#3498db', label='individual models'),
+                      Patch(facecolor='#e74c3c', label='ensemble')]
     ax.legend(handles=legend_elements, loc='upper right')
     
     plt.tight_layout()
@@ -855,10 +855,10 @@ def generate_ensemble_visualizations(version_path, csv_path=None):
     plt.close()
     print(f"  ✓ Saved: performance_comparison.png")
     
-    # 4. Error Distribution by Class
+    #4. error distribution by class
     print("[INFO] Creating error distribution chart...")
     
-    # Calculate per-class error rates for ensemble
+    #calculate per-class error rates for ensemble
     ensemble_errors = {}
     for class_name in class_names:
         class_mask = y_test == class_name
@@ -866,13 +866,13 @@ def generate_ensemble_visualizations(version_path, csv_path=None):
         error_rate = 1 - np.mean(class_preds == class_name)
         ensemble_errors[class_name] = error_rate
     
-    # Get individual model predictions
+    #get individual model predictions
     individual_errors = {info['name']: {} for info in ensemble.model_info}
     for i, info in enumerate(ensemble.model_info):
         model = ensemble.models[i]
         model_type = info['type']
         
-        # Get predictions from individual model
+        #get predictions from individual model
         X_test_scaled = ensemble.scaler.transform(X_test)
         if model_type == 'dnn':
             proba = model.predict(X_test_scaled, verbose=0)
@@ -880,29 +880,29 @@ def generate_ensemble_visualizations(version_path, csv_path=None):
         else:
             y_pred_model = model.predict(X_test_scaled)
         
-        # Convert to labels
+        #convert to labels
         y_pred_model_labels = ensemble.label_encoder.inverse_transform(y_pred_model)
         
-        # Calculate per-class errors
+        #calculate per-class errors
         for class_name in class_names:
             class_mask = y_test == class_name
             class_preds = y_pred_model_labels[class_mask]
             error_rate = 1 - np.mean(class_preds == class_name)
             individual_errors[info['name']][class_name] = error_rate
     
-    # Plot error distribution
+    #plot error distribution
     fig, ax = plt.subplots(figsize=(14, 8))
     
     x = np.arange(len(class_names))
     width = 0.8 / (len(ensemble.model_info) + 1)
     
-    # Plot individual models
+    #plot individual models
     for i, (model_name, errors) in enumerate(individual_errors.items()):
         error_values = [errors[c] * 100 for c in class_names]
         offset = (i - len(individual_errors)/2) * width
         ax.bar(x + offset, error_values, width, label=model_name, alpha=0.7)
     
-    # Plot ensemble
+    #plot ensemble
     ensemble_error_values = [ensemble_errors[c] * 100 for c in class_names]
     offset = (len(individual_errors) - len(individual_errors)/2) * width
     ax.bar(x + offset, ensemble_error_values, width, label='Ensemble', 
@@ -922,13 +922,13 @@ def generate_ensemble_visualizations(version_path, csv_path=None):
     plt.close()
     print(f"  ✓ Saved: error_distribution.png")
     
-    # 5. Classification Report (save as both text and visual table)
+    #5. classification report (save as both text and visual table)
     print("[INFO] Generating classification report...")
     from sklearn.metrics import classification_report, precision_recall_fscore_support
     
     report_text = classification_report(y_test, y_pred, target_names=class_names)
     
-    # Save to text file
+    #save to text file
     report_path = os.path.join(version_path, 'classification_report.txt')
     with open(report_path, 'w') as f:
         f.write("="*60 + "\n")
@@ -946,15 +946,15 @@ def generate_ensemble_visualizations(version_path, csv_path=None):
     
     print(f"  ✓ Saved: classification_report.txt")
     
-    # Create visual table
+    #create visual table
     print("[INFO] Creating classification report table...")
     
-    # Get metrics
+    #get metrics
     precision, recall, f1, support = precision_recall_fscore_support(
         y_test, y_pred, labels=class_names, zero_division=0
     )
     
-    # Calculate accuracy per class
+    #calculate accuracy per class
     accuracy_per_class = []
     for i, class_name in enumerate(class_names):
         class_mask = y_test == class_name
@@ -962,10 +962,10 @@ def generate_ensemble_visualizations(version_path, csv_path=None):
         acc = np.mean(class_preds == class_name) if class_mask.sum() > 0 else 0
         accuracy_per_class.append(acc)
     
-    # Create table data
+    #create table data
     table_data = []
     for i, class_name in enumerate(class_names):
-        # Shorten class names for display
+        #shorten class names for display
         display_name = class_name.replace('_correct', '').replace('_', ' ').title()
         if len(display_name) > 25:
             display_name = display_name[:22] + '...'
@@ -979,7 +979,7 @@ def generate_ensemble_visualizations(version_path, csv_path=None):
             f'{int(support[i])}'
         ])
     
-    # Add overall metrics
+    #add overall metrics
     overall_accuracy = metadata.get('test_accuracy', 0)
     weighted_precision = np.average(precision, weights=support)
     weighted_recall = np.average(recall, weights=support)
@@ -1006,7 +1006,7 @@ def generate_ensemble_visualizations(version_path, csv_path=None):
     ax.axis('tight')
     ax.axis('off')
     
-    # Create table
+    #create table
     table = ax.table(cellText=table_data,
                      colLabels=['Class', 'Precision', 'Recall', 'F1-Score', 'Accuracy', 'Support'],
                      cellLoc='left',
@@ -1017,27 +1017,27 @@ def generate_ensemble_visualizations(version_path, csv_path=None):
     table.set_fontsize(9)
     table.scale(1, 2)
     
-    # Style header
+    #style header
     for i in range(6):
         cell = table[(0, i)]
-        cell.set_facecolor('#4472C4')
+        cell.set_facecolor('#4472c4')
         cell.set_text_props(weight='bold', color='white')
     
-    # Style rows
+    #style rows
     for i in range(1, len(table_data) + 1):
         for j in range(6):
             cell = table[(i, j)]
             if i == len(table_data) or i == len(table_data) - 1:
-                # Separator and weighted avg row
-                cell.set_facecolor('#E7E6E6')
+                #separator and weighted avg row
+                cell.set_facecolor('#e7e6e6')
                 if i == len(table_data):
                     cell.set_text_props(weight='bold')
             elif i % 2 == 0:
-                cell.set_facecolor('#F2F2F2')
+                cell.set_facecolor('#f2f2f2')
             else:
                 cell.set_facecolor('white')
     
-    # Add title
+    #add title
     title_text = f'Classification Report - {os.path.basename(version_path)}\n'
     title_text += f'Voting: {config["voting"]} | Overall Accuracy: {overall_accuracy*100:.2f}%'
     plt.title(title_text, fontsize=14, fontweight='bold', pad=20)
@@ -1047,7 +1047,7 @@ def generate_ensemble_visualizations(version_path, csv_path=None):
     plt.close()
     print(f"  ✓ Saved: classification_report.png")
     
-    # Print summary to console
+    #print summary to console
     print(f"\n{'-'*60}")
     print("CLASSIFICATION REPORT SUMMARY:")
     print(f"{'-'*60}")

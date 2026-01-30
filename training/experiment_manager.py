@@ -38,22 +38,22 @@ class CustomExperimentManager:
         self.description = description
         self.base_dir = base_dir
         
-        # Create timestamped experiment folder
+        #create timestamped experiment folder
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         self.experiment_id = f"{experiment_name}_{timestamp}"
         self.experiment_dir = os.path.join(base_dir, self.experiment_id)
         
-        # Create folder structure
+        #create folder structure
         os.makedirs(self.experiment_dir, exist_ok=True)
         os.makedirs(os.path.join(self.experiment_dir, "models"), exist_ok=True)
         os.makedirs(os.path.join(self.experiment_dir, "plots"), exist_ok=True)
         os.makedirs(os.path.join(self.experiment_dir, "logs"), exist_ok=True)
         
-        # Initialize metrics CSV
+        #initialize metrics csv
         self.metrics_file = os.path.join(self.experiment_dir, "metrics.csv")
         self.metrics_headers = []
         
-        # Log experiment info
+        #log experiment info
         self.info = {
             "experiment_id": self.experiment_id,
             "experiment_name": experiment_name,
@@ -88,23 +88,23 @@ class CustomExperimentManager:
             epoch: Epoch number (optional)
             **metrics: Key-value pairs of metrics (train_acc=0.95, val_loss=0.15)
         """
-        # Add epoch if provided
+        #add epoch if provided
         if epoch is not None:
             metrics = {"epoch": epoch, **metrics}
             
-        # Create CSV headers on first call
+        #create csv headers on first call
         if not self.metrics_headers:
             self.metrics_headers = list(metrics.keys())
             with open(self.metrics_file, 'w', newline='') as f:
                 writer = csv.DictWriter(f, fieldnames=self.metrics_headers)
                 writer.writeheader()
         
-        # Append metrics
+        #append metrics
         with open(self.metrics_file, 'a', newline='') as f:
             writer = csv.DictWriter(f, fieldnames=self.metrics_headers)
             writer.writerow(metrics)
             
-        # Print summary
+        #print summary
         metrics_str = ", ".join([f"{k}={v:.4f}" if isinstance(v, float) else f"{k}={v}" 
                                  for k, v in metrics.items()])
         print(f"📊 Metrics logged: {metrics_str}")
@@ -241,7 +241,7 @@ class ExperimentComparator:
             print(f"   Created: {created}")
             print(f"   Description: {desc}")
             
-            # Show best metrics if available
+            #show best metrics if available
             metrics_file = os.path.join(folder_path, "metrics.csv")
             if os.path.exists(metrics_file):
                 try:
@@ -284,7 +284,7 @@ class ExperimentComparator:
             else:
                 print(f"{exp_id}: No metrics file")
         
-        # Sort by best value
+        #sort by best value
         results.sort(key=lambda x: x[1], reverse=True)
         
         for exp_id, best, final in results:
@@ -294,7 +294,7 @@ class ExperimentComparator:
         print("="*60)
 
 
-# Example usage for pose classifier
+#example usage for pose classifier
 def example_pose_classifier_training():
     """Example: How to use custom tracking for pose classifier"""
     
@@ -354,7 +354,7 @@ def example_stick_detector_training():
         description="Increased pose_loss_gain to 15.0"
     )
     
-    # Log YOLO configuration
+    #log yolo configuration
     exp.log_config({
         "model": "yolov8n-pose",
         "epochs": 100,
@@ -367,7 +367,7 @@ def example_stick_detector_training():
         "dataset": "roboflow_sticks_v3"
     })
     
-    # After training, log final metrics
+    #after training, log final metrics
     exp.log_metrics(
         box_map50=0.87,
         box_map50_95=0.74,
@@ -375,12 +375,12 @@ def example_stick_detector_training():
         pose_map50_95=0.68
     )
     
-    # Save trained model
-    # exp.save_model("runs/pose/arnis_stick_detector/weights/best.pt", "best.pt")
-    # exp.save_model("runs/pose/arnis_stick_detector/weights/last.pt", "last.pt")
+    #save trained model
+    #exp.save_model("runs/pose/arnis_stick_detector/weights/best.pt", "best.pt")
+    #exp.save_model("runs/pose/arnis_stick_detector/weights/last.pt", "last.pt")
     
-    # Save training plots
-    # exp.save_artifact("runs/pose/arnis_stick_detector/results.png", subfolder="plots")
+    #save training plots
+    #exp.save_artifact("runs/pose/arnis_stick_detector/results.png", subfolder="plots")
     
     exp.finalize(status="completed", notes="Best mAP so far")
 
@@ -418,6 +418,6 @@ if __name__ == "__main__":
     print("   comparator.print_summary('pose_classifier')")
     print("="*60)
     
-    # Run example
+    #run example
     print("\nRunning example...")
     example_pose_classifier_training()

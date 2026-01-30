@@ -25,14 +25,17 @@ pyinstaller TuroArnis.spec --clean
 All critical deployment blockers have been resolved:
 
 ✅ **Resource Path Handling**: Created `utils/resource_path.py` with PyInstaller-aware path resolution
-✅ **Database Location**: Moved to `%APPDATA%\TuroArnis\turaarnis.db` (persists across updates)
+✅ **Database Location**: Moved to `%APPDATA%\TuroArnis\turoarnis.db` (persists across updates)
 ✅ **Model Configuration**: `active_model.json` now uses relative paths
 ✅ **Icon**: Application icon added from `assets/TA.ico`
 
-## Deployment Notes
+## Notes
 
-### Database
-- Will be created at: `%APPDATA%\TuroArnis\turaarnis.db`
+- **First Run**: Creates database automatically
+- **Subsequent Runs**: Uses existing session/performance data
+- **Database Path**:
+  - Development: `%APPDATA%\TuroArnis\turoarnis.db`
+  - Will be created at: `%APPDATA%\TuroArnis\turoarnis.db`
 - Persists across app updates
 - Can be backed up by users
 

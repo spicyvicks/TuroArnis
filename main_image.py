@@ -14,7 +14,7 @@ from gui.results_window import ResultsWindow
 from computer_vision.pose_analyzer import PoseAnalyzer
 from utils.resource_path import get_resource_path
 
-# image testing config - uses resource path for deployment
+#image testing config - uses resource path for deployment
 TEST_IMAGE_PATH = get_resource_path('Left Temple Block.jpg')
 DEFAULT_TEST_POSE_PRETTY_NAME = "Left Temple Block"
 
@@ -23,11 +23,16 @@ class TuroArnisGUI:
         self.window = window
         self.window.title(window_title)
         
+        #set app icon for taskbar
+        icon_path = get_resource_path('assets/TA.ico')
+        if os.path.exists(icon_path):
+            self.window.iconbitmap(icon_path)
+        
         self.window.update_idletasks()
         self.screen_width = self.window.winfo_screenwidth()
         self.screen_height = self.window.winfo_screenheight()
         
-        # test user, no db
+        #test user, no db
         self.current_user = {'id': 0, 'name': 'Test User (Image Mode)'}
         self.current_session_id = None
 
@@ -35,12 +40,12 @@ class TuroArnisGUI:
         self.processing_interval = 3
         self.last_known_results = []
         
-        # state tracking
+        #state tracking
         self.last_pose_state = None
         self.state_frame_count = 0
         self.min_state_frames = 15
 
-        # use resource path for stick detector
+        #use resource path for stick detector
         stick_model_relative = 'runs/pose/arnis_stick_detector/weights/best.pt'
         stick_model_path = get_resource_path(stick_model_relative)
         self.analyzer = PoseAnalyzer(
@@ -49,7 +54,7 @@ class TuroArnisGUI:
             debug_stick=True
         )
         
-        # load test image
+        #load test image
         self.static_image_original = cv2.imread(TEST_IMAGE_PATH)
         if self.static_image_original is None:
             print(f"[ERROR] could not load image: {TEST_IMAGE_PATH}")
@@ -112,7 +117,7 @@ class TuroArnisGUI:
         self.view_all_results_button = ttk.Button(self.controls_panel, text="View All Results", command=self.open_results_window, bootstyle="info")
         self.view_all_results_button.pack(fill=X, pady=10, side=BOTTOM)
 
-        # auto-select default pose
+        #auto-select default pose
         if DEFAULT_TEST_POSE_PRETTY_NAME in self.practice_stances:
             self.target_form = self.practice_stances[DEFAULT_TEST_POSE_PRETTY_NAME]
             self.form_button.config(text=DEFAULT_TEST_POSE_PRETTY_NAME)
@@ -126,10 +131,12 @@ class TuroArnisGUI:
         self.window.protocol("WM_DELETE_WINDOW", self.on_closing)
         self.process_queue()
         
+        #set window size and center it (must be done together)
         width = int(self.screen_width * 0.8)
         height = int(self.screen_height * 0.8)
-        self.window.geometry(f"{width}x{height}")
-        self.center_window(self.window, width, height)
+        x = (self.screen_width // 2) - (width // 2)
+        y = (self.screen_height // 2) - (height // 2)
+        self.window.geometry(f"{width}x{height}+{x}+{y}")
         
         self.window.mainloop()
     
@@ -224,7 +231,7 @@ class TuroArnisGUI:
                         is_correct = False
                         current_state = 'incorrect'
                     
-                    # state transition tracking (logs only)
+                    #state transition tracking (logs only)
                     if current_state != self.last_pose_state:
                         if self.last_pose_state is not None and self.state_frame_count >= self.min_state_frames:
                             if current_state == 'correct':
@@ -238,7 +245,7 @@ class TuroArnisGUI:
                 
                 cv2.rectangle(processing_frame, (x1, y1), (x2, y2), box_color, 2)
                 
-                # use debug overlay for stick in test mode
+                #use debug overlay for stick in test mode
                 if result['stick_endpoints']:
                     self.analyzer.draw_stick_debug(processing_frame, result['stick_endpoints'])
 
@@ -334,5 +341,25 @@ class TuroArnisGUI:
         self.status_label.config(text="Status: Select a form")
 
 if __name__ == "__main__":
+    #windows: set app id so taskbar icon shows properly
+    try:
+        from ctypes import windll
+        import os
+        #set unique app id for windows taskbar
+        windll.shell32.SetCurrentProcessExplicitAppUserModelID('TuroArnis.ImageTest.1.0')
+    except:
+        pass  #not on windows or failed
+    
     root = ttk.Window(themename="flatly")
+    
+    #set icon before creating the gui
+    try:
+        from utils.resource_path import get_resource_path
+        import os
+        icon_path = get_resource_path('assets/TA.ico')
+        if os.path.exists(icon_path):
+            root.iconbitmap(icon_path)
+    except Exception as e:
+        print(f"[WARNING] Could not set icon: {e}")
+    
     app = TuroArnisGUI(root, "TuroArnis - Arnis Form Correction (Image Test)")

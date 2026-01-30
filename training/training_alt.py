@@ -241,12 +241,12 @@ def train_xgboost(csv_path, models_dir, model_name=None):
     print("  XGBOOST TRAINING")
     print("="*50)
     
-    # load data
+    #load data
     data = pd.read_csv(csv_path).dropna()
     X = data.iloc[:, 1:].values
     y_labels = data.iloc[:, 0].values
     
-    # encode labels
+    #encode labels
     label_encoder = LabelEncoder()
     y = label_encoder.fit_transform(y_labels)
     class_names = list(label_encoder.classes_)
@@ -255,38 +255,38 @@ def train_xgboost(csv_path, models_dir, model_name=None):
     print(f"  Samples: {len(X)}")
     print(f"  Features: {X.shape[1]}")
     
-    # split data: 70% train, 10% val, 20% test
+    #split data: 70% train, 10% val, 20% test
     X_temp, X_test, y_temp, y_test = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
     X_train, X_val, y_train, y_val = train_test_split(X_temp, y_temp, test_size=0.125, random_state=42, stratify=y_temp)
     
     print(f"  Split: {len(X_train)} train, {len(X_val)} val, {len(X_test)} test")
     
-    # scale features
+    #scale features
     scaler = StandardScaler()
     X_train = scaler.fit_transform(X_train)
     X_val = scaler.transform(X_val)
     X_test = scaler.transform(X_test)
     
-    # combine train and val for grid search
+    #combine train and val for grid search
     X_train_full = np.vstack([X_train, X_val])
     y_train_full = np.hstack([y_train, y_val])
     
-    # enhanced hyperparameters with grid search
+    #enhanced hyperparameters with grid search
     global _progress_tracker
     from sklearn.model_selection import GridSearchCV, RandomizedSearchCV
     
-    # base model - IMPORTANT: n_jobs=1 to avoid conflict with sklearn parallelization
+    #base model - important: n_jobs=1 to avoid conflict with sklearn parallelization
     xgb_base = xgb.XGBClassifier(
         objective='multi:softmax',
         num_class=len(class_names),
         random_state=42,
-        n_jobs=1,               # Use 1 here, sklearn handles parallelization
+        n_jobs=1,               #use 1 here, sklearn handles parallelization
         verbosity=0,
         use_label_encoder=False,
         eval_metric='mlogloss'
     )
     
-    # parameter grid for tuning (expanded for better search)
+    #parameter grid for tuning (expanded for better search)
     param_grid = {
         'n_estimators': [200, 300, 400, 500],
         'max_depth': [3, 4, 5, 6, 8, 10],
@@ -299,16 +299,16 @@ def train_xgboost(csv_path, models_dir, model_name=None):
         'reg_lambda': [0.5, 1.0, 1.5, 2.0]
     }
     
-    # calculate total fits for progress bar
-    n_iter = 30                           # Reduced for faster training
+    #calculate total fits for progress bar
+    n_iter = 30                           #reduced for faster training
     cv_folds = 3
-    total_fits = n_iter * cv_folds        # 30 × 3 = 90 fits
+    total_fits = n_iter * cv_folds        #30 × 3 = 90 fits
     
     print("\n  Performing Randomized Search...")
     print(f"  Testing {n_iter} random combinations ({total_fits} total fits)")
     print()
     
-    # initialize progress tracker
+    #initialize progress tracker
     _progress_tracker = GridSearchProgress(total_fits, desc="XGB Random Search")
     
     random_search = RandomizedSearchCV(
@@ -316,9 +316,9 @@ def train_xgboost(csv_path, models_dir, model_name=None):
         param_grid,
         n_iter=n_iter,
         cv=cv_folds,
-        scoring=_scoring_with_progress,  # custom scorer with progress
-        n_jobs=2,                         # parallelism with thread-safe progress
-        verbose=0,                        # disable default verbose
+        scoring=_scoring_with_progress,  #custom scorer with progress
+        n_jobs=2,                         #parallelism with thread-safe progress
+        verbose=0,                        #disable default verbose
         random_state=42
     )
     
@@ -333,10 +333,10 @@ def train_xgboost(csv_path, models_dir, model_name=None):
         print(f"    {param}: {value}")
     print(f"  Best CV Score: {random_search.best_score_*100:.2f}%")
     
-    # use best model
+    #use best model
     model = random_search.best_estimator_
     
-    # evaluate on test set
+    #evaluate on test set
     train_acc = accuracy_score(y_train_full, model.predict(X_train_full))
     val_acc = random_search.best_score_
     test_acc = accuracy_score(y_test, model.predict(X_test))
@@ -345,7 +345,7 @@ def train_xgboost(csv_path, models_dir, model_name=None):
     print(f"  CV Accuracy:    {val_acc*100:.2f}%")
     print(f"  Test Accuracy:  {test_acc*100:.2f}%")
     
-    # save model
+    #save model
     version_num = get_next_version(models_dir)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     if model_name:
@@ -363,7 +363,7 @@ def train_xgboost(csv_path, models_dir, model_name=None):
     joblib.dump(label_encoder, encoder_path)
     joblib.dump(scaler, scaler_path)
     
-    # save metadata
+    #save metadata
     metadata = {
         'version': version_name,
         'model_type': 'xgboost',
@@ -385,7 +385,7 @@ def train_xgboost(csv_path, models_dir, model_name=None):
     
     print(f"\n  Saved to: {version_name}")
     
-    # update active model if better
+    #update active model if better
     update_active_model(models_dir, version_name, version_dir, model_path, encoder_path, scaler_path, test_acc, 'xgboost')
     
     return test_acc, version_name

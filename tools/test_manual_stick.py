@@ -12,11 +12,11 @@ import numpy as np
 import sys
 import os
 
-# Add parent directory to path to import manual patterns
+#add parent directory to path to import manual patterns
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from manual_stick_patterns import get_stick_pattern
 
-# Import keras model for pose prediction
+#import keras model for pose prediction
 from tensorflow import keras
 import joblib
 
@@ -43,10 +43,10 @@ def calculate_angle(point1, point2, point3):
 
 def extract_features(world_landmarks):
     """Extract 3D coordinates from world landmarks for pose classification (same as pose_analyzer.py)"""
-    # Convert world landmarks to numpy array
+    #convert world landmarks to numpy array
     landmarks_np = np.array([[lm.x, lm.y, lm.z] for lm in world_landmarks])
     
-    # Normalize by hip center (same as in pose_analyzer.py)
+    #normalize by hip center (same as in pose_analyzer.py)
     hip_center = (landmarks_np[23] + landmarks_np[24]) / 2.0
     coords = (landmarks_np - hip_center).flatten()
     
@@ -128,7 +128,7 @@ def draw_manual_stick(image, landmarks, pose_class, image_width, image_height):
 def test_image(image_path):
     """Test manual stick pattern on a single image"""
     
-    # Load image
+    #load image
     image = cv2.imread(image_path)
     if image is None:
         print(f"Error: Could not load image from {image_path}")
@@ -136,11 +136,11 @@ def test_image(image_path):
     
     image_height, image_width = image.shape[:2]
     
-    # Initialize MediaPipe Pose
+    #initialize mediapipe pose
     mp_pose = mp.solutions.pose
     pose = mp_pose.Pose(static_image_mode=True, model_complexity=2)
     
-    # Process image
+    #process image
     image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
     results = pose.process(image_rgb)
     
@@ -148,7 +148,7 @@ def test_image(image_path):
         print("No pose detected in image")
         return
     
-    # Draw skeleton
+    #draw skeleton
     mp.solutions.drawing_utils.draw_landmarks(
         image,
         results.pose_landmarks,
@@ -157,12 +157,12 @@ def test_image(image_path):
         mp.solutions.drawing_utils.DrawingSpec(color=(0, 255, 0), thickness=2)
     )
     
-    # Predict pose class using the trained model
+    #predict pose class using the trained model
     try:
         model = keras.models.load_model('models/arnis_coordinates_classifier.keras')
         label_encoder = joblib.load('models/label_encoder.joblib')
         
-        # Extract 3D world landmarks features (99 features: 33 landmarks × 3 coords)
+        #extract 3d world landmarks features (99 features: 33 landmarks × 3 coords)
         features = extract_features(results.pose_world_landmarks.landmark)
         features_array = np.expand_dims(features, axis=0)
         
@@ -175,21 +175,21 @@ def test_image(image_path):
     except Exception as e:
         print(f"Could not load model for prediction: {e}")
         print("Using filename to guess pose class...")
-        # Try to extract pose from filename
+        #try to extract pose from filename
         import re
         filename = os.path.basename(image_path)
-        predicted_class = filename.split('_')[0]  # Rough guess
+        predicted_class = filename.split('_')[0]  #rough guess
     
-    # Draw manual stick
+    #draw manual stick
     image = draw_manual_stick(image, results.pose_landmarks.landmark, 
                              predicted_class, image_width, image_height)
     
-    # Save and display
+    #save and display
     output_path = image_path.replace('.jpg', '_manual_stick_test.jpg').replace('.png', '_manual_stick_test.png')
     cv2.imwrite(output_path, image)
     print(f"Saved result to: {output_path}")
     
-    # Display
+    #display
     cv2.imshow('Manual Stick Pattern Test', image)
     print("Press any key to close...")
     cv2.waitKey(0)

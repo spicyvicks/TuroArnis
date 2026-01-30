@@ -2,14 +2,14 @@ import sys
 import cv2
 import random
 from PyQt6.QtCore import QSize, Qt, QTimer
-# CHANGE: Import necessary table widgets
+#change: import necessary table widgets
 from PyQt6.QtGui import QImage, QPixmap, QFont, QAction
 from PyQt6.QtWidgets import (QApplication, QMainWindow, QLabel, QVBoxLayout,
                              QWidget, QPushButton, QMenu, QTableWidget,
                              QTableWidgetItem, QHeaderView)
 
 
-### --- THIS IS THE ONLY CLASS THAT HAS BEEN MODIFIED ---
+### --- this is the only class that has been modified ---
 class ResultsWindow(QWidget):
     """
     A window to display all results in a borderless table.
@@ -17,21 +17,21 @@ class ResultsWindow(QWidget):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("All User Results")
-        self.setStyleSheet("background-color: white;") # Set a background color
+        self.setStyleSheet("background-color: white;") #set a background color
 
         layout = QVBoxLayout(self)
 
-        # Create the table widget
+        #create the table widget
         self.table = QTableWidget()
         layout.addWidget(self.table)
 
-        # Set table properties
+        #set table properties
         self.table.setColumnCount(5)
         self.table.setHorizontalHeaderLabels(["User", "Form", "Remarks", "Accuracy", "Action"])
-        self.table.verticalHeader().setVisible(False) # Hide vertical row numbers
+        self.table.verticalHeader().setVisible(False) #hide vertical row numbers
 
-        # --- STYLING ---
-        # Style to make the table borderless
+        #--- styling ---
+        #style to make the table borderless
         self.table.setStyleSheet("""
             QTableWidget {
                 border: none;

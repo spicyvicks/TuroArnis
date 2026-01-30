@@ -1,8 +1,6 @@
-"""
-Database manager for TuroArnis application.
-Handles user management, sessions, and performance tracking.
-Uses SQLite for offline, standalone operation.
-"""
+#database manager for turoarnis application.
+#handles user management, sessions, and performance tracking.
+#uses sqlite for offline, standalone operation.
 
 import sqlite3
 import json
@@ -12,22 +10,22 @@ import os
 
 
 class DatabaseManager:
-    def __init__(self, db_path='turaarnis.db'):
-        """Initialize database connection and create tables if needed"""
-        # Ensure database directory exists
+    def __init__(self, db_path='turoarnis.db'):
+        #initialize database connection and create tables if needed
+        #ensure database directory exists
         db_file = Path(db_path)
         db_file.parent.mkdir(exist_ok=True)
         
         self.db_path = db_path
         self.conn = sqlite3.connect(db_path, check_same_thread=False)
-        self.conn.row_factory = sqlite3.Row  # Return rows as dictionaries
+        self.conn.row_factory = sqlite3.Row  #return rows as dictionaries
         self.create_tables()
     
     def create_tables(self):
-        """Create database tables if they don't exist"""
+        #create database tables if they don't exist
         cursor = self.conn.cursor()
         
-        # Users table
+        #users table
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS users (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -37,7 +35,7 @@ class DatabaseManager:
             )
         ''')
         
-        # Sessions table
+        #sessions table
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS sessions (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -49,7 +47,7 @@ class DatabaseManager:
             )
         ''')
         
-        # Performance records table
+        #performance records table
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS performances (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -67,59 +65,59 @@ class DatabaseManager:
             )
         ''')
         
-        # Create indexes for faster queries
+        #create indexes for faster queries
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_user_sessions ON sessions(user_id)')
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_session_performances ON performances(session_id)')
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_user_performances ON performances(user_id)')
         
         self.conn.commit()
     
-    # ==================== USER MANAGEMENT ====================
+    #user management
     
     def create_user(self, name):
-        """Create a new user"""
+        #create a new user
         try:
             cursor = self.conn.cursor()
             cursor.execute('INSERT INTO users (name) VALUES (?)', (name,))
             self.conn.commit()
             return cursor.lastrowid
         except sqlite3.IntegrityError:
-            return None  # User already exists
+            return None  #user already exists
     
     def get_all_users(self):
-        """Get all users"""
+        #Get all users
         cursor = self.conn.cursor()
         cursor.execute('SELECT * FROM users ORDER BY created_at DESC')
         return [dict(row) for row in cursor.fetchall()]
     
     def get_active_users(self):
-        """Get only active users"""
+        #Get only active users
         cursor = self.conn.cursor()
         cursor.execute('SELECT * FROM users WHERE is_active = 1 ORDER BY name')
         return [dict(row) for row in cursor.fetchall()]
     
     def get_user_by_id(self, user_id):
-        """Get user by ID"""
+        #Get user by ID
         cursor = self.conn.cursor()
         cursor.execute('SELECT * FROM users WHERE id = ?', (user_id,))
         row = cursor.fetchone()
         return dict(row) if row else None
     
     def get_user_by_name(self, name):
-        """Get user by name"""
+        #Get user by name
         cursor = self.conn.cursor()
         cursor.execute('SELECT * FROM users WHERE name = ?', (name,))
         row = cursor.fetchone()
         return dict(row) if row else None
     
     def update_user_status(self, user_id, is_active):
-        """Update user active status"""
+        #update user active status
         cursor = self.conn.cursor()
         cursor.execute('UPDATE users SET is_active = ? WHERE id = ?', (is_active, user_id))
         self.conn.commit()
     
     def delete_user(self, user_id):
-        """Delete user (cascade deletes sessions and performances)"""
+        #Delete user (cascade deletes sessions and performances)
         cursor = self.conn.cursor()
         cursor.execute('DELETE FROM users WHERE id = ?', (user_id,))
         self.conn.commit()
@@ -127,7 +125,7 @@ class DatabaseManager:
     # ==================== SESSION MANAGEMENT ====================
     
     def start_session(self, user_id, target_pose=None):
-        """Start a new practice session"""
+        #Start a new practice session
         cursor = self.conn.cursor()
         cursor.execute(
             'INSERT INTO sessions (user_id, target_pose) VALUES (?, ?)',
@@ -137,7 +135,7 @@ class DatabaseManager:
         return cursor.lastrowid
     
     def end_session(self, session_id):
-        """End a practice session"""
+        #End a practice session
         cursor = self.conn.cursor()
         cursor.execute(
             'UPDATE sessions SET ended_at = CURRENT_TIMESTAMP WHERE id = ?',
@@ -146,14 +144,14 @@ class DatabaseManager:
         self.conn.commit()
     
     def get_session(self, session_id):
-        """Get session by ID"""
+        #Get session by ID
         cursor = self.conn.cursor()
         cursor.execute('SELECT * FROM sessions WHERE id = ?', (session_id,))
         row = cursor.fetchone()
         return dict(row) if row else None
     
     def get_user_sessions(self, user_id, limit=10):
-        """Get recent sessions for a user"""
+        #Get recent sessions for a user
         cursor = self.conn.cursor()
         cursor.execute('''
             SELECT * FROM sessions 
@@ -164,7 +162,7 @@ class DatabaseManager:
         return [dict(row) for row in cursor.fetchall()]
     
     def get_active_session(self, user_id):
-        """Get user's active (not ended) session"""
+        #get user's active (not ended) session
         cursor = self.conn.cursor()
         cursor.execute('''
             SELECT * FROM sessions 
@@ -180,10 +178,10 @@ class DatabaseManager:
     def save_performance(self, session_id, user_id, pose_detected, confidence, 
                         is_correct, joint_angles=None, grip_angle=None, 
                         stick_detected=False):
-        """Save a performance record"""
+        #save a performance record
         cursor = self.conn.cursor()
         
-        # Convert joint_angles dict to JSON string
+        #convert joint_angles dict to json string
         joint_angles_json = json.dumps(joint_angles) if joint_angles else None
         
         cursor.execute('''
@@ -198,7 +196,7 @@ class DatabaseManager:
         return cursor.lastrowid
     
     def get_session_performances(self, session_id):
-        """Get all performances for a session"""
+        #get all performances for a session
         cursor = self.conn.cursor()
         cursor.execute('''
             SELECT * FROM performances 
@@ -209,7 +207,7 @@ class DatabaseManager:
         performances = []
         for row in cursor.fetchall():
             perf = dict(row)
-            # Parse JSON joint_angles back to dict
+            #parse json joint_angles back to dict
             if perf['joint_angles']:
                 perf['joint_angles'] = json.loads(perf['joint_angles'])
             performances.append(perf)
@@ -217,10 +215,10 @@ class DatabaseManager:
         return performances
     
     def get_user_statistics(self, user_id, days=7):
-        """Get user statistics for the last N days"""
+        #get user statistics for the last n days
         cursor = self.conn.cursor()
         
-        # Total attempts
+        #total attempts
         cursor.execute('''
             SELECT COUNT(*) as total_attempts,
                    SUM(CASE WHEN is_correct = 1 THEN 1 ELSE 0 END) as correct_attempts,
@@ -232,7 +230,7 @@ class DatabaseManager:
         
         stats = dict(cursor.fetchone())
         
-        # Pose breakdown
+        #pose breakdown
         cursor.execute('''
             SELECT pose_detected, 
                    COUNT(*) as count,
@@ -250,7 +248,7 @@ class DatabaseManager:
         return stats
     
     def get_session_summary(self, session_id):
-        """Get summary statistics for a session"""
+        #get summary statistics for a session
         cursor = self.conn.cursor()
         
         cursor.execute('''
@@ -267,10 +265,10 @@ class DatabaseManager:
         
         return dict(cursor.fetchone())
     
-    # ==================== CLEANUP & UTILITIES ====================
+    #cleanup and utilities
     
     def delete_old_sessions(self, days=30):
-        """Delete sessions older than N days"""
+        #delete sessions older than n days
         cursor = self.conn.cursor()
         cursor.execute('''
             DELETE FROM sessions 
@@ -280,12 +278,12 @@ class DatabaseManager:
         return cursor.rowcount
     
     def vacuum_database(self):
-        """Optimize database (reclaim space after deletions)"""
+        #optimize database (reclaim space after deletions)
         self.conn.execute('VACUUM')
         self.conn.commit()
     
     def close(self):
-        """Close database connection"""
+        #close database connection
         self.conn.close()
     
     def __enter__(self):
@@ -295,19 +293,19 @@ class DatabaseManager:
         self.close()
 
 
-# Example usage
+#example usage
 if __name__ == "__main__":
-    db = DatabaseManager('turaarnis.db')
+    db = DatabaseManager('turoarnis.db')
     
-    # Create a test user
+    #create a test user
     user_id = db.create_user("Test User")
     print(f"Created user: {user_id}")
     
-    # Start a session
+    #start a session
     session_id = db.start_session(user_id, target_pose="left_temple_block")
     print(f"Started session: {session_id}")
     
-    # Save some performances
+    #save some performances
     db.save_performance(
         session_id=session_id,
         user_id=user_id,
@@ -319,11 +317,11 @@ if __name__ == "__main__":
         stick_detected=True
     )
     
-    # Get statistics
+    #get statistics
     stats = db.get_user_statistics(user_id)
     print(f"User stats: {stats}")
     
-    # End session
+    #end session
     db.end_session(session_id)
     
     db.close()

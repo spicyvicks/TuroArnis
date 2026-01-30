@@ -4,7 +4,7 @@ import ttkbootstrap as ttk
 from ttkbootstrap.constants import *
 from ttkbootstrap.dialogs import Messagebox
 
-# Add parent directory to path
+#add parent directory to path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from database.db_manager import DatabaseManager
 
@@ -15,23 +15,33 @@ class UserManagementDialog:
         self.db = db_manager
         self.selected_user = None
         
-        # Create dialog window
+        #create dialog window
         self.dialog = ttk.Toplevel(parent)
         self.dialog.title("User Management")
-        self.dialog.geometry("900x700")
+        
+        #set app icon for taskbar
+        from utils.resource_path import get_resource_path
+        icon_path = get_resource_path('assets/TA.ico')
+        if os.path.exists(icon_path):
+            self.dialog.iconbitmap(icon_path)
+        
+        #calculate centered position
+        self.dialog.update_idletasks()
+        screen_width = self.dialog.winfo_screenwidth()
+        screen_height = self.dialog.winfo_screenheight()
+        x = (screen_width // 2) - (900 // 2)
+        y = (screen_height // 2) - (700 // 2)
+        self.dialog.geometry(f"900x700+{x}+{y}")
         self.dialog.resizable(False, False)
         
-        # Make modal
+        #make modal
         self.dialog.transient(parent)
         self.dialog.grab_set()
         
         self.setup_ui()
         self.refresh_user_list()
         
-        # Center on screen
-        self.center_window()
-        
-        # Ensure dialog is visible and focused
+        #ensure dialog is visible and focused
         self.dialog.lift()
         self.dialog.focus_force()
         
@@ -146,16 +156,16 @@ class UserManagementDialog:
     
     def refresh_user_list(self):
         """Refresh the user list display"""
-        # Clear existing items
+        #clear existing items
         for item in self.user_listbox.get_children():
             self.user_listbox.delete(item)
         
-        # Get all users
+        #get all users
         users = self.db.get_all_users()
         
         for user in users:
             status = "Active" if user['is_active'] else "Inactive"
-            created = user['created_at'].split('.')[0]  # Remove microseconds
+            created = user['created_at'].split('.')[0]  #remove microseconds
             
             self.user_listbox.insert(
                 "",
@@ -165,7 +175,7 @@ class UserManagementDialog:
                 tags=('active' if user['is_active'] else 'inactive',)
             )
         
-        # Color code by status
+        #color code by status
         self.user_listbox.tag_configure('active', foreground='green')
         self.user_listbox.tag_configure('inactive', foreground='gray')
     
@@ -259,7 +269,7 @@ class UserManagementDialog:
 
 def show_user_dialog(parent, db_manager):
     """Show user management dialog and return selected user"""
-    # Temporarily show parent window to ensure dialog displays correctly
+    #temporarily show parent window to ensure dialog displays correctly
     was_withdrawn = not parent.winfo_viewable()
     if was_withdrawn:
         parent.deiconify()
@@ -267,7 +277,7 @@ def show_user_dialog(parent, db_manager):
     
     dialog = UserManagementDialog(parent, db_manager)
     
-    # Hide parent again if it was originally hidden
+    #hide parent again if it was originally hidden
     if was_withdrawn:
         parent.withdraw()
     
@@ -275,12 +285,12 @@ def show_user_dialog(parent, db_manager):
     return dialog.get_selected_user()
 
 
-# Test the dialog
+#test the dialog
 if __name__ == "__main__":
     root = ttk.Window(themename="darkly")
     root.withdraw()
     
-    db = DatabaseManager('turaarnis.db')
+    db = DatabaseManager('turoarnis.db')
     user = show_user_dialog(root, db)
     
     if user:

@@ -72,22 +72,22 @@ def analyze_single_image(image_path):
     
     angles = {}
     
-    # Right arm
-    if all(landmarks[i].visibility > 0.5 for i in [12, 14, 16]):  # shoulder, elbow, wrist
+    #right arm
+    if all(landmarks[i].visibility > 0.5 for i in [12, 14, 16]):  #shoulder, elbow, wrist
         angles['right_elbow'] = calculate_angle(
             landmarks[mp_pose.PoseLandmark.RIGHT_SHOULDER],
             landmarks[mp_pose.PoseLandmark.RIGHT_ELBOW],
             landmarks[mp_pose.PoseLandmark.RIGHT_WRIST]
         )
     
-    if all(landmarks[i].visibility > 0.5 for i in [11, 12, 14]):  # hip, shoulder, elbow
+    if all(landmarks[i].visibility > 0.5 for i in [11, 12, 14]):  #hip, shoulder, elbow
         angles['right_shoulder'] = calculate_angle(
             landmarks[mp_pose.PoseLandmark.LEFT_SHOULDER],
             landmarks[mp_pose.PoseLandmark.RIGHT_SHOULDER],
             landmarks[mp_pose.PoseLandmark.RIGHT_ELBOW]
         )
     
-    # Left arm
+    #left arm
     if all(landmarks[i].visibility > 0.5 for i in [11, 13, 15]):
         angles['left_elbow'] = calculate_angle(
             landmarks[mp_pose.PoseLandmark.LEFT_SHOULDER],
@@ -102,7 +102,7 @@ def analyze_single_image(image_path):
             landmarks[mp_pose.PoseLandmark.LEFT_ELBOW]
         )
     
-    # Right leg
+    #right leg
     if all(landmarks[i].visibility > 0.5 for i in [24, 26, 28]):
         angles['right_knee'] = calculate_angle(
             landmarks[mp_pose.PoseLandmark.RIGHT_HIP],
@@ -117,7 +117,7 @@ def analyze_single_image(image_path):
             landmarks[mp_pose.PoseLandmark.RIGHT_KNEE]
         )
     
-    # Left leg
+    #left leg
     if all(landmarks[i].visibility > 0.5 for i in [23, 25, 27]):
         angles['left_knee'] = calculate_angle(
             landmarks[mp_pose.PoseLandmark.LEFT_HIP],
@@ -132,7 +132,7 @@ def analyze_single_image(image_path):
             landmarks[mp_pose.PoseLandmark.LEFT_KNEE]
         )
     
-    # Ankles
+    #ankles
     if all(landmarks[i].visibility > 0.5 for i in [26, 28, 32]):
         angles['right_ankle'] = calculate_angle(
             landmarks[mp_pose.PoseLandmark.RIGHT_KNEE],
@@ -147,20 +147,20 @@ def analyze_single_image(image_path):
             landmarks[mp_pose.PoseLandmark.LEFT_FOOT_INDEX]
         )
     
-    # Detect stick
+    #detect stick
     stick_data = None
     stick_line = detect_stick_line(image)
     
     if stick_line:
         stick_start, stick_end = stick_line
         
-        # Get both hands
+        #get both hands
         r_wrist = landmarks[mp_pose.PoseLandmark.RIGHT_WRIST]
         r_elbow = landmarks[mp_pose.PoseLandmark.RIGHT_ELBOW]
         l_wrist = landmarks[mp_pose.PoseLandmark.LEFT_WRIST]
         l_elbow = landmarks[mp_pose.PoseLandmark.LEFT_ELBOW]
         
-        # Determine which hand is holding the stick (closest to stick midpoint)
+        #determine which hand is holding the stick (closest to stick midpoint)
         stick_mid = np.array([(stick_start[0] + stick_end[0])/2,
                               (stick_start[1] + stick_end[1])/2])
         
@@ -183,27 +183,27 @@ def analyze_single_image(image_path):
             shoulder = landmarks[mp_pose.PoseLandmark.LEFT_SHOULDER]
             knee = landmarks[mp_pose.PoseLandmark.LEFT_KNEE]
         
-        # Calculate stick vector
+        #calculate stick vector
         stick_vector = np.array([stick_end[0] - stick_start[0],
                                 stick_end[1] - stick_start[1]])
         stick_length = np.linalg.norm(stick_vector)
         
-        # Calculate arm vector
+        #calculate arm vector
         arm_vector = wrist_pos - elbow_pos
         arm_length = np.linalg.norm(arm_vector)
         
         if stick_length > 10 and arm_length > 10:
-            # Normalize vectors
+            #normalize vectors
             stick_unit = stick_vector / stick_length
             arm_unit = arm_vector / arm_length
             
-            # Calculate angle between stick and arm
+            #calculate angle between stick and arm
             dot_product = np.dot(stick_unit, arm_unit)
             cross_product = stick_unit[0] * arm_unit[1] - stick_unit[1] * arm_unit[0]
             angle_radians = np.arctan2(cross_product, dot_product)
             angle_degrees = np.degrees(angle_radians)
             
-            # Calculate body reference length
+            #calculate body reference length
             body_length = np.sqrt((shoulder.x*w - knee.x*w)**2 + 
                                  (shoulder.y*h - knee.y*h)**2)
             
@@ -281,12 +281,12 @@ def generate_pose_library(dataset_path):
     dataset_path = Path(dataset_path)
     pose_library = {}
     
-    # Process each pose folder
+    #process each pose folder
     for pose_folder in sorted(dataset_path.iterdir()):
         if not pose_folder.is_dir() or pose_folder.name == 'incorrect':
             continue
         
-        # Clean pose name
+        #clean pose name
         pose_name = pose_folder.name.replace('_correct', '')
         
         result = analyze_pose_folder(pose_folder)

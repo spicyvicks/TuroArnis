@@ -4,25 +4,25 @@ from database.db_manager import DatabaseManager
 from gui.results_window import ResultsWindow
 
 def test_results_window():
-    # Create a test database
+    #create a test database
     db = DatabaseManager('test_results.db')
     
-    # Create a test user (or get existing)
+    #create a test user (or get existing)
     user_id = db.create_user("Test User Demo")
     if user_id is None:
-        # User already exists, get it
+        #user already exists, get it
         user = db.get_user_by_name("Test User Demo")
         user_id = user['id']
     else:
         user = db.get_user_by_id(user_id)
     
-    # Create some test sessions and performances
+    #create some test sessions and performances
     for i in range(3):
         session_id = db.start_session(user_id, target_pose="left_temple_block_correct")
         
-        # Add some performances to this session
+        #add some performances to this session
         for j in range(10):
-            is_correct = j % 3 == 0  # Every 3rd attempt is correct
+            is_correct = j % 3 == 0  #every 3rd attempt is correct
             db.save_performance(
                 session_id=session_id,
                 user_id=user_id,
@@ -34,15 +34,15 @@ def test_results_window():
                 stick_detected=True
             )
         
-        # End the session
+        #end the session
         db.end_session(session_id)
     
-    # Create a test window
+    #create a test window
     root = ttk.Window(themename="darkly")
     root.title("Results Window Test")
     root.geometry("400x300")
     
-    # Create button to open results window
+    #create button to open results window
     def open_results():
         ResultsWindow(root, db_manager=db, current_user=user)
     
@@ -53,7 +53,7 @@ def test_results_window():
     
     root.mainloop()
     
-    # Cleanup
+    #cleanup
     db.close()
 
 if __name__ == "__main__":

@@ -29,7 +29,7 @@ def get_all_model_versions():
                     **metadata
                 })
     
-    # sort by version number
+    #sort by version number
     versions.sort(key=lambda x: x['name'], reverse=True)
     return versions
 
@@ -38,7 +38,7 @@ def get_next_version_number():
     if not versions:
         return 1
     
-    # extract version numbers
+    #extract version numbers
     max_version = 0
     for v in versions:
         try:
@@ -60,14 +60,14 @@ def set_active_model(version_name):
         print(f"[ERROR] Version {version_name} not found")
         return False
     
-    # Use relative paths for PyInstaller compatibility
-    # These will be resolved at runtime by pose_analyzer.py using get_resource_path()
+    #use relative paths for pyinstaller compatibility
+    #these will be resolved at runtime by pose_analyzer.py using get_resource_path()
     active_config = {
         'version': version_name,
-        'path': os.path.join('models', version_name),  # Relative path
-        'model_path': os.path.join('models', version_name, 'model.keras'),  # Relative
-        'encoder_path': os.path.join('models', version_name, 'label_encoder.joblib'),  # Relative
-        'scaler_path': os.path.join('models', version_name, 'scaler.joblib'),  # Relative
+        'path': os.path.join('models', version_name),  #relative path
+        'model_path': os.path.join('models', version_name, 'model.keras'),  #relative
+        'encoder_path': os.path.join('models', version_name, 'label_encoder.joblib'),  #relative
+        'scaler_path': os.path.join('models', version_name, 'scaler.joblib'),  #relative
         'set_at': datetime.now().isoformat()
     }
     
@@ -107,7 +107,7 @@ def train_new_model():
     print("   TRAIN NEW MODEL")
     print("="*40)
     
-    # ask for architecture
+    #ask for architecture
     print("\nSelect model architecture:")
     print("  1. DNN (Dense Neural Network) - current default")
     print("  2. Random Forest - often better for tabular data")
@@ -115,12 +115,12 @@ def train_new_model():
     
     arch_choice = input("\nEnter choice (1-3) [default=1]: ").strip()
     
-    # common settings for all architectures
+    #common settings for all architectures
     model_name = None
     feature_mode = 'angles'
     do_extraction = False
     
-    # feature mode selection (for all architectures)
+    #feature mode selection (for all architectures)
     print("\nSelect feature mode:")
     print("  1. Angles (33 features) - joint angles + positions")
     print("  2. Coordinates (99 features) - raw landmark coordinates")
@@ -128,7 +128,7 @@ def train_new_model():
     if mode_choice == '2':
         feature_mode = 'coordinates'
     
-    # set csv path based on feature mode
+    #set csv path based on feature mode
     if feature_mode == 'coordinates':
         csv_filename = 'arnis_poses_coordinates.csv'
     else:
@@ -136,7 +136,7 @@ def train_new_model():
     
     csv_path = os.path.join(project_root, csv_filename)
     
-    # check if CSV exists and ask about extraction
+    #check if csv exists and ask about extraction
     if os.path.exists(csv_path):
         print(f"\n[INFO] Found existing CSV: {csv_filename}")
         print("  1. Use existing CSV (skip extraction)")
@@ -149,7 +149,7 @@ def train_new_model():
         print("[INFO] Will extract features from images...")
         do_extraction = True
     
-    # model name (for RF and XGBoost)
+    #model name (for rf and xgboost)
     if arch_choice in ['2', '3']:
         print("\nEnter a name for this model (for organization):")
         print("  Examples: 'test1', 'aug_data', 'final'")
@@ -158,7 +158,7 @@ def train_new_model():
             model_name = model_name.replace(' ', '_').replace('-', '_')
             model_name = ''.join(c for c in model_name if c.isalnum() or c == '_')
     
-    # perform extraction if needed
+    #perform extraction if needed
     if do_extraction:
         from feature_extraction import extract_features_from_dataset
         dataset_path = os.path.join(project_root, 'dataset_aug')
@@ -173,7 +173,7 @@ def train_new_model():
     os.makedirs(models_dir, exist_ok=True)
     
     if arch_choice == '2':
-        # Random Forest
+        #random forest
         print(f"\n[INFO] Training Random Forest with {feature_mode.upper()} features...")
         from training_alt import train_random_forest
         
@@ -183,7 +183,7 @@ def train_new_model():
         return
         
     elif arch_choice == '3':
-        # XGBoost
+        #xgboost
         print(f"\n[INFO] Training XGBoost with {feature_mode.upper()} features...")
         from training_alt import train_xgboost, HAS_XGBOOST
         
@@ -196,18 +196,18 @@ def train_new_model():
             print(f"\n[OK] XGBoost training complete! Accuracy: {acc*100:.2f}%")
         return
     
-    # DNN training (default)
+    #dnn training (default)
     print(f"\n[INFO] Using DNN with {feature_mode.upper()} mode")
     print("[INFO] Running training script...\n")
     
     import subprocess
     training_script = os.path.join(current_dir, 'training.py')
     
-    # set feature mode via environment variable
+    #set feature mode via environment variable
     env = os.environ.copy()
     env['FEATURE_MODE'] = feature_mode
     
-    # run training.py as subprocess with mode
+    #run training.py as subprocess with mode
     result = subprocess.run(
         [sys.executable, training_script],
         cwd=project_root,
@@ -244,7 +244,7 @@ def generate_analysis():
             print(f"\n[INFO] Generating analysis for {selected['name']} ({model_type.upper()})...")
             
             if model_type == 'dnn':
-                # Generate classification report for DNN
+                #generate classification report for dnn
                 model_path = os.path.join(selected['path'], 'model.keras')
                 if not os.path.exists(model_path):
                     print(f"[ERROR] Model file not found: {model_path}")
@@ -255,12 +255,12 @@ def generate_analysis():
                 generate_classification_report()
                 
             elif model_type in ['random_forest', 'xgboost']:
-                # Generate visualizations for RF/XGBoost
+                #generate visualizations for rf/xgboost
                 from generate_visualizations import generate_visualizations_for_model
                 generate_visualizations_for_model(selected['path'])
                 
             elif model_type == 'ensemble':
-                # Generate visualizations for ensemble
+                #generate visualizations for ensemble
                 from ensemble_model import generate_ensemble_visualizations
                 generate_ensemble_visualizations(selected['path'])
                 

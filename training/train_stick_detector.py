@@ -22,32 +22,32 @@ def train_stick_detector(data_yaml_path, epochs=100, img_size=640, batch_size=16
         batch_size: Batch size for training
     """
     
-    # Use YOLOv8n-pose as base model (smallest, fastest)
-    # Available options: yolov8n-pose.pt, yolov8s-pose.pt, yolov8m-pose.pt, yolov8l-pose.pt, yolov8x-pose.pt
+    #use yolov8n-pose as base model (smallest, fastest)
+    #available options: yolov8n-pose.pt, yolov8s-pose.pt, yolov8m-pose.pt, yolov8l-pose.pt, yolov8x-pose.pt
     model = YOLO('yolov8n-pose.pt')
     
-    # Train the model
+    #train the model
     results = model.train(
         data=data_yaml_path,
         epochs=epochs,
         imgsz=img_size,
         batch=batch_size,
         name='arnis_stick_detector',
-        patience=20,  # Early stopping patience
+        patience=20,  #early stopping patience
         save=True,
-        device='cpu',  # Use CPU (change to 0 for GPU if available)
+        device='cpu',  #use cpu (change to 0 for gpu if available)
         workers=4,
         pretrained=True,
         optimizer='auto',
         verbose=True,
         seed=42,
         deterministic=True,
-        single_cls=True,  # Single class: stick
+        single_cls=True,  #single class: stick
         rect=False,
-        cos_lr=True,  # Cosine learning rate scheduler
-        close_mosaic=10,  # Close mosaic augmentation in last 10 epochs
-        amp=True,  # Automatic Mixed Precision
-        fraction=1.0,  # Train on 100% of data
+        cos_lr=True,  #cosine learning rate scheduler
+        close_mosaic=10,  #close mosaic augmentation in last 10 epochs
+        amp=True,  #automatic mixed precision
+        fraction=1.0,  #train on 100% of data
         profile=False,
         freeze=None,
         lr0=0.01,
@@ -57,29 +57,29 @@ def train_stick_detector(data_yaml_path, epochs=100, img_size=640, batch_size=16
         warmup_epochs=3.0,
         warmup_momentum=0.8,
         warmup_bias_lr=0.1,
-        box=7.5,  # Box loss gain
-        cls=0.5,  # Class loss gain
-        dfl=1.5,  # Distribution Focal Loss gain
-        pose=12.0,  # Pose loss gain (important for keypoint detection)
-        kobj=1.0,  # Keypoint objectness loss gain
+        box=7.5,  #box loss gain
+        cls=0.5,  #class loss gain
+        dfl=1.5,  #distribution focal loss gain
+        pose=12.0,  #pose loss gain (important for keypoint detection)
+        kobj=1.0,  #keypoint objectness loss gain
         label_smoothing=0.0,
         nbs=64,
-        hsv_h=0.015,  # HSV-Hue augmentation
-        hsv_s=0.7,  # HSV-Saturation augmentation
-        hsv_v=0.4,  # HSV-Value augmentation
-        degrees=0.0,  # Rotation augmentation (degrees)
-        translate=0.1,  # Translation augmentation
-        scale=0.5,  # Scale augmentation
-        shear=0.0,  # Shear augmentation
-        perspective=0.0,  # Perspective augmentation
-        flipud=0.0,  # Flip up-down augmentation
-        fliplr=0.5,  # Flip left-right augmentation
-        mosaic=1.0,  # Mosaic augmentation
-        mixup=0.0,  # Mixup augmentation
-        copy_paste=0.0,  # Copy-paste augmentation
+        hsv_h=0.015,  #hsv-hue augmentation
+        hsv_s=0.7,  #hsv-saturation augmentation
+        hsv_v=0.4,  #hsv-value augmentation
+        degrees=0.0,  #rotation augmentation (degrees)
+        translate=0.1,  #translation augmentation
+        scale=0.5,  #scale augmentation
+        shear=0.0,  #shear augmentation
+        perspective=0.0,  #perspective augmentation
+        flipud=0.0,  #flip up-down augmentation
+        fliplr=0.5,  #flip left-right augmentation
+        mosaic=1.0,  #mosaic augmentation
+        mixup=0.0,  #mixup augmentation
+        copy_paste=0.0,  #copy-paste augmentation
     )
     
-    # Validate the model
+    #validate the model
     metrics = model.val()
     
     print("\n" + "="*50)
@@ -107,12 +107,12 @@ def test_model(model_path, test_image_path):
     model = YOLO(model_path)
     results = model(test_image_path)
     
-    # Display results
+    #display results
     for result in results:
-        # Show image with detections
+        #show image with detections
         result.show()
         
-        # Print detection info
+        #print detection info
         if result.keypoints is not None:
             print(f"\nDetected {len(result.boxes)} stick(s)")
             for i, (box, kpts) in enumerate(zip(result.boxes, result.keypoints)):
@@ -139,7 +139,7 @@ if __name__ == "__main__":
         sys.exit(1)
     
     if len(sys.argv) == 2:
-        # Training mode
+        #training mode
         data_yaml = sys.argv[1]
         if not os.path.exists(data_yaml):
             print(f"Error: data.yaml not found at {data_yaml}")
@@ -150,7 +150,7 @@ if __name__ == "__main__":
         train_stick_detector(data_yaml)
         
     elif len(sys.argv) == 3:
-        # Testing mode
+        #testing mode
         model_path = sys.argv[1]
         test_image = sys.argv[2]
         

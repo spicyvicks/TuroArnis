@@ -10,13 +10,13 @@ import numpy as np
 import matplotlib.pyplot as plt
 from ultralytics import YOLO
 
-# paths
+#paths
 current_dir = os.path.dirname(os.path.abspath(__file__))
 project_root = os.path.dirname(current_dir)
 output_dir = os.path.join(current_dir, 'output')
 
-DATASET_FOLDER = "dataset"   # dataset folder
-MAX_SAMPLES = 100            # limit for clarity
+DATASET_FOLDER = "dataset"   #dataset folder
+MAX_SAMPLES = 100            #limit for clarity
 STICK_MODEL_PATH = os.path.join(project_root, 'runs', 'pose', 'arnis_stick_detector', 'weights', 'best.pt')
 
 
@@ -120,7 +120,7 @@ def visualize_angle_distribution(all_angles, class_names):
     colors = plt.cm.tab10(np.linspace(0, 1, len(unique_classes)))
     color_map = {cls: colors[i] for i, cls in enumerate(unique_classes)}
     
-    # scatter plot: angle by class
+    #scatter plot: angle by class
     for i, (angle, cls) in enumerate(zip(all_angles, class_names)):
         ax1.scatter(i, angle, c=[color_map[cls]], s=30, alpha=0.7)
     
@@ -131,7 +131,7 @@ def visualize_angle_distribution(all_angles, class_names):
     ax1.axhline(y=90, color='gray', linestyle='--', alpha=0.5)
     ax1.axhline(y=-90, color='gray', linestyle='--', alpha=0.5)
     
-    # box plot: angle distribution per class
+    #box plot: angle distribution per class
     class_angles = {cls: [] for cls in unique_classes}
     for angle, cls in zip(all_angles, class_names):
         class_angles[cls].append(angle)
@@ -160,7 +160,7 @@ def main():
     print("  STICK KEYPOINT VISUALIZATION")
     print("="*50)
     
-    # check model exists
+    #check model exists
     if not os.path.exists(STICK_MODEL_PATH):
         print(f"[ERROR] Stick model not found: {STICK_MODEL_PATH}")
         return
@@ -228,18 +228,18 @@ def main():
     success_rate = detection_stats['success'] / (detection_stats['success'] + detection_stats['fail']) * 100
     print(f"  Success rate: {success_rate:.1f}%")
     
-    # print sample values
+    #print sample values
     print(f"\n[SAMPLE ANGLES]")
     for i in range(min(5, len(all_angles))):
         print(f"  {class_names[i]}: {all_angles[i]:.1f}°")
     
-    # visualizations
+    #visualizations
     print("\n[INFO] Generating visualizations...")
     
-    # 1. Keypoints on images
+    #1. keypoints on images
     visualize_on_images(sample_images[:20], model)
     
-    # 2. Angle distribution
+    #2. angle distribution
     visualize_angle_distribution(all_angles, class_names)
     
     print("\n[DONE]")

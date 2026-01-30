@@ -37,7 +37,7 @@ def linear_assignment(cost_matrix):
   try:
     import lap
     _, x, y = lap.lapjv(cost_matrix, extend_cost=True)
-    return np.array([[y[i],i] for i in x if i >= 0]) #
+    return np.array([[y[i],i] for i in x if i >= 0])
   except ImportError:
     from scipy.optimize import linear_sum_assignment
     x, y = linear_sum_assignment(cost_matrix)
@@ -180,7 +180,7 @@ def associate_detections_to_trackers(detections,trackers,iou_threshold = 0.3):
     if(t not in matched_indices[:,1]):
       unmatched_trackers.append(t)
 
-  #filter out matched with low IOU
+  #filter out matched with low iou
   matches = []
   for m in matched_indices:
     if(iou_matrix[m[0], m[1]]<iou_threshold):
@@ -217,7 +217,7 @@ class Sort(object):
     NOTE: The number of objects returned may differ from the number of detections provided.
     """
     self.frame_count += 1
-    # get predicted locations from existing trackers.
+    #get predicted locations from existing trackers.
     trks = np.zeros((len(self.trackers), 5))
     to_del = []
     ret = []
@@ -231,11 +231,11 @@ class Sort(object):
       self.trackers.pop(t)
     matched, unmatched_dets, unmatched_trks = associate_detections_to_trackers(dets,trks, self.iou_threshold)
 
-    # update matched trackers with assigned detections
+    #update matched trackers with assigned detections
     for m in matched:
       self.trackers[m[1]].update(dets[m[0], :])
 
-    # create and initialise new trackers for unmatched detections
+    #create and initialise new trackers for unmatched detections
     for i in unmatched_dets:
         trk = KalmanBoxTracker(dets[i,:])
         self.trackers.append(trk)
@@ -243,9 +243,9 @@ class Sort(object):
     for trk in reversed(self.trackers):
         d = trk.get_state()[0]
         if (trk.time_since_update < 1) and (trk.hit_streak >= self.min_hits or self.frame_count <= self.min_hits):
-          ret.append(np.concatenate((d,[trk.id+1])).reshape(1,-1)) # +1 as MOT benchmark requires positive
+          ret.append(np.concatenate((d,[trk.id+1])).reshape(1,-1)) #+1 as mot benchmark requires positive
         i -= 1
-        # remove dead tracklet
+        #remove dead tracklet
         if(trk.time_since_update > self.max_age):
           self.trackers.pop(i)
     if(len(ret)>0):

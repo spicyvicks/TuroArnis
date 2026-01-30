@@ -5,29 +5,41 @@ from datetime import datetime
 class ResultsWindow(ttk.Toplevel):
     def __init__(self, parent, db_manager=None, current_user=None):
         super().__init__(master=parent, title="Performance Results & Statistics")
-        self.geometry("1200x700")
+        
+        #set app icon for taskbar
+        from utils.resource_path import get_resource_path
+        import os
+        icon_path = get_resource_path('assets/TA.ico')
+        if os.path.exists(icon_path):
+            self.iconbitmap(icon_path)
+        
+        #calculate centered position
+        self.update_idletasks()
+        screen_width = self.winfo_screenwidth()
+        screen_height = self.winfo_screenheight()
+        x = (screen_width // 2) - (1200 // 2)
+        y = (screen_height // 2) - (700 // 2)
+        self.geometry(f"1200x700+{x}+{y}")
+        
         self.db = db_manager
         self.current_user = current_user
         
-        # Make window modal
+        #make window modal
         self.transient(parent)
         self.grab_set()
         
-        # Main container with notebook (tabs)
+        #main container with notebook (tabs)
         self.notebook = ttk.Notebook(self)
         self.notebook.pack(fill=BOTH, expand=True, padx=10, pady=10)
         
-        # Create tabs
+        #create tabs
         self.create_overview_tab()
         self.create_sessions_tab()
         self.create_performances_tab()
         
-        # Close button
+        #close button
         close_btn = ttk.Button(self, text="Close", command=self.destroy, bootstyle=SECONDARY)
         close_btn.pack(pady=(0, 10))
-        
-        # Center window
-        self.center_window()
     
     def center_window(self):
         """Center the window on screen"""
@@ -45,7 +57,7 @@ class ResultsWindow(ttk.Toplevel):
             ttk.Label(overview_frame, text="No data available", font=("-size 14")).pack()
             return
         
-        # User info header
+        #user info header
         header_frame = ttk.Labelframe(overview_frame, text="User Information", padding=15)
         header_frame.pack(fill=X, pady=(0, 20))
         
@@ -53,13 +65,13 @@ class ResultsWindow(ttk.Toplevel):
         ttk.Label(header_frame, text=f"User ID: {self.current_user['id']}", font=("-size 10"), bootstyle=SECONDARY).pack(anchor=W)
         ttk.Label(header_frame, text=f"Member since: {self.current_user['created_at'].split('.')[0]}", font=("-size 10"), bootstyle=SECONDARY).pack(anchor=W)
         
-        # Statistics for last 7 days
+        #statistics for last 7 days
         stats = self.db.get_user_statistics(self.current_user['id'], days=7)
         
         stats_frame = ttk.Labelframe(overview_frame, text="Last 7 Days Statistics", padding=15)
         stats_frame.pack(fill=BOTH, expand=True)
         
-        # Summary cards
+        #summary cards
         cards_frame = ttk.Frame(stats_frame)
         cards_frame.pack(fill=X, pady=(0, 20))
         
@@ -73,7 +85,7 @@ class ResultsWindow(ttk.Toplevel):
         avg_conf = stats['avg_confidence'] or 0
         self.create_stat_card(cards_frame, "Avg Confidence", f"{avg_conf:.2f}", WARNING).pack(side=LEFT, padx=10, expand=True, fill=X)
         
-        # Pose breakdown table
+        #pose breakdown table
         if stats['pose_breakdown']:
             ttk.Label(stats_frame, text="Performance by Pose", font=("-size 12 -weight bold")).pack(anchor=W, pady=(10, 5))
             
@@ -138,7 +150,7 @@ class ResultsWindow(ttk.Toplevel):
         
         ttk.Label(sessions_frame, text="Recent Practice Sessions", font=("-size 14 -weight bold")).pack(anchor=W, pady=(0, 10))
         
-        # Sessions table
+        #sessions table
         table_frame = ttk.Frame(sessions_frame)
         table_frame.pack(fill=BOTH, expand=True)
         
@@ -164,11 +176,11 @@ class ResultsWindow(ttk.Toplevel):
         sessions_table.column("correct", width=80, anchor=CENTER)
         sessions_table.column("accuracy", width=100, anchor=CENTER)
         
-        # Get recent sessions
+        #get recent sessions
         sessions = self.db.get_user_sessions(self.current_user['id'], limit=20)
         
         for session in sessions:
-            # Calculate duration
+            #calculate duration
             if session['ended_at']:
                 start = datetime.fromisoformat(session['started_at'])
                 end = datetime.fromisoformat(session['ended_at'])
@@ -177,7 +189,7 @@ class ResultsWindow(ttk.Toplevel):
             else:
                 duration_str = "Ongoing"
             
-            # Get session summary
+            #get session summary
             summary = self.db.get_session_summary(session['id'])
             attempts = summary['total_attempts'] or 0
             correct = summary['correct_attempts'] or 0

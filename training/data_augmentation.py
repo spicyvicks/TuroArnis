@@ -5,7 +5,7 @@ import time
 import numpy as np
 from tqdm import tqdm
 
-# configuration
+#configuration
 INPUT_DATASET_FOLDER = "dataset"
 OUTPUT_DATASET_FOLDER = "dataset_aug"
 IMAGES_PER_ORIGINAL = 15  
@@ -16,7 +16,7 @@ def get_pose_augmentation_pipeline():
     designed to maintain body structure while adding variety
     """
     return A.Compose([
-        # spatial transforms (preserve pose structure)
+        #spatial transforms (preserve pose structure)
         A.HorizontalFlip(p=0.5),
         
         A.OneOf([
@@ -37,7 +37,7 @@ def get_pose_augmentation_pipeline():
             ),
         ], p=0.9),
         
-        # color/lighting transforms (simulate different environments)
+        #color/lighting transforms (simulate different environments)
         A.OneOf([
             A.RandomBrightnessContrast(
                 brightness_limit=0.3,
@@ -59,7 +59,7 @@ def get_pose_augmentation_pipeline():
             ),
         ], p=0.8),
         
-        # simulate different camera conditions
+        #simulate different camera conditions
         A.OneOf([
             A.GaussNoise(var_limit=(10.0, 40.0), p=1.0),
             A.GaussianBlur(blur_limit=(3, 5), p=1.0),
@@ -67,7 +67,7 @@ def get_pose_augmentation_pipeline():
             A.ImageCompression(quality_lower=70, quality_upper=95, p=1.0),
         ], p=0.5),
         
-        # simulate different lighting
+        #simulate different lighting
         A.OneOf([
             A.RandomShadow(
                 shadow_roi=(0, 0, 1, 1),
@@ -79,7 +79,7 @@ def get_pose_augmentation_pipeline():
             A.CLAHE(clip_limit=2.0, tile_grid_size=(8, 8), p=1.0),
         ], p=0.3),
         
-        # optional grayscale (some may train in different lighting)
+        #optional grayscale (some may train in different lighting)
         A.ToGray(p=0.1),
     ])
 
@@ -152,13 +152,13 @@ def augment_and_save_images(input_folder, output_folder, num_variations, aggress
             image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
             base_filename, file_extension = os.path.splitext(filename)
 
-            # save original too
+            #save original too
             original_save_path = os.path.join(output_dir_path, filename)
             if not os.path.exists(original_save_path):
                 cv2.imwrite(original_save_path, image)
                 total_generated_count += 1
 
-            # generate augmented versions
+            #generate augmented versions
             for i in range(num_variations):
                 augmented = transform(image=image_rgb)
                 augmented_bgr = cv2.cvtColor(augmented['image'], cv2.COLOR_RGB2BGR)

@@ -1,4 +1,4 @@
-# import necessary libraries
+#import necessary libraries
 import sys
 import cv2
 import numpy as np
@@ -15,7 +15,7 @@ import queue
 from ultralytics import YOLO
 from sort import Sort
 
-# (resultswindow class remains exactly the same)
+#(resultswindow class remains exactly the same)
 class ResultsWindow(ttk.Toplevel):
     def __init__(self, parent):
         super().__init__(parent, title="All User Results")
@@ -50,7 +50,7 @@ class TuroArnisGUI:
         self.window = window
         self.window.title(window_title)
         
-        # initialize models
+        #initialize models
         self.yolo_model = YOLO('yolov8n.pt') 
         self.tracker = Sort()
         self.mp_pose = mp.solutions.pose
@@ -67,19 +67,19 @@ class TuroArnisGUI:
         except FileNotFoundError:
             print("[error] classifier model or class names file not found.")
 
-        # --- new: simplified and robust window sizing ---
+        #--- new: simplified and robust window sizing ---
         self.cap = cv2.VideoCapture(0)
-        # get the default webcam resolution
+        #get the default webcam resolution
         self.cam_width = int(self.cap.get(cv2.CAP_PROP_FRAME_WIDTH))
         self.cam_height = int(self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-        # set the window size to match the webcam
+        #set the window size to match the webcam
         self.window.geometry(f"{self.cam_width}x{self.cam_height}")
 
 
-        # queue for thread-safe communication
+        #queue for thread-safe communication
         self.queue = queue.Queue(maxsize=1)
 
-        # create and place widgets
+        #create and place widgets
         self.video_label = ttk.Label(self.window)
         self.video_label.place(x=0, y=0, relwidth=1, relheight=1)
         
@@ -89,7 +89,7 @@ class TuroArnisGUI:
         
         self.controls_panel.place(x=20, y=20)
 
-        # populate controls panel
+        #populate controls panel
         ttk.Label(self.controls_panel, text="Controls", font=("-size 14 -weight bold"), bootstyle="inverse-dark").pack(pady=(0, 10), anchor=W)
         
         self.user_button = ttk.Menubutton(self.controls_panel, text=self.current_user, bootstyle="secondary")
@@ -125,7 +125,7 @@ class TuroArnisGUI:
         self.view_all_results_button = ttk.Button(self.controls_panel, text="View All Results", command=self.open_results_window, bootstyle="info")
         self.view_all_results_button.pack(fill=X, pady=10, side=BOTTOM)
 
-        # thread control and startup
+        #thread control and startup
         self.is_running = True
         self.thread = threading.Thread(target=self.video_loop, daemon=True)
         self.thread.start()
@@ -146,31 +146,31 @@ class TuroArnisGUI:
         finally:
             self.window.after(20, self.process_queue)
 
-    # --- new helper function for drawing landmarks ---
+    #--- new helper function for drawing landmarks ---
     def draw_landmarks_on_main_frame(self, main_frame, pose_results, crop_x1, crop_y1):
         if pose_results.pose_landmarks:
-            # create a copy of the landmark object to modify it
+            #create a copy of the landmark object to modify it
             translated_landmarks = mp.framework.formats.landmark_pb2.NormalizedLandmarkList()
             translated_landmarks.landmark.extend(pose_results.pose_landmarks.landmark)
 
-            # get the dimensions of the main frame
+            #get the dimensions of the main frame
             frame_height, frame_width, _ = main_frame.shape
             
-            # translate coordinates
+            #translate coordinates
             for landmark in translated_landmarks.landmark:
-                # convert landmark from relative (0-1) on crop to absolute on crop
+                #convert landmark from relative (0-1) on crop to absolute on crop
                 pixel_x = landmark.x * (crop_x2 - crop_x1)
                 pixel_y = landmark.y * (crop_y2 - crop_y1)
                 
-                # add the crop's offset
+                #add the crop's offset
                 pixel_x += crop_x1
                 pixel_y += crop_y1
                 
-                # convert back to relative on the main frame
+                #convert back to relative on the main frame
                 landmark.x = pixel_x / frame_width
                 landmark.y = pixel_y / frame_height
 
-            # draw the translated landmarks
+            #draw the translated landmarks
             self.mp_drawing.draw_landmarks(
                 main_frame,
                 translated_landmarks,
@@ -186,8 +186,8 @@ class TuroArnisGUI:
             
             frame = cv2.flip(frame, 1)
             
-            # yolo detection
-            results_yolo = self.yolo_model(frame, stream=True, verbose=False, classes=[0]) # filter for persons
+            #yolo detection
+            results_yolo = self.yolo_model(frame, stream=True, verbose=False, classes=[0]) #filter for persons
             detections = np.empty((0, 5))
 
             for r in results_yolo:
@@ -212,7 +212,7 @@ class TuroArnisGUI:
                     image_rgb = cv2.cvtColor(person_crop, cv2.COLOR_BGR2RGB)
                     pose_results = self.pose.process(image_rgb)
 
-                    # --- corrected logic: draw landmarks back on the main frame ---
+                    #--- corrected logic: draw landmarks back on the main frame ---
                     if pose_results.pose_landmarks:
                         self.draw_landmarks_on_main_frame(frame, pose_results, x1, y1)
 
@@ -242,7 +242,7 @@ class TuroArnisGUI:
             
             self.queue.put(frame)
 
-    # (on_user_selected, on_action_selected, etc. are the same)
+    #(on_user_selected, on_action_selected, etc. are the same)
     def on_user_selected(self, username):
         self.current_user = username
         self.user_button.config(text=username)

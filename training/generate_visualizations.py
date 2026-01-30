@@ -81,12 +81,12 @@ def plot_confusion_matrix_heatmap(y_true, y_pred, class_names, save_path):
 def plot_parameter_importance(cv_results, param_grid, save_path):
     results_df = pd.DataFrame(cv_results)
     
-    # Analyze each parameter's impact
+    #analyze each parameter's impact
     param_importance = {}
     for param_name in param_grid.keys():
         param_col = f'param_{param_name}'
         if param_col in results_df.columns:
-            # Group by parameter value and get mean score variance
+            #group by parameter value and get mean score variance
             grouped = results_df.groupby(param_col)['mean_test_score']
             variance = grouped.std().mean()
             param_importance[param_name] = variance
@@ -95,7 +95,7 @@ def plot_parameter_importance(cv_results, param_grid, save_path):
         print("[WARN] No parameter importance data available")
         return
     
-    # Sort and plot
+    #sort and plot
     params = list(param_importance.keys())
     importances = [param_importance[p] for p in params]
     
@@ -115,7 +115,7 @@ def plot_parameter_importance(cv_results, param_grid, save_path):
 
 def get_feature_names(csv_path):
     df = pd.read_csv(csv_path, nrows=0)
-    return df.columns[1:].tolist()  # Skip 'class' column
+    return df.columns[1:].tolist()  #skip 'class' column
 
 def generate_visualizations_for_model(version_dir):
     print(f"\n{'='*60}")
@@ -124,7 +124,7 @@ def generate_visualizations_for_model(version_dir):
     print(f"  Model: {os.path.basename(version_dir)}")
     print(f"{'='*60}\n")
     
-    # Load metadata
+    #load metadata
     metadata_path = os.path.join(version_dir, 'metadata.json')
     if not os.path.exists(metadata_path):
         print("[ERROR] metadata.json not found")
@@ -138,10 +138,10 @@ def generate_visualizations_for_model(version_dir):
         print(f"[ERROR] Only Random Forest and XGBoost models supported (found: {model_type})")
         return False
     
-    # Map model type to correct filename suffix
+    #map model type to correct filename suffix
     model_suffix = 'rf' if model_type == 'random_forest' else 'xgb'
     
-    # Load model
+    #load model
     model_path = os.path.join(version_dir, f'model_{model_suffix}.joblib')
     if not os.path.exists(model_path):
         print(f"[ERROR] Model file not found: {model_path}")
@@ -150,7 +150,7 @@ def generate_visualizations_for_model(version_dir):
     print("[INFO] Loading model...")
     model = joblib.load(model_path)
     
-    # Check if it's a grid search object
+    #check if it's a grid search object
     from sklearn.model_selection import GridSearchCV, RandomizedSearchCV
     if isinstance(model, (GridSearchCV, RandomizedSearchCV)):
         grid_search = model
@@ -159,7 +159,7 @@ def generate_visualizations_for_model(version_dir):
         grid_search = None
         best_model = model
     
-    # Load label encoder and scaler
+    #load label encoder and scaler
     encoder_path = os.path.join(version_dir, 'label_encoder.joblib')
     scaler_path = os.path.join(version_dir, 'scaler.joblib')
     
@@ -167,7 +167,7 @@ def generate_visualizations_for_model(version_dir):
     scaler = joblib.load(scaler_path) if os.path.exists(scaler_path) else None
     class_names = list(label_encoder.classes_) if label_encoder else None
     
-    # Load test data from CSV
+    #load test data from csv
     csv_path = metadata.get('csv_path')
     if not csv_path or not os.path.exists(csv_path):
         print(f"[WARN] CSV not found, looking for default...")
@@ -181,10 +181,10 @@ def generate_visualizations_for_model(version_dir):
         print(f"[INFO] Loading data from: {os.path.basename(csv_path)}")
         data = pd.read_csv(csv_path).dropna()
         
-        # Get feature names
+        #get feature names
         feature_names = get_feature_names(csv_path)
         
-        # Extract test data
+        #extract test data
         from sklearn.model_selection import train_test_split
         from sklearn.preprocessing import StandardScaler, LabelEncoder
         
@@ -194,7 +194,7 @@ def generate_visualizations_for_model(version_dir):
         le = LabelEncoder()
         y = le.fit_transform(y_labels)
         
-        # Reproduce same split (70/10/20)
+        #reproduce same split (70/10/20)
         X_temp, X_test, y_temp, y_test = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
         
         if scaler:
@@ -202,30 +202,30 @@ def generate_visualizations_for_model(version_dir):
             sc.fit(X_temp)
             X_test = sc.transform(X_test)
         
-        # Get predictions
+        #get predictions
         y_pred = best_model.predict(X_test)
     
-    # Generate plots
+    #generate plots
     print("\n[INFO] Generating visualizations...")
     
-    # 1. GridSearch Results (if available)
+    #1. gridsearch results (if available)
     if grid_search is not None:
         cv_results = grid_search.cv_results_
         n_iter = metadata.get('n_iter') if 'n_iter' in metadata else None
         plot_gridsearch_results(cv_results, os.path.join(version_dir, 'gridsearch_results.png'), n_iter)
         
-        # 4. Parameter Importance
+        #4. parameter importance
         param_grid = metadata.get('param_grid', {})
         if param_grid:
             plot_parameter_importance(cv_results, param_grid, os.path.join(version_dir, 'param_importance.png'))
     else:
         print("[WARN] Model is not a GridSearch object, skipping CV plots")
     
-    # 2. Feature Importance
+    #2. feature importance
     if feature_names is not None:
         plot_feature_importance(best_model, feature_names, os.path.join(version_dir, 'feature_importance.png'))
     
-    # 3. Confusion Matrix
+    #3. confusion matrix
     if y_test is not None and y_pred is not None and class_names is not None:
         plot_confusion_matrix_heatmap(y_test, y_pred, class_names, os.path.join(version_dir, 'confusion_matrix.png'))
     
@@ -246,7 +246,7 @@ def main():
     models_dir = os.path.join(project_root, 'models')
     
     if args.all:
-        # Generate for all models
+        #generate for all models
         versions = [d for d in os.listdir(models_dir) 
                    if os.path.isdir(os.path.join(models_dir, d)) and d.startswith('v')]
         

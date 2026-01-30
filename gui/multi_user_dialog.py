@@ -19,24 +19,24 @@ class MultiUserDialog:
         """
         self.db = db_manager
         self.num_people = num_people
-        self.user_assignments = {}  # {person_id: user_dict}
+        self.user_assignments = {}  #{person_id: user_dict}
         
-        # Create dialog window
+        #create dialog window
         self.dialog = ttk.Toplevel(parent)
         self.dialog.title(f"Assign Users to {num_people} Detected {'Person' if num_people == 1 else 'People'}")
         self.dialog.geometry("900x700")
         self.dialog.resizable(False, False)
         
-        # Make modal
+        #make modal
         self.dialog.transient(parent)
         self.dialog.grab_set()
         
         self.setup_ui()
         
-        # Center on screen
+        #center on screen
         self.center_window()
         
-        # Ensure dialog is visible
+        #ensure dialog is visible
         self.dialog.lift()
         self.dialog.focus_force()
     
@@ -138,7 +138,7 @@ class MultiUserDialog:
             font=("Segoe UI", 10)
         ).pack(anchor=W, pady=(0, 5))
         
-        # Combobox for user selection
+        #combobox for user selection
         user_names = [u['name'] for u in self.users]
         user_var = ttk.StringVar(value=user_names[min(person_id - 1, len(user_names) - 1)])
         

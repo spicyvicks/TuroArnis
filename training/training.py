@@ -12,8 +12,8 @@ from sklearn.preprocessing import StandardScaler
 
 worker_pose_instance = None
 
-# feature extraction mode: 'coordinates' (99 features) or 'angles' (25 features)
-# can be set via environment variable or changed here
+#feature extraction mode: 'coordinates' (99 features) or 'angles' (25 features)
+#can be set via environment variable or changed here
 FEATURE_MODE = os.environ.get('FEATURE_MODE', 'angles')
 
 def init_worker():
@@ -53,56 +53,56 @@ def extract_angles_from_image(image_path):
     try:
         lm = results.pose_world_landmarks.landmark
         
-        # joint angles (16 angles)
+        #joint angles (16 angles)
         angles = [
-            # elbows
-            calculate_angle_3d([lm[11].x, lm[11].y, lm[11].z], [lm[13].x, lm[13].y, lm[13].z], [lm[15].x, lm[15].y, lm[15].z]),  # left elbow
-            calculate_angle_3d([lm[12].x, lm[12].y, lm[12].z], [lm[14].x, lm[14].y, lm[14].z], [lm[16].x, lm[16].y, lm[16].z]),  # right elbow
-            # shoulders
-            calculate_angle_3d([lm[23].x, lm[23].y, lm[23].z], [lm[11].x, lm[11].y, lm[11].z], [lm[13].x, lm[13].y, lm[13].z]),  # left shoulder
-            calculate_angle_3d([lm[24].x, lm[24].y, lm[24].z], [lm[12].x, lm[12].y, lm[12].z], [lm[14].x, lm[14].y, lm[14].z]),  # right shoulder
-            # wrists
-            calculate_angle_3d([lm[13].x, lm[13].y, lm[13].z], [lm[15].x, lm[15].y, lm[15].z], [lm[19].x, lm[19].y, lm[19].z]),  # left wrist
-            calculate_angle_3d([lm[14].x, lm[14].y, lm[14].z], [lm[16].x, lm[16].y, lm[16].z], [lm[20].x, lm[20].y, lm[20].z]),  # right wrist
-            # hips
-            calculate_angle_3d([lm[11].x, lm[11].y, lm[11].z], [lm[23].x, lm[23].y, lm[23].z], [lm[25].x, lm[25].y, lm[25].z]),  # left hip
-            calculate_angle_3d([lm[12].x, lm[12].y, lm[12].z], [lm[24].x, lm[24].y, lm[24].z], [lm[26].x, lm[26].y, lm[26].z]),  # right hip
-            # knees
-            calculate_angle_3d([lm[23].x, lm[23].y, lm[23].z], [lm[25].x, lm[25].y, lm[25].z], [lm[27].x, lm[27].y, lm[27].z]),  # left knee
-            calculate_angle_3d([lm[24].x, lm[24].y, lm[24].z], [lm[26].x, lm[26].y, lm[26].z], [lm[28].x, lm[28].y, lm[28].z]),  # right knee
-            # ankles (NEW)
-            calculate_angle_3d([lm[25].x, lm[25].y, lm[25].z], [lm[27].x, lm[27].y, lm[27].z], [lm[31].x, lm[31].y, lm[31].z]),  # left ankle
-            calculate_angle_3d([lm[26].x, lm[26].y, lm[26].z], [lm[28].x, lm[28].y, lm[28].z], [lm[32].x, lm[32].y, lm[32].z]),  # right ankle
-            # arm-to-torso angles
-            calculate_angle_3d([lm[12].x, lm[12].y, lm[12].z], [lm[11].x, lm[11].y, lm[11].z], [lm[13].x, lm[13].y, lm[13].z]),  # left arm raise
-            calculate_angle_3d([lm[11].x, lm[11].y, lm[11].z], [lm[12].x, lm[12].y, lm[12].z], [lm[14].x, lm[14].y, lm[14].z]),  # right arm raise
-            # torso angle (NEW) - spine alignment
+            #elbows
+            calculate_angle_3d([lm[11].x, lm[11].y, lm[11].z], [lm[13].x, lm[13].y, lm[13].z], [lm[15].x, lm[15].y, lm[15].z]),  #left elbow
+            calculate_angle_3d([lm[12].x, lm[12].y, lm[12].z], [lm[14].x, lm[14].y, lm[14].z], [lm[16].x, lm[16].y, lm[16].z]),  #right elbow
+            #shoulders
+            calculate_angle_3d([lm[23].x, lm[23].y, lm[23].z], [lm[11].x, lm[11].y, lm[11].z], [lm[13].x, lm[13].y, lm[13].z]),  #left shoulder
+            calculate_angle_3d([lm[24].x, lm[24].y, lm[24].z], [lm[12].x, lm[12].y, lm[12].z], [lm[14].x, lm[14].y, lm[14].z]),  #right shoulder
+            #wrists
+            calculate_angle_3d([lm[13].x, lm[13].y, lm[13].z], [lm[15].x, lm[15].y, lm[15].z], [lm[19].x, lm[19].y, lm[19].z]),  #left wrist
+            calculate_angle_3d([lm[14].x, lm[14].y, lm[14].z], [lm[16].x, lm[16].y, lm[16].z], [lm[20].x, lm[20].y, lm[20].z]),  #right wrist
+            #hips
+            calculate_angle_3d([lm[11].x, lm[11].y, lm[11].z], [lm[23].x, lm[23].y, lm[23].z], [lm[25].x, lm[25].y, lm[25].z]),  #left hip
+            calculate_angle_3d([lm[12].x, lm[12].y, lm[12].z], [lm[24].x, lm[24].y, lm[24].z], [lm[26].x, lm[26].y, lm[26].z]),  #right hip
+            #knees
+            calculate_angle_3d([lm[23].x, lm[23].y, lm[23].z], [lm[25].x, lm[25].y, lm[25].z], [lm[27].x, lm[27].y, lm[27].z]),  #left knee
+            calculate_angle_3d([lm[24].x, lm[24].y, lm[24].z], [lm[26].x, lm[26].y, lm[26].z], [lm[28].x, lm[28].y, lm[28].z]),  #right knee
+            #ankles (new)
+            calculate_angle_3d([lm[25].x, lm[25].y, lm[25].z], [lm[27].x, lm[27].y, lm[27].z], [lm[31].x, lm[31].y, lm[31].z]),  #left ankle
+            calculate_angle_3d([lm[26].x, lm[26].y, lm[26].z], [lm[28].x, lm[28].y, lm[28].z], [lm[32].x, lm[32].y, lm[32].z]),  #right ankle
+            #arm-to-torso angles
+            calculate_angle_3d([lm[12].x, lm[12].y, lm[12].z], [lm[11].x, lm[11].y, lm[11].z], [lm[13].x, lm[13].y, lm[13].z]),  #left arm raise
+            calculate_angle_3d([lm[11].x, lm[11].y, lm[11].z], [lm[12].x, lm[12].y, lm[12].z], [lm[14].x, lm[14].y, lm[14].z]),  #right arm raise
+            #torso angle (new) - spine alignment
             calculate_angle_3d([(lm[11].x+lm[12].x)/2, (lm[11].y+lm[12].y)/2, (lm[11].z+lm[12].z)/2], 
                               [(lm[23].x+lm[24].x)/2, (lm[23].y+lm[24].y)/2, (lm[23].z+lm[24].z)/2],
-                              [(lm[23].x+lm[24].x)/2, (lm[23].y+lm[24].y)/2 + 0.1, (lm[23].z+lm[24].z)/2]),  # torso lean
+                              [(lm[23].x+lm[24].x)/2, (lm[23].y+lm[24].y)/2 + 0.1, (lm[23].z+lm[24].z)/2]),  #torso lean
         ]
         
-        # relative positions (19 features)
-        # wrist positions relative to shoulder
+        #relative positions (19 features)
+        #wrist positions relative to shoulder
         left_wrist_rel = [lm[15].x - lm[11].x, lm[15].y - lm[11].y, lm[15].z - lm[11].z]
         right_wrist_rel = [lm[16].x - lm[12].x, lm[16].y - lm[12].y, lm[16].z - lm[12].z]
         
-        # hand positions relative to hip center
+        #hand positions relative to hip center
         hip_center = [(lm[23].x + lm[24].x)/2, (lm[23].y + lm[24].y)/2, (lm[23].z + lm[24].z)/2]
         left_hand_rel = [lm[19].x - hip_center[0], lm[19].y - hip_center[1]]
         right_hand_rel = [lm[20].x - hip_center[0], lm[20].y - hip_center[1]]
         
-        # foot positions relative to hip center (NEW)
+        #foot positions relative to hip center (new)
         left_foot_rel = [lm[31].x - hip_center[0], lm[31].y - hip_center[1]]
         right_foot_rel = [lm[32].x - hip_center[0], lm[32].y - hip_center[1]]
         
-        # body balance/tilt features
+        #body balance/tilt features
         shoulder_tilt = lm[11].y - lm[12].y
         hip_tilt = lm[23].y - lm[24].y
-        stance_width = abs(lm[27].x - lm[28].x)  # distance between ankles
+        stance_width = abs(lm[27].x - lm[28].x)  #distance between ankles
         
-        # facing direction (positive = facing right, negative = facing left)
-        facing_direction = lm[11].z - lm[12].z  # left_shoulder.z - right_shoulder.z
+        #facing direction (positive = facing right, negative = facing left)
+        facing_direction = lm[11].z - lm[12].z  #left_shoulder.z - right_shoulder.z
         
         features = (angles + left_wrist_rel + right_wrist_rel + 
                    left_hand_rel + right_hand_rel + 

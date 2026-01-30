@@ -9,7 +9,7 @@ import pandas as pd
 from tqdm import tqdm
 from multiprocessing import Pool, cpu_count
 
-# mediapipe instance for worker processes
+#mediapipe instance for worker processes
 worker_pose_instance = None
 
 def init_worker():
@@ -205,26 +205,26 @@ def extract_features_from_dataset(dataset_path, csv_output_path, feature_mode='a
     
     if feature_mode == 'angles':
         extraction_func = extract_angles_from_image
-        # 15 joint angles
+        #15 joint angles
         angle_names = ['left_elbow', 'right_elbow', 'left_shoulder', 'right_shoulder',
                       'left_wrist', 'right_wrist', 'left_hip', 'right_hip',
                       'left_knee', 'right_knee', 'left_ankle', 'right_ankle',
                       'left_arm_raise', 'right_arm_raise', 'torso_lean']
-        # 4 cross-body angles
+        #4 cross-body angles
         cross_body_names = ['cross_left_hand', 'cross_right_hand', 'diagonal_left', 'diagonal_right']
-        # 18 relative positions
+        #18 relative positions
         position_names = ['lwrist_rel_x', 'lwrist_rel_y', 'lwrist_rel_z',
                          'rwrist_rel_x', 'rwrist_rel_y', 'rwrist_rel_z',
                          'lhand_rel_x', 'lhand_rel_y', 'rhand_rel_x', 'rhand_rel_y',
                          'lfoot_rel_x', 'lfoot_rel_y', 'rfoot_rel_x', 'rfoot_rel_y',
                          'shoulder_tilt', 'hip_tilt', 'stance_width', 'facing_direction']
-        # 8 distance features
+        #8 distance features
         distance_names = ['hand_distance', 'wrist_distance', 'left_arm_ext', 'right_arm_ext',
                          'left_elbow_dist', 'right_elbow_dist', 'knee_distance', 'foot_distance']
-        # 5 symmetry features
+        #5 symmetry features
         symmetry_names = ['elbow_symmetry', 'shoulder_symmetry', 'knee_symmetry', 
                          'arm_raise_symmetry', 'wrist_height_diff']
-        # 4 body proportions
+        #4 body proportions
         proportion_names = ['arm_span', 'body_height', 'arm_to_height_ratio', 'stance_depth']
         
         header = ['class'] + angle_names + cross_body_names + position_names + distance_names + symmetry_names + proportion_names
@@ -232,7 +232,7 @@ def extract_features_from_dataset(dataset_path, csv_output_path, feature_mode='a
         extraction_func = extract_coordinates_from_image
         header = ['class'] + [f'{ax}_{i}' for i in range(33) for ax in ['x', 'y', 'z']]
     
-    # collect all image paths
+    #collect all image paths
     image_tasks = []
     classes = sorted([d for d in os.listdir(dataset_path) if os.path.isdir(os.path.join(dataset_path, d))])
     
@@ -246,17 +246,17 @@ def extract_features_from_dataset(dataset_path, csv_output_path, feature_mode='a
     
     print(f"  Processing {len(image_tasks)} images...")
     
-    # extract features using multiprocessing
+    #extract features using multiprocessing
     n_workers = max(1, cpu_count() - 1)
     with Pool(n_workers, initializer=init_worker) as pool:
         results = list(tqdm(pool.imap(_extract_wrapper, image_tasks), total=len(image_tasks)))
     
-    # filter out failed extractions
+    #filter out failed extractions
     valid_results = [r for r in results if r is not None]
     
     print(f"  Extracted: {len(valid_results)}/{len(image_tasks)} images")
     
-    # save to CSV
+    #save to csv
     df = pd.DataFrame(valid_results, columns=header)
     df.to_csv(csv_output_path, index=False)
     

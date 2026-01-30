@@ -96,15 +96,15 @@ def main():
     failed = 0
     skipped = 0
 
-    # Walk through input_dir recursively but skip any path that includes a 'stick' folder
+    #walk through input_dir recursively but skip any path that includes a 'stick' folder
     for root, dirs, files in os.walk(input_dir):
-        # Skip any directory that contains 'stick' in its name
+        #skip any directory that contains 'stick' in its name
         if is_stick_path(root):
             skipped += len(files)
             continue
 
         rel_root = Path(root).relative_to(input_dir)
-        # prepare corresponding output directory (preserve class subfolders)
+        #prepare corresponding output directory (preserve class subfolders)
         out_root = output_dir / rel_root
         out_root.mkdir(parents=True, exist_ok=True)
 
@@ -113,7 +113,7 @@ def main():
                 continue
             src_path = Path(root) / fname
 
-            # don't process already-cropped filenames
+            #don't process already-cropped filenames
             if "_cropped" in src_path.stem or "_bbox" in src_path.stem:
                 continue
 
@@ -126,7 +126,7 @@ def main():
                 failed += 1
                 continue
 
-            # save cropped image
+            #save cropped image
             try:
                 cv2.imwrite(str(dst_path), cropped)
                 processed += 1

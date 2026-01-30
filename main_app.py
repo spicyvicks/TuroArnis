@@ -12,6 +12,9 @@ import numpy as np
 
 from gui.results_window import ResultsWindow
 from gui.user_dialog import show_user_dialog
+from gui.toast import ToastNotification
+from gui.loading_spinner import LoadingSpinner
+from gui.status_bar import StatusBar
 from computer_vision.pose_analyzer import PoseAnalyzer
 from database.db_manager import DatabaseManager
 from utils.resource_path import get_resource_path, get_app_data_path
@@ -68,13 +71,28 @@ class TuroArnisGUI:
         self.last_pose_state = None
         self.state_frame_count = 0
 
+        #initialize ux components first (before heavy loading)
+        print("[DEBUG-INIT] Initializing UX components...")
+        self.toast = ToastNotification(self.window)
+        self.spinner = LoadingSpinner(self.window)
+        
+        #show loading spinner for initialization
+        self.spinner.show("Initializing TuroArnis...")
+        self.window.update()
+
         print("[DEBUG-INIT] Loading stick detector model...")
+        self.spinner.update_message("Loading stick detector...")
+        self.window.update()
+        
         #use resource path for stick detector model
         stick_model_relative = 'runs/pose/arnis_stick_detector/weights/best.pt'
         stick_model_path = get_resource_path(stick_model_relative)
         print(f"[DEBUG-INIT] Stick model path: {stick_model_path}")
         
         print("[DEBUG-INIT] Initializing PoseAnalyzer...")
+        self.spinner.update_message("Loading pose detection models...")
+        self.window.update()
+        
         self.analyzer = PoseAnalyzer(
             detection_interval=self.processing_interval,
             stick_model_path=stick_model_path if os.path.exists(stick_model_path) else None,
@@ -82,7 +100,21 @@ class TuroArnisGUI:
         )
         
         print("[DEBUG-INIT] Opening camera...")
+        self.spinner.update_message("Connecting to camera...")
+        self.window.update()
+        
         self.cap = cv2.VideoCapture(0)
+        
+        #check if camera opened successfully
+        if not self.cap.isOpened():
+            self.spinner.hide()
+            self.toast.show("Camera not detected. Please check your camera connection.", "error", duration=5000)
+            print("[ERROR] Camera failed to open")
+        else:
+            #get camera resolution
+            cam_width = int(self.cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+            cam_height = int(self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+            print(f"[INFO] Camera opened: {cam_width}x{cam_height}")
         
         print("[DEBUG-INIT] Setting up GUI components...")
         self.queue = queue.Queue(maxsize=1)
@@ -152,6 +184,12 @@ class TuroArnisGUI:
         self.view_all_results_button = ttk.Button(self.controls_panel, text="View All Results", command=self.open_results_window, bootstyle="info")
         self.view_all_results_button.pack(fill=X, pady=10, side=BOTTOM)
 
+        print("[DEBUG-INIT] Creating status bar...")
+        self.status_bar = StatusBar(self.window)
+        self.status_bar.set_camera_status("Connected", is_ok=self.cap.isOpened())
+        self.status_bar.set_model_status("Loaded", is_ok=True)
+        self.status_bar.set_status(f"Welcome, {self.current_user['name']}!")
+
         print("[DEBUG-INIT] Starting video thread...")
         self.is_running = True
         self.thread = threading.Thread(target=self.video_loop, daemon=True)
@@ -170,6 +208,11 @@ class TuroArnisGUI:
         
         print("[DEBUG-INIT] Showing window...")
         self.window.deiconify()
+        
+        #hide spinner and show success
+        self.spinner.hide()
+        self.toast.show(f"Welcome, {self.current_user['name']}!", "success", duration=2000)
+        
         print("[DEBUG-INIT] Initialization complete, starting mainloop...")
         self.window.mainloop()
     
@@ -362,6 +405,10 @@ class TuroArnisGUI:
             self.queue.put(final_frame)
             
             self.frame_counter += 1
+            
+            #update fps in status bar
+            self.status_bar.update_fps(time.time())
+            
             time.sleep(0.01)
 
     def process_queue(self):
@@ -382,7 +429,10 @@ class TuroArnisGUI:
         self.target_form = self.practice_stances[pretty_name]
         self.form_button.config(text=pretty_name)
         self.status_label.config(text=f"Status: Analyzing '{pretty_name}'")
+        self.status_bar.set_status(f"Practicing: {pretty_name}")
         print(f"[INFO] targeting: '{self.target_form}'")
+        
+        self.toast.show(f"Now practicing: {pretty_name}", "info", duration=2000)
 
         if self.current_user and not self.current_session_id:
             self.start_session()
@@ -417,11 +467,14 @@ class TuroArnisGUI:
         self.session_status_label.config(text=f"Session #{self.current_session_id} - active", bootstyle="success")
         self.start_session_btn.config(state=DISABLED)
         self.end_session_btn.config(state=NORMAL)
+        
+        #show toast notification
+        self.toast.show(f"Session #{self.current_session_id} started", "success", duration=2000)
+        self.status_bar.set_status("Session active - Good luck!")
     
     def manual_start_session(self):
         if not self.target_form:
-            from ttkbootstrap.dialogs import Messagebox
-            Messagebox.show_error("Please select a target form first", "No Form Selected")
+            self.toast.show("Please select a target form first", "warning", duration=3000)
             return
         self.start_session()
     
@@ -431,13 +484,18 @@ class TuroArnisGUI:
             print(f"[INFO] session {self.current_session_id} ended")
 
             summary = self.db.get_session_summary(self.current_session_id)
-            from ttkbootstrap.dialogs import Messagebox
-            msg = f"Session Complete!\n\n"
-            msg += f"Total Attempts: {summary['total_attempts']}\n"
-            msg += f"Correct: {summary['correct_attempts']}\n"
-            msg += f"Accuracy: {summary['correct_attempts']/summary['total_attempts']*100:.1f}%\n" if summary['total_attempts'] > 0 else "Accuracy: 0%\n"
-            msg += f"Avg Confidence: {summary['avg_confidence']:.2f}\n" if summary['avg_confidence'] else "Avg Confidence: N/A\n"
-            Messagebox.show_info(msg, "Session Summary")
+            
+            #show summary as toast
+            if summary['total_attempts'] > 0:
+                accuracy = (summary['correct_attempts']/summary['total_attempts']*100)
+                msg = f"Session Complete! {summary['correct_attempts']}/{summary['total_attempts']} correct ({accuracy:.1f}%)"
+                toast_type = "success" if accuracy >= 70 else "warning" if accuracy >= 50 else "info"
+            else:
+                msg = "Session ended - No attempts recorded"
+                toast_type = "info"
+            
+            self.toast.show(msg, toast_type, duration=5000)
+            self.status_bar.set_status("Session ended")
 
             self.current_session_id = None
 

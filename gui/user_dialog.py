@@ -209,11 +209,13 @@ class UserManagementDialog:
         #auto-select the new user and close dialog
         print(f"[DEBUG-CREATE] Setting selected_user = {new_user}")
         self.selected_user = new_user
-        print(f"[DEBUG-CREATE] Showing success message...")
-        Messagebox.show_info(f"User '{name}' created and selected successfully", "Success")
+        print(f"[DEBUG-CREATE] User created successfully: {name}")
         print(f"[DEBUG-CREATE] Destroying dialog...")
-        self.dialog.destroy()
-        print(f"[DEBUG-CREATE] Dialog destroyed successfully")
+        try:
+            self.dialog.destroy()
+            print(f"[DEBUG-CREATE] Dialog destroyed successfully")
+        except Exception as e:
+            print(f"[DEBUG-CREATE] Error destroying dialog: {e}")
     
     def select_user(self):
         """Select the highlighted user and close dialog"""
@@ -239,7 +241,12 @@ class UserManagementDialog:
                 return
         
         self.selected_user = user
-        self.dialog.destroy()
+        print("[DEBUG-SELECT] User selected, destroying dialog...")
+        try:
+            self.dialog.destroy()
+            print("[DEBUG-SELECT] Dialog destroyed")
+        except Exception as e:
+            print(f"[DEBUG-SELECT] Error destroying dialog: {e}")
     
     def toggle_user_status(self):
         """Toggle active/inactive status of selected user"""
@@ -284,18 +291,30 @@ class UserManagementDialog:
     
     def exit_dialog(self):
         """Handle dialog exit - warn if no user selected"""
+        print("[DEBUG-EXIT] exit_dialog called")
         if self.selected_user is None:
             result = Messagebox.show_question(
                 "No user selected. The application will exit.\nContinue?",
                 "No User Selected",
                 buttons=["Yes:danger", "No:secondary"]
             )
+            print(f"[DEBUG-EXIT] User response: {result}")
             if result == "Yes":
-                self.dialog.destroy()
+                print("[DEBUG-EXIT] Destroying dialog...")
+                try:
+                    self.dialog.destroy()
+                    print("[DEBUG-EXIT] Dialog destroyed")
+                except Exception as e:
+                    print(f"[DEBUG-EXIT] Error destroying dialog: {e}")
             #else: do nothing, keep dialog open
         else:
             #user already selected, safe to close
-            self.dialog.destroy()
+            print("[DEBUG-EXIT] User already selected, destroying dialog...")
+            try:
+                self.dialog.destroy()
+                print("[DEBUG-EXIT] Dialog destroyed")
+            except Exception as e:
+                print(f"[DEBUG-EXIT] Error destroying dialog: {e}")
     
     def get_selected_user(self):
         """Return the selected user (call after dialog closes)"""
@@ -321,7 +340,32 @@ def show_user_dialog(parent, db_manager):
         parent.withdraw()
     
     print("[DEBUG-DIALOG] Waiting for dialog to close...")
-    parent.wait_window(dialog.dialog)
+    
+    #add timeout protection to prevent infinite hang
+    timeout_triggered = [False]
+    
+    def force_close_on_timeout():
+        if dialog.dialog.winfo_exists():
+            print("[DEBUG-DIALOG] Timeout - force closing dialog")
+            timeout_triggered[0] = True
+            try:
+                dialog.dialog.destroy()
+            except:
+                pass
+    
+    #set a reasonable timeout (30 seconds should be more than enough)
+    #timeout_id = parent.after(30000, force_close_on_timeout)
+    
+    try:
+        parent.wait_window(dialog.dialog)
+    except Exception as e:
+        print(f"[DEBUG-DIALOG] Exception during wait_window: {e}")
+    
+    #cancel timeout if dialog closed normally
+    #try:
+    #    parent.after_cancel(timeout_id)
+    #except:
+    #    pass
     
     print("[DEBUG-DIALOG] Dialog closed, getting selected user...")
     selected = dialog.get_selected_user()

@@ -207,8 +207,13 @@ if __name__ == "__main__":
     project_root = os.path.dirname(current_dir)
     sys.path.append(project_root)
 
-    dataset_folder = os.path.join(project_root, 'dataset_aug')
-    csv_output_file = os.path.join(project_root, 'arnis_poses_coordinates_aug.csv')
+    #IMPORTANT: use split folders to avoid data leakage
+    #train set: augmented images from dataset_aug/train
+    #test set: original images from dataset_split/test (no augmentation)
+    train_dataset_folder = os.path.join(project_root, 'dataset_aug', 'train')
+    test_dataset_folder = os.path.join(project_root, 'dataset_split', 'test')
+    
+    csv_output_file = os.path.join(project_root, 'arnis_poses_combined.csv')
     models_dir = os.path.join(project_root, 'models')
     
     # versioned model saving
@@ -265,41 +270,84 @@ if __name__ == "__main__":
                              'lhand_rel_x', 'lhand_rel_y', 'rhand_rel_x', 'rhand_rel_y',
                              'lfoot_rel_x', 'lfoot_rel_y', 'rfoot_rel_x', 'rfoot_rel_y',
                              'shoulder_tilt', 'hip_tilt', 'stance_width', 'facing_direction']
-            header = ['class'] + angle_names + position_names
+            header = ['class', 'split'] + angle_names + position_names
             print(f"\n[STAGE 1] Extracting ANGLE features (33 features)...")
         else:
             csv_output_file = os.path.join(project_root, 'arnis_poses_coordinates.csv')
             extraction_func = extract_coordinates_from_image
-            header = ['class'] + [f'{ax}_{i}' for i in range(33) for ax in ['x', 'y', 'z']]
+            header = ['class', 'split'] + [f'{ax}_{i}' for i in range(33) for ax in ['x', 'y', 'z']]
             print(f"\n[STAGE 1] Extracting COORDINATE features (99 features)...")
         
-        if not os.path.exists(dataset_folder):
-            print(f"\n[ERROR] Dataset folder not found: {dataset_folder}")
+        #check both folders exist
+        if not os.path.exists(train_dataset_folder):
+            print(f"\n[ERROR] Training folder not found: {train_dataset_folder}")
+            print("Run split_dataset.py and data_augmentation.py first!")
             sys.exit(1)
         
-        pose_classes = sorted([d for d in os.listdir(dataset_folder) if os.path.isdir(os.path.join(dataset_folder, d))])
+        if not os.path.exists(test_dataset_folder):
+            print(f"\n[ERROR] Test folder not found: {test_dataset_folder}")
+            print("Run split_dataset.py first!")
+            sys.exit(1)
         
+        #process both train and test folders
         all_image_paths = []
         path_to_class_map = {}
-        for class_name in pose_classes:
-            class_folder_path = os.path.join(dataset_folder, class_name)
+        path_to_split_map = {}  #track which split each image belongs to
+        
+        #process training images (augmented)
+        print(f"\n  Scanning training folder: {train_dataset_folder}")
+        train_classes = sorted([d for d in os.listdir(train_dataset_folder) 
+                               if os.path.isdir(os.path.join(train_dataset_folder, d))])
+        
+        for class_name in train_classes:
+            class_folder_path = os.path.join(train_dataset_folder, class_name)
             for item in os.listdir(class_folder_path):
-                 item_path = os.path.join(class_folder_path, item)
-                 if os.path.isdir(item_path):
-                     for filename in os.listdir(item_path):
-                         if filename.lower().endswith(('.png', '.jpg', '.jpeg')):
-                             full_path = os.path.join(item_path, filename)
-                             all_image_paths.append(full_path)
-                             path_to_class_map[full_path] = class_name
-                 elif item.lower().endswith(('.png', '.jpg', '.jpeg')):
+                item_path = os.path.join(class_folder_path, item)
+                if os.path.isdir(item_path):
+                    for filename in os.listdir(item_path):
+                        if filename.lower().endswith(('.png', '.jpg', '.jpeg')):
+                            full_path = os.path.join(item_path, filename)
+                            all_image_paths.append(full_path)
+                            path_to_class_map[full_path] = class_name
+                            path_to_split_map[full_path] = 'train'
+                elif item.lower().endswith(('.png', '.jpg', '.jpeg')):
                     full_path = item_path
                     all_image_paths.append(full_path)
                     path_to_class_map[full_path] = class_name
+                    path_to_split_map[full_path] = 'train'
+        
+        train_count = len(all_image_paths)
+        
+        #process test images (original only)
+        print(f"  Scanning test folder: {test_dataset_folder}")
+        test_classes = sorted([d for d in os.listdir(test_dataset_folder) 
+                              if os.path.isdir(os.path.join(test_dataset_folder, d))])
+        
+        for class_name in test_classes:
+            class_folder_path = os.path.join(test_dataset_folder, class_name)
+            for item in os.listdir(class_folder_path):
+                item_path = os.path.join(class_folder_path, item)
+                if os.path.isdir(item_path):
+                    for filename in os.listdir(item_path):
+                        if filename.lower().endswith(('.png', '.jpg', '.jpeg')):
+                            full_path = os.path.join(item_path, filename)
+                            all_image_paths.append(full_path)
+                            path_to_class_map[full_path] = class_name
+                            path_to_split_map[full_path] = 'test'
+                elif item.lower().endswith(('.png', '.jpg', '.jpeg')):
+                    full_path = item_path
+                    all_image_paths.append(full_path)
+                    path_to_class_map[full_path] = class_name
+                    path_to_split_map[full_path] = 'test'
+        
+        test_count = len(all_image_paths) - train_count
         
         MAX_PROCESSES_CAP = 6  
         num_processes = max(1, min(cpu_count() - 1, MAX_PROCESSES_CAP))
         
-        print(f"  - Found {len(all_image_paths)} images")
+        print(f"\n  - Found {train_count} training images (augmented)")
+        print(f"  - Found {test_count} test images (original)")
+        print(f"  - Total: {len(all_image_paths)} images")
         print(f"  - Using {num_processes} processes")
         print(f"  - Mode: {FEATURE_MODE.upper()}")
 
@@ -315,7 +363,8 @@ if __name__ == "__main__":
                 if feat:
                     image_path = all_image_paths[i]
                     class_name = path_to_class_map[image_path]
-                    writer.writerow([class_name] + feat)
+                    split_name = path_to_split_map[image_path]
+                    writer.writerow([class_name, split_name] + feat)
                     success_count += 1
         
         print(f"\n[SUCCESS] Extracted {success_count} samples → {os.path.basename(csv_output_file)}")
@@ -352,8 +401,9 @@ if __name__ == "__main__":
         print("\n[CRITICAL ERROR] All data was removed after filtering for minimum samples. Cannot train.")
         sys.exit(1)
 
-    X = data.drop('class', axis=1).values
+    X = data.drop(['class', 'split'], axis=1).values
     y_labels = data['class'].values
+    splits = data['split'].values
     
     label_encoder = LabelEncoder()
     y = label_encoder.fit_transform(y_labels)
@@ -367,11 +417,27 @@ if __name__ == "__main__":
         print(f"\n[CRITICAL ERROR] Only {len(X)} sample(s) available. Need at least 2 for train_test_split. Cannot train.")
         sys.exit(1)
 
-    # data split: train (70%), validation (10%), test (20%)
-    X_temp, X_test, y_temp, y_test = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
-    X_train, X_val, y_train, y_val = train_test_split(X_temp, y_temp, test_size=0.125, random_state=42, stratify=y_temp)
+    # use pre-split data (no random splitting - prevents data leakage)
+    train_mask = splits == 'train'
+    test_mask = splits == 'test'
     
-    print(f"  - Data split: {len(X_train)} train, {len(X_val)} val, {len(X_test)} test")
+    X_train_full = X[train_mask]
+    y_train_full = y[train_mask]
+    X_test = X[test_mask]
+    y_test = y[test_mask]
+    
+    # split training data into train/val (90/10 split of training data)
+    X_train, X_val, y_train, y_val = train_test_split(
+        X_train_full, y_train_full, 
+        test_size=0.1, 
+        random_state=42, 
+        stratify=y_train_full
+    )
+    
+    print(f"  - Data split (NO LEAKAGE):")
+    print(f"    * Train: {len(X_train)} samples (augmented)")
+    print(f"    * Val:   {len(X_val)} samples (augmented)")
+    print(f"    * Test:  {len(X_test)} samples (original only)")
     
     # apply feature scaling (critical for neural networks)
     scaler = StandardScaler()

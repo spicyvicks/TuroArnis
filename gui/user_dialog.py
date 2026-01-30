@@ -41,6 +41,9 @@ class UserManagementDialog:
         self.setup_ui()
         self.refresh_user_list()
         
+        #handle window close (X button)
+        self.dialog.protocol("WM_DELETE_WINDOW", self.exit_dialog)
+        
         #ensure dialog is visible and focused
         self.dialog.lift()
         self.dialog.focus_force()
@@ -149,7 +152,7 @@ class UserManagementDialog:
         ttk.Button(
             button_frame,
             text="Exit",
-            command=self.dialog.destroy,
+            command=self.exit_dialog,
             bootstyle=SECONDARY,
             width=10
         ).pack(side=RIGHT, padx=5)
@@ -181,21 +184,36 @@ class UserManagementDialog:
     
     def create_user(self):
         """Create a new user"""
+        print("[DEBUG-CREATE] Starting user creation...")
         name = self.name_entry.get().strip()
+        print(f"[DEBUG-CREATE] User name entered: '{name}'")
         
         if not name:
             Messagebox.show_error("Please enter a name", "Error")
             return
         
+        print(f"[DEBUG-CREATE] Calling db.create_user('{name}')...")
         user_id = self.db.create_user(name)
+        print(f"[DEBUG-CREATE] User ID returned: {user_id}")
         
         if user_id is None:
             Messagebox.show_error(f"User '{name}' already exists", "Error")
             return
         
-        Messagebox.show_info(f"User '{name}' created successfully", "Success")
-        self.name_entry.delete(0, END)
-        self.refresh_user_list()
+        #get the newly created user
+        print(f"[DEBUG-CREATE] Fetching user with ID {user_id}...")
+        new_user = self.db.get_user_by_id(user_id)
+        print(f"[DEBUG-CREATE] User object retrieved: {new_user}")
+        print(f"[DEBUG-CREATE] User type: {type(new_user)}")
+        
+        #auto-select the new user and close dialog
+        print(f"[DEBUG-CREATE] Setting selected_user = {new_user}")
+        self.selected_user = new_user
+        print(f"[DEBUG-CREATE] Showing success message...")
+        Messagebox.show_info(f"User '{name}' created and selected successfully", "Success")
+        print(f"[DEBUG-CREATE] Destroying dialog...")
+        self.dialog.destroy()
+        print(f"[DEBUG-CREATE] Dialog destroyed successfully")
     
     def select_user(self):
         """Select the highlighted user and close dialog"""
@@ -215,6 +233,8 @@ class UserManagementDialog:
             )
             if result == "Yes":
                 self.db.update_user_status(user_id, True)
+                #re-fetch user to get updated status
+                user = self.db.get_user_by_id(user_id)
             else:
                 return
         
@@ -262,6 +282,21 @@ class UserManagementDialog:
             Messagebox.show_info(f"User '{user['name']}' deleted", "Success")
             self.refresh_user_list()
     
+    def exit_dialog(self):
+        """Handle dialog exit - warn if no user selected"""
+        if self.selected_user is None:
+            result = Messagebox.show_question(
+                "No user selected. The application will exit.\nContinue?",
+                "No User Selected",
+                buttons=["Yes:danger", "No:secondary"]
+            )
+            if result == "Yes":
+                self.dialog.destroy()
+            #else: do nothing, keep dialog open
+        else:
+            #user already selected, safe to close
+            self.dialog.destroy()
+    
     def get_selected_user(self):
         """Return the selected user (call after dialog closes)"""
         return self.selected_user
@@ -269,20 +304,30 @@ class UserManagementDialog:
 
 def show_user_dialog(parent, db_manager):
     """Show user management dialog and return selected user"""
+    print("[DEBUG-DIALOG] show_user_dialog called")
+    
     #temporarily show parent window to ensure dialog displays correctly
     was_withdrawn = not parent.winfo_viewable()
+    print(f"[DEBUG-DIALOG] Parent window was withdrawn: {was_withdrawn}")
     if was_withdrawn:
         parent.deiconify()
         parent.update_idletasks()
     
+    print("[DEBUG-DIALOG] Creating UserManagementDialog instance...")
     dialog = UserManagementDialog(parent, db_manager)
     
     #hide parent again if it was originally hidden
     if was_withdrawn:
         parent.withdraw()
     
+    print("[DEBUG-DIALOG] Waiting for dialog to close...")
     parent.wait_window(dialog.dialog)
-    return dialog.get_selected_user()
+    
+    print("[DEBUG-DIALOG] Dialog closed, getting selected user...")
+    selected = dialog.get_selected_user()
+    print(f"[DEBUG-DIALOG] Selected user from dialog: {selected}")
+    print(f"[DEBUG-DIALOG] Returning to main app...")
+    return selected
 
 
 #test the dialog

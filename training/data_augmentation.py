@@ -6,9 +6,15 @@ import numpy as np
 from tqdm import tqdm
 
 #configuration
-INPUT_DATASET_FOLDER = "dataset"
-OUTPUT_DATASET_FOLDER = "dataset_aug"
-IMAGES_PER_ORIGINAL = 15  
+#NEW DEFAULTS: augment only training data to avoid data leakage
+#run split_dataset.py first, then this script will augment only the training set
+INPUT_DATASET_FOLDER = "dataset_split/train"  #only augment training data
+OUTPUT_DATASET_FOLDER = "dataset_aug/train"   #output augmented training data
+IMAGES_PER_ORIGINAL = 15
+
+#LEGACY MODE: if you want to augment everything (not recommended - causes data leakage)
+#INPUT_DATASET_FOLDER = "dataset"
+#OUTPUT_DATASET_FOLDER = "dataset_aug"  
 
 def get_pose_augmentation_pipeline():
     """

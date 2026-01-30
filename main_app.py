@@ -39,13 +39,18 @@ class TuroArnisGUI:
         self.current_user = None
         self.current_session_id = None
         
+        print("[DEBUG-INIT] Showing user selection dialog...")
         self.show_user_selection()
+        
+        print(f"[DEBUG-INIT] After show_user_selection, current_user = {self.current_user}")
         
         if not self.current_user:
             print("[INFO] no user selected, exiting...")
             self.window.destroy()
             return
 
+        print(f"[DEBUG-INIT] User validated: {self.current_user['name']}")
+        print("[DEBUG-INIT] Initializing frame counters...")
         self.frame_counter = 0
         self.processing_interval = 1  #process every frame for smooth skeleton
         self.ml_inference_interval = 8  #run ml classification less frequently
@@ -54,6 +59,7 @@ class TuroArnisGUI:
         self.last_ml_inference_frame = 0  #when we ran ml classifier
         self.last_stick_detection_frame = 0  #when we ran stick detector
         
+        print("[DEBUG-INIT] Initializing state tracking...")
         #state tracking configuration
         self.MIN_STATE_FRAMES = 10  #reduced from 15 for faster response (0.1-0.3s)
         self.MAX_STATE_DURATION = 300  #timeout after ~3-10s depending on fps
@@ -62,16 +68,23 @@ class TuroArnisGUI:
         self.last_pose_state = None
         self.state_frame_count = 0
 
+        print("[DEBUG-INIT] Loading stick detector model...")
         #use resource path for stick detector model
         stick_model_relative = 'runs/pose/arnis_stick_detector/weights/best.pt'
         stick_model_path = get_resource_path(stick_model_relative)
+        print(f"[DEBUG-INIT] Stick model path: {stick_model_path}")
+        
+        print("[DEBUG-INIT] Initializing PoseAnalyzer...")
         self.analyzer = PoseAnalyzer(
             detection_interval=self.processing_interval,
             stick_model_path=stick_model_path if os.path.exists(stick_model_path) else None,
             debug_stick=False
         )
+        
+        print("[DEBUG-INIT] Opening camera...")
         self.cap = cv2.VideoCapture(0)
         
+        print("[DEBUG-INIT] Setting up GUI components...")
         self.queue = queue.Queue(maxsize=1)
         self.target_form = None
         
@@ -92,6 +105,8 @@ class TuroArnisGUI:
 
         user_frame = ttk.Labelframe(self.controls_panel, text="Current User", padding=10)
         user_frame.pack(fill=X, pady=5)
+        
+        print(f"[DEBUG-INIT] Creating user label with name: {self.current_user['name']}")
         ttk.Label(user_frame, text=self.current_user['name'], font=("-size 12 -weight bold"), bootstyle="success").pack(anchor=W)
         ttk.Label(user_frame, text=f"ID: {self.current_user['id']}", font=("-size 9"), bootstyle="secondary").pack(anchor=W)
 
@@ -137,6 +152,7 @@ class TuroArnisGUI:
         self.view_all_results_button = ttk.Button(self.controls_panel, text="View All Results", command=self.open_results_window, bootstyle="info")
         self.view_all_results_button.pack(fill=X, pady=10, side=BOTTOM)
 
+        print("[DEBUG-INIT] Starting video thread...")
         self.is_running = True
         self.thread = threading.Thread(target=self.video_loop, daemon=True)
         self.thread.start()
@@ -144,6 +160,7 @@ class TuroArnisGUI:
         self.window.protocol("WM_DELETE_WINDOW", self.on_closing)
         self.process_queue()
         
+        print("[DEBUG-INIT] Setting window geometry...")
         #set window size and center it (must be done together)
         width = int(self.screen_width * 0.8)
         height = int(self.screen_height * 0.8)
@@ -151,7 +168,9 @@ class TuroArnisGUI:
         y = (self.screen_height // 2) - (height // 2)
         self.window.geometry(f"{width}x{height}+{x}+{y}")
         
+        print("[DEBUG-INIT] Showing window...")
         self.window.deiconify()
+        print("[DEBUG-INIT] Initialization complete, starting mainloop...")
         self.window.mainloop()
     
     @staticmethod
@@ -369,11 +388,20 @@ class TuroArnisGUI:
             self.start_session()
     
     def show_user_selection(self):
+        print("[DEBUG-MAIN] Calling show_user_dialog...")
         selected = show_user_dialog(self.window, self.db)
+        print(f"[DEBUG-MAIN] Dialog returned: {selected}")
+        print(f"[DEBUG-MAIN] Selected type: {type(selected)}")
+        
         if selected:
+            print(f"[DEBUG-MAIN] User selected, setting current_user...")
             self.current_user = selected
-            print(f"[INFO] user: {self.current_user['name']}")
+            print(f"[DEBUG-MAIN] current_user set to: {self.current_user}")
+            print(f"[DEBUG-MAIN] User name: {self.current_user['name']}")
+            print(f"[DEBUG-MAIN] User ID: {self.current_user['id']}")
+            print(f"[DEBUG-MAIN] User active: {self.current_user.get('is_active', 'KEY NOT FOUND')}")
         else:
+            print("[DEBUG-MAIN] No user selected (selected is None/False)")
             self.current_user = None
     
     def start_session(self):

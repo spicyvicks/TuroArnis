@@ -1,9 +1,0 @@
-{
-  "experiment_id": "pose_classifier_20260119_221534",
-  "experiment_name": "pose_classifier",
-  "description": "Training pose classifier with current architecture",
-  "created_at": "2026-01-19T22:15:34.659996",
-  "status": "completed",
-  "completed_at": "2026-01-19T22:17:04.678320",
-  "final_notes": "Achieved 24.68% accuracy on test set with 12 classes"
-}

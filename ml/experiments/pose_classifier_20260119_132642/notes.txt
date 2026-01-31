@@ -1,2 +1,0 @@
-[2026-01-19 13:27:55] Final test accuracy: 26.14%
-[2026-01-19 13:27:55] Total epochs trained: 81

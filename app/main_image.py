@@ -10,6 +10,13 @@ from ttkbootstrap.constants import *
 import queue
 import numpy as np
 
+#add project root to sys.path for dev execution
+if not getattr(sys, 'frozen', False):
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    project_root = os.path.dirname(current_dir)
+    if project_root not in sys.path:
+        sys.path.insert(0, project_root)
+
 from app.gui.results_window import ResultsWindow
 from app.computer_vision.pose_analyzer import PoseAnalyzer
 from app.utils.resource_path import get_resource_path

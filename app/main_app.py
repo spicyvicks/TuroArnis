@@ -373,6 +373,13 @@ class TuroArnisGUI:
                     landmarks_abs = result['landmarks_absolute']
                     person_id = result['id']
                     
+                    # Debug: check if landmarks are reasonable
+                    if landmarks_abs:
+                        nose_x, nose_y, _ = landmarks_abs[0]  # Nose landmark
+                        frame_h, frame_w = processing_frame.shape[:2]
+                        if nose_x < 0 or nose_x >= frame_w or nose_y < 0 or nose_y >= frame_h:
+                            print(f"[WARN] Landmark out of bounds: nose at ({nose_x}, {nose_y}), frame size: {frame_w}x{frame_h}")
+                    
                     #detect significant movement and reset smoothing buffer
                     current_bbox = (x1, y1, x2, y2)
                     if person_id in self.last_person_bbox:
@@ -384,18 +391,8 @@ class TuroArnisGUI:
                             self.landmark_smooth_buffer[person_id] = []
                     self.last_person_bbox[person_id] = current_bbox
                     
-                    #smooth landmarks to reduce jitter (per-person buffer)
-                    if person_id not in self.landmark_smooth_buffer:
-                        self.landmark_smooth_buffer[person_id] = []
-                    
-                    self.landmark_smooth_buffer[person_id].append(landmarks_abs)
-                    if len(self.landmark_smooth_buffer[person_id]) > self.smooth_window:
-                        self.landmark_smooth_buffer[person_id].pop(0)
-                    
-                    #calculate smoothed landmarks (simple moving average)
-                    if len(self.landmark_smooth_buffer[person_id]) > 1:
-                        smoothed = np.mean(self.landmark_smooth_buffer[person_id], axis=0)
-                        landmarks_abs = smoothed.astype(int).tolist()
+                    # DISABLE SMOOTHING TEMPORARILY TO TEST
+                    # Just draw raw landmarks without smoothing
                     
                     #determine drawing color based on correctness
                     landmark_color = (0, 255, 0) if is_correct else (0, 0, 255)
@@ -403,7 +400,7 @@ class TuroArnisGUI:
                     
                     #draw landmarks with anti-aliasing for smooth appearance
                     for idx, (lx, ly, lz) in enumerate(landmarks_abs):
-                        cv2.circle(processing_frame, (int(lx), int(ly)), 3, landmark_color, -1, lineType=cv2.LINE_AA)
+                        cv2.circle(processing_frame, (int(lx), int(ly)), 4, landmark_color, -1, lineType=cv2.LINE_AA)
                     
                     #draw connections with anti-aliasing
                     pose_connections = self.analyzer.mp_pose.POSE_CONNECTIONS
@@ -412,7 +409,7 @@ class TuroArnisGUI:
                         if start_idx < len(landmarks_abs) and end_idx < len(landmarks_abs):
                             start_pt = (int(landmarks_abs[start_idx][0]), int(landmarks_abs[start_idx][1]))
                             end_pt = (int(landmarks_abs[end_idx][0]), int(landmarks_abs[end_idx][1]))
-                            cv2.line(processing_frame, start_pt, end_pt, connection_color, 2, lineType=cv2.LINE_AA)
+                            cv2.line(processing_frame, start_pt, end_pt, connection_color, 3, lineType=cv2.LINE_AA)
 
                 if self.target_form:
                     overlay = processing_frame.copy()

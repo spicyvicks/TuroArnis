@@ -66,8 +66,11 @@ class PoseAnalyzer:
         )
 
         try:
-            models_dir = get_resource_path('models')
+            models_dir = get_resource_path('ml/models')
             active_model_file = os.path.join(models_dir, 'active_model.json')
+            
+            print(f"[debug] checking active_model.json at: {active_model_file}")
+            print(f"[debug] file exists: {os.path.exists(active_model_file)}")
             
             #try to load from active_model.json (new versioned system)
             if os.path.exists(active_model_file):
@@ -84,25 +87,32 @@ class PoseAnalyzer:
                 
                 #convert to resource paths if not absolute or doesn't exist
                 if not os.path.isabs(model_path) or not os.path.exists(model_path):
-                    model_path = get_resource_path(os.path.join('models', version_name, os.path.basename(model_path)))
+                    model_path = get_resource_path(os.path.join('ml/models', version_name, os.path.basename(model_path)))
                 if not os.path.isabs(encoder_path) or not os.path.exists(encoder_path):
-                    encoder_path = get_resource_path(os.path.join('models', version_name, os.path.basename(encoder_path)))
+                    encoder_path = get_resource_path(os.path.join('ml/models', version_name, os.path.basename(encoder_path)))
                 if scaler_path and (not os.path.isabs(scaler_path) or not os.path.exists(scaler_path)):
-                    scaler_path = get_resource_path(os.path.join('models', version_name, os.path.basename(scaler_path)))
+                    scaler_path = get_resource_path(os.path.join('ml/models', version_name, os.path.basename(scaler_path)))
                 
                 print(f"[info] using model version: {version_name}")
                 
                 #check if this is an ensemble model FIRST (before checking model.keras)
-                version_path = get_resource_path(os.path.join('models', version_name))
+                version_path = get_resource_path(os.path.join('ml/models', version_name))
                 metadata_path = os.path.join(version_path, 'metadata.json')
                 ensemble_config_path = os.path.join(version_path, 'ensemble_config.json')
                 
+                print(f"[debug] version_path: {version_path}")
+                print(f"[debug] metadata exists: {os.path.exists(metadata_path)}")
+                print(f"[debug] ensemble_config exists: {os.path.exists(ensemble_config_path)}")
+                
                 is_ensemble = False
+                model_type = 'dnn'  # default
                 if os.path.exists(metadata_path):
                     with open(metadata_path, 'r') as f:
                         metadata = json.load(f)
                     model_type = metadata.get('model_type', 'dnn')
                     is_ensemble = (model_type == 'ensemble')
+                    print(f"[debug] model_type from metadata: {model_type}")
+                    print(f"[debug] is_ensemble: {is_ensemble}")
                 
                 if is_ensemble:
                     #load ensemble configuration
@@ -110,11 +120,18 @@ class PoseAnalyzer:
                         with open(ensemble_config_path, 'r') as f:
                             ensemble_config = json.load(f)
                         
+                        print(f"[info] loading ensemble with models: {ensemble_config['model_versions']}")
+                        
                         #add training module to path
                         training_path = get_resource_path('ml/training')
                         if training_path not in sys.path:
                             sys.path.insert(0, training_path)
-                        from ensemble_model import EnsembleClassifier
+                        
+                        try:
+                            from ensemble_model import EnsembleClassifier
+                        except ImportError as e:
+                            print(f"[error] could not import EnsembleClassifier: {e}")
+                            raise
                         
                         #load ensemble
                         self.pose_classifier_model = EnsembleClassifier(
@@ -133,6 +150,7 @@ class PoseAnalyzer:
                         self.is_ensemble = True
                         print(f"[info] ensemble model loaded: {', '.join([m.split('_')[0] for m in ensemble_config['model_versions']])}")
                     else:
+                        print(f"[error] ensemble_config.json not found at: {ensemble_config_path}")
                         raise FileNotFoundError("ensemble_config.json not found")
                 else:
                     #load regular model (dnn, rf, or xgboost)

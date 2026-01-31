@@ -8,12 +8,12 @@ class ResultsWindow(ctk.CTkToplevel):
         super().__init__(master=parent)
         self.title("Performance Results & Statistics")
         
-        #set app icon for taskbar
+        #set app icon for taskbar (use after() for CTkToplevel compatibility)
         from utils.resource_path import get_resource_path
         import os
-        icon_path = get_resource_path('assets/TA.ico')
+        icon_path = get_resource_path('app/assets/TA.ico')
         if os.path.exists(icon_path):
-            self.iconbitmap(icon_path)
+            self.after(200, lambda: self.iconbitmap(icon_path))
         
         #calculate centered position
         self.update_idletasks()
@@ -45,7 +45,7 @@ class ResultsWindow(ctk.CTkToplevel):
         self.create_performances_tab()
         
         #close button
-        close_btn = ctk.CTkButton(self, text="Close", command=self.destroy, fg_color="#95a5a6", corner_radius=20)
+        close_btn = ctk.CTkButton(self, text="Close", command=self.destroy, fg_color="#95a5a6", corner_radius=10, text_color="black")
         close_btn.pack(pady=(0, 10))
     
     def center_window(self):
@@ -68,8 +68,8 @@ class ResultsWindow(ctk.CTkToplevel):
         header_frame.pack(fill="x", pady=(10, 20), padx=10)
         
         ctk.CTkLabel(header_frame, text=self.current_user['name'], font=("Inter", 20, "bold"), text_color="#3498db").pack(anchor="w", padx=15, pady=(15, 5))
-        ctk.CTkLabel(header_frame, text=f"User ID: {self.current_user['id']}", font=("Inter", 12), text_color="#7f8c8d").pack(anchor="w", padx=15)
-        ctk.CTkLabel(header_frame, text=f"Member since: {self.current_user['created_at'].split('.')[0]}", font=("Inter", 12), text_color="#7f8c8d").pack(anchor="w", padx=15, pady=(0, 15))
+        ctk.CTkLabel(header_frame, text=f"User ID: {self.current_user['id']}", font=("Inter", 14), text_color="#7f8c8d").pack(anchor="w", padx=15)
+        ctk.CTkLabel(header_frame, text=f"Member since: {self.current_user['created_at'].split('.')[0]}", font=("Inter", 14), text_color="#7f8c8d").pack(anchor="w", padx=15, pady=(0, 15))
         
         #statistics for last 7 days
         stats = self.db.get_user_statistics(self.current_user['id'], days=7)
@@ -103,8 +103,12 @@ class ResultsWindow(ctk.CTkToplevel):
             scrollbar = tk.Scrollbar(breakdown_frame)
             scrollbar.pack(side="right", fill="y")
             
+            style = tkttk.Style()
+            style.configure('Results.Treeview', font=('Inter', 14), rowheight=30)
+            style.configure('Results.Treeview.Heading', font=('Inter', 14, 'bold'))
+            
             columns = ("pose", "attempts", "correct", "accuracy", "avg_conf")
-            breakdown_table = tkttk.Treeview(breakdown_frame, columns=columns, show='headings', yscrollcommand=scrollbar.set, height=10)
+            breakdown_table = tkttk.Treeview(breakdown_frame, columns=columns, show='headings', yscrollcommand=scrollbar.set, height=10, style='Results.Treeview')
             
             breakdown_table.heading("pose", text="Pose")
             breakdown_table.heading("attempts", text="Attempts")
@@ -140,7 +144,7 @@ class ResultsWindow(ctk.CTkToplevel):
         """Create a statistics card"""
         card = ctk.CTkFrame(parent, fg_color=color, corner_radius=10)
         
-        ctk.CTkLabel(card, text=title, font=("Inter", 12), text_color="white").pack(anchor="w", padx=15, pady=(15, 5))
+        ctk.CTkLabel(card, text=title, font=("Inter", 14), text_color="white").pack(anchor="w", padx=15, pady=(15, 5))
         ctk.CTkLabel(card, text=value, font=("Inter", 24, "bold"), text_color="white").pack(anchor="w", padx=15, pady=(0, 15))
         
         return card
@@ -162,8 +166,12 @@ class ResultsWindow(ctk.CTkToplevel):
         scrollbar = tk.Scrollbar(table_frame)
         scrollbar.pack(side="right", fill="y")
         
+        style = tkttk.Style()
+        style.configure('Results.Treeview', font=('Inter', 14), rowheight=30)
+        style.configure('Results.Treeview.Heading', font=('Inter', 14, 'bold'))
+        
         columns = ("session_id", "target_pose", "started", "duration", "attempts", "correct", "accuracy")
-        sessions_table = tkttk.Treeview(table_frame, columns=columns, show='headings', yscrollcommand=scrollbar.set)
+        sessions_table = tkttk.Treeview(table_frame, columns=columns, show='headings', yscrollcommand=scrollbar.set, style='Results.Treeview')
         
         sessions_table.heading("session_id", text="Session ID")
         sessions_table.heading("target_pose", text="Target Pose")
@@ -233,8 +241,12 @@ class ResultsWindow(ctk.CTkToplevel):
         scrollbar = tk.Scrollbar(table_frame)
         scrollbar.pack(side="right", fill="y")
         
+        style = tkttk.Style()
+        style.configure('Results.Treeview', font=('Inter', 14), rowheight=30)
+        style.configure('Results.Treeview.Heading', font=('Inter', 14, 'bold'))
+        
         columns = ("timestamp", "session", "pose", "confidence", "correct", "stick", "grip_angle")
-        perf_table = tkttk.Treeview(table_frame, columns=columns, show='headings', yscrollcommand=scrollbar.set)
+        perf_table = tkttk.Treeview(table_frame, columns=columns, show='headings', yscrollcommand=scrollbar.set, style='Results.Treeview')
         
         perf_table.heading("timestamp", text="Timestamp")
         perf_table.heading("session", text="Session")

@@ -19,11 +19,12 @@ class UserManagementDialog:
         self.dialog = ctk.CTkToplevel(parent)
         self.dialog.title("User Management")
         
-        #set app icon for taskbar
+        #set app icon for taskbar (use after() to ensure window is ready)
         from utils.resource_path import get_resource_path
         icon_path = get_resource_path('app/assets/TA.ico')
         if os.path.exists(icon_path):
-            self.dialog.iconbitmap(icon_path)
+            # Delay icon setting for CTkToplevel compatibility
+            self.dialog.after(200, lambda: self.dialog.iconbitmap(icon_path))
         
         #calculate centered position (80% of screen to match main window)
         self.dialog.update_idletasks()
@@ -136,8 +137,9 @@ class UserManagementDialog:
             command=self.create_user,
             fg_color="#27ae60",
             hover_color="#229954",
-            corner_radius=20,
-            font=("Inter", 14)
+            corner_radius=10,
+            font=("Inter", 14),
+            text_color="black"
         ).pack(side="left")
         
         # Action buttons
@@ -150,9 +152,10 @@ class UserManagementDialog:
             command=self.select_user,
             fg_color="#3498db",
             hover_color="#2980b9",
-            corner_radius=20,
+            corner_radius=10,
             font=("Inter", 14),
-            width=150
+            width=150,
+            text_color="black"
         ).pack(side="left", padx=5)
         
         ctk.CTkButton(
@@ -161,9 +164,10 @@ class UserManagementDialog:
             command=self.delete_user,
             fg_color="#e74c3c",
             hover_color="#c0392b",
-            corner_radius=20,
+            corner_radius=10,
             font=("Inter", 14),
-            width=150
+            width=150,
+            text_color="black"
         ).pack(side="left", padx=5)
         
         ctk.CTkButton(
@@ -172,9 +176,10 @@ class UserManagementDialog:
             command=self.toggle_user_status,
             fg_color="#f39c12",
             hover_color="#d68910",
-            corner_radius=20,
+            corner_radius=10,
             font=("Inter", 14),
-            width=200
+            width=200,
+            text_color="black"
         ).pack(side="left", padx=5)
         
         ctk.CTkButton(
@@ -183,9 +188,10 @@ class UserManagementDialog:
             command=self.exit_dialog,
             fg_color="#95a5a6",
             hover_color="#7f8c8d",
-            corner_radius=20,
+            corner_radius=10,
             font=("Inter", 14),
-            width=100
+            width=100,
+            text_color="black"
         ).pack(side="right", padx=5)
     
     def refresh_user_list(self):
@@ -203,7 +209,7 @@ class UserManagementDialog:
             
             self.user_listbox.insert(
                 "",
-                END,
+                "end",
                 iid=user['id'],
                 values=(user['name'], status, created),
                 tags=('active' if user['is_active'] else 'inactive',)

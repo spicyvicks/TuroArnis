@@ -27,6 +27,13 @@ class MultiUserDialog:
         self.dialog.geometry("900x700")
         self.dialog.resizable(False, False)
         
+        #set app icon for taskbar (use after() for CTkToplevel compatibility)
+        from app.utils.resource_path import get_resource_path
+        import os
+        icon_path = get_resource_path('app/assets/TA.ico')
+        if os.path.exists(icon_path):
+            self.dialog.after(200, lambda: self.dialog.iconbitmap(icon_path))
+        
         #make modal
         self.dialog.transient(parent)
         self.dialog.grab_set()
@@ -77,7 +84,8 @@ class MultiUserDialog:
                 text="Close",
                 command=self.dialog.destroy,
                 fg_color="#95a5a6",
-                corner_radius=20
+                corner_radius=10,
+                text_color="black"
             ).pack(pady=10)
             return
         
@@ -114,7 +122,8 @@ class MultiUserDialog:
             text="Confirm Assignments",
             command=self.confirm_assignments,
             fg_color="#27ae60",
-            corner_radius=20
+            corner_radius=10,
+            text_color="black"
         ).pack(side="left", padx=5, expand=True, fill="x")
         
         ctk.CTkButton(
@@ -122,7 +131,8 @@ class MultiUserDialog:
             text="Cancel",
             command=self.cancel,
             fg_color="#95a5a6",
-            corner_radius=20
+            corner_radius=10,
+            text_color="black"
         ).pack(side="right", padx=5, expand=True, fill="x")
     
     def create_person_assignment(self, parent, person_id):

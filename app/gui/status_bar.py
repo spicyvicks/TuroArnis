@@ -11,8 +11,8 @@ class StatusBar:
         
         #create status bar frame
         self.frame = ttk.Frame(parent, bootstyle="dark", height=25)
-        self.frame.pack(side=BOTTOM, fill=X)
-        self.frame.pack_propagate(False)
+        self.frame.grid(row=1, column=0, columnspan=2, sticky="ew")
+        self.frame.grid_propagate(False)
         
         #left section (fps, camera)
         left_frame = ttk.Frame(self.frame, bootstyle="dark")

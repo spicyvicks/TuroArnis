@@ -9,6 +9,7 @@ import ttkbootstrap as ttk
 from ttkbootstrap.constants import *
 import queue
 import numpy as np
+import mediapipe as mp
 
 #add project root to sys.path for dev execution
 if not getattr(sys, 'frozen', False):
@@ -77,6 +78,11 @@ class TuroArnisGUI:
         #state tracking variables
         self.last_pose_state = None
         self.state_frame_count = 0
+        
+        #landmark smoothing buffer (reduces jitter)
+        self.landmark_smooth_buffer = {}  # Dictionary keyed by person_id
+        self.smooth_window = 3  # Smooth over 3 frames
+        self.last_person_bbox = {}  # Track bounding boxes to detect movement
 
         #initialize ux components first (before heavy loading)
         print("[DEBUG-INIT] Initializing UX components...")
@@ -128,6 +134,7 @@ class TuroArnisGUI:
         self.target_form = None
         
         self.window.grid_rowconfigure(0, weight=1)
+        self.window.grid_rowconfigure(1, weight=0)  # Row for status bar
         self.window.grid_columnconfigure(0, weight=0)
         self.window.grid_columnconfigure(1, weight=1) 
 
@@ -364,17 +371,48 @@ class TuroArnisGUI:
 
                 if result.get('landmarks_absolute'):
                     landmarks_abs = result['landmarks_absolute']
+                    person_id = result['id']
                     
+                    #detect significant movement and reset smoothing buffer
+                    current_bbox = (x1, y1, x2, y2)
+                    if person_id in self.last_person_bbox:
+                        prev_bbox = self.last_person_bbox[person_id]
+                        #check if bbox moved significantly (>20 pixels)
+                        bbox_shift = max(abs(x1 - prev_bbox[0]), abs(y1 - prev_bbox[1]))
+                        if bbox_shift > 20:
+                            #person moved significantly, reset smoothing buffer
+                            self.landmark_smooth_buffer[person_id] = []
+                    self.last_person_bbox[person_id] = current_bbox
+                    
+                    #smooth landmarks to reduce jitter (per-person buffer)
+                    if person_id not in self.landmark_smooth_buffer:
+                        self.landmark_smooth_buffer[person_id] = []
+                    
+                    self.landmark_smooth_buffer[person_id].append(landmarks_abs)
+                    if len(self.landmark_smooth_buffer[person_id]) > self.smooth_window:
+                        self.landmark_smooth_buffer[person_id].pop(0)
+                    
+                    #calculate smoothed landmarks (simple moving average)
+                    if len(self.landmark_smooth_buffer[person_id]) > 1:
+                        smoothed = np.mean(self.landmark_smooth_buffer[person_id], axis=0)
+                        landmarks_abs = smoothed.astype(int).tolist()
+                    
+                    #determine drawing color based on correctness
+                    landmark_color = (0, 255, 0) if is_correct else (0, 0, 255)
+                    connection_color = (0, 255, 0) if is_correct else (0, 0, 255)
+                    
+                    #draw landmarks with anti-aliasing for smooth appearance
                     for idx, (lx, ly, lz) in enumerate(landmarks_abs):
-                        cv2.circle(processing_frame, (lx, ly), 2, draw_color, -1)
+                        cv2.circle(processing_frame, (int(lx), int(ly)), 3, landmark_color, -1, lineType=cv2.LINE_AA)
                     
+                    #draw connections with anti-aliasing
                     pose_connections = self.analyzer.mp_pose.POSE_CONNECTIONS
                     for connection in pose_connections:
                         start_idx, end_idx = connection
                         if start_idx < len(landmarks_abs) and end_idx < len(landmarks_abs):
                             start_pt = (int(landmarks_abs[start_idx][0]), int(landmarks_abs[start_idx][1]))
                             end_pt = (int(landmarks_abs[end_idx][0]), int(landmarks_abs[end_idx][1]))
-                            cv2.line(processing_frame, start_pt, end_pt, draw_color, 2)
+                            cv2.line(processing_frame, start_pt, end_pt, connection_color, 2, lineType=cv2.LINE_AA)
 
                 if self.target_form:
                     overlay = processing_frame.copy()

@@ -18,8 +18,8 @@ def get_resource_path(relative_path):
         #pyinstaller creates a temp folder and stores path in _meipass
         base_path = sys._MEIPASS
     except Exception:
-        #development mode - use project root
-        base_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+        #development mode - go up TWO levels from app/utils/ to get project root
+        base_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
     
     return os.path.join(base_path, relative_path)
 

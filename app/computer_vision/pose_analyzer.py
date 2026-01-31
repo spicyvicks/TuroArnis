@@ -92,9 +92,10 @@ class PoseAnalyzer:
                 
                 print(f"[info] using model version: {version_name}")
                 
-                #check if this is an ensemble model
+                #check if this is an ensemble model FIRST (before checking model.keras)
                 version_path = get_resource_path(os.path.join('models', version_name))
                 metadata_path = os.path.join(version_path, 'metadata.json')
+                ensemble_config_path = os.path.join(version_path, 'ensemble_config.json')
                 
                 is_ensemble = False
                 if os.path.exists(metadata_path):
@@ -105,14 +106,14 @@ class PoseAnalyzer:
                 
                 if is_ensemble:
                     #load ensemble configuration
-                    ensemble_config_path = os.path.join(version_path, 'ensemble_config.json')
                     if os.path.exists(ensemble_config_path):
                         with open(ensemble_config_path, 'r') as f:
                             ensemble_config = json.load(f)
                         
                         #add training module to path
-                        training_path = get_resource_path('training')
-                        sys.path.insert(0, training_path)
+                        training_path = get_resource_path('ml/training')
+                        if training_path not in sys.path:
+                            sys.path.insert(0, training_path)
                         from ensemble_model import EnsembleClassifier
                         
                         #load ensemble
@@ -169,12 +170,40 @@ class PoseAnalyzer:
                 model_path = get_resource_path('models/arnis_coordinates_classifier.keras')
                 encoder_path = get_resource_path('models/label_encoder.joblib')
                 scaler_path = get_resource_path('models/scaler.joblib')
-                print("[info] using legacy model paths")
+                
+                #if models/ doesn't exist, try ml/models/
+                if not os.path.exists(model_path):
+                    print(f"[debug] models/ not found at: {model_path}")
+                    model_path = get_resource_path('ml/models/arnis_coordinates_classifier.keras')
+                    encoder_path = get_resource_path('ml/models/label_encoder.joblib')
+                    scaler_path = get_resource_path('ml/models/scaler.joblib')
+                    print(f"[debug] trying ml/models/ at: {model_path}")
+                    print(f"[debug] encoder path: {encoder_path}")
+                    print(f"[debug] model exists: {os.path.exists(model_path)}")
+                    print(f"[debug] encoder exists: {os.path.exists(encoder_path)}")
+                    print("[info] using ml/models/ directory")
+                else:
+                    print("[info] using legacy model paths")
                 
                 if not os.path.exists(model_path) or not os.path.exists(encoder_path):
+                    print(f"[error] model_path exists: {os.path.exists(model_path)}")
+                    print(f"[error] encoder_path exists: {os.path.exists(encoder_path)}")
+                    print(f"[error] model_path: {model_path}")
+                    print(f"[error] encoder_path: {encoder_path}")
                     raise FileNotFoundError("model or encoder not found")
 
-                self.pose_classifier_model = tf.keras.models.load_model(model_path)
+                # Load model with compile=False to handle Keras 2.x/3.x compatibility
+                print("[info] loading model (Keras 2.x/3.x compatibility mode)...")
+                import keras
+                self.pose_classifier_model = keras.saving.load_model(model_path, compile=False)
+                
+                # Manually compile the model
+                self.pose_classifier_model.compile(
+                    optimizer='adam',
+                    loss='sparse_categorical_crossentropy',
+                    metrics=['accuracy']
+                )
+                
                 self.label_encoder = joblib.load(encoder_path)
                 self.is_ensemble = False
                 
@@ -381,10 +410,16 @@ class PoseAnalyzer:
                 offset_y = y1_pad
                 crop_h, crop_w = person_crop.shape[:2]
                 
+                #calculate absolute landmarks in frame coordinates
+                #landmarks are relative to the crop, so we add the offset
                 abs_landmarks = []
                 for lm in landmarks_2d:
+                    # Convert normalized coordinates to crop space, then to frame space
                     abs_x = int(lm.x * crop_w) + offset_x
                     abs_y = int(lm.y * crop_h) + offset_y
+                    # Clamp to ensure they stay within reasonable bounds
+                    abs_x = max(0, min(abs_x, frame.shape[1] - 1))
+                    abs_y = max(0, min(abs_y, frame.shape[0] - 1))
                     abs_landmarks.append((abs_x, abs_y, lm.z))
                 
                 live_angles = self._calculate_all_angles_3d(pose_results.pose_world_landmarks)

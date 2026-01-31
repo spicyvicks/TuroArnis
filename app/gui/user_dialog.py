@@ -1,8 +1,8 @@
 import sys
 import os
-import ttkbootstrap as ttk
-from ttkbootstrap.constants import *
-from ttkbootstrap.dialogs import Messagebox
+import customtkinter as ctk
+import tkinter as tk
+from tkinter import messagebox
 
 #add parent directory to path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -16,22 +16,24 @@ class UserManagementDialog:
         self.selected_user = None
         
         #create dialog window
-        self.dialog = ttk.Toplevel(parent)
+        self.dialog = ctk.CTkToplevel(parent)
         self.dialog.title("User Management")
         
         #set app icon for taskbar
         from utils.resource_path import get_resource_path
-        icon_path = get_resource_path('assets/TA.ico')
+        icon_path = get_resource_path('app/assets/TA.ico')
         if os.path.exists(icon_path):
             self.dialog.iconbitmap(icon_path)
         
-        #calculate centered position
+        #calculate centered position (80% of screen to match main window)
         self.dialog.update_idletasks()
         screen_width = self.dialog.winfo_screenwidth()
         screen_height = self.dialog.winfo_screenheight()
-        x = (screen_width // 2) - (900 // 2)
-        y = (screen_height // 2) - (700 // 2)
-        self.dialog.geometry(f"900x700+{x}+{y}")
+        width = int(screen_width * 0.8)
+        height = int(screen_height * 0.8)
+        x = (screen_width - width) // 2
+        y = (screen_height - height) // 2
+        self.dialog.geometry(f"{width}x{height}+{x}+{y}")
         self.dialog.resizable(False, False)
         
         #make modal
@@ -53,38 +55,50 @@ class UserManagementDialog:
     def center_window(self):
         """Center the dialog on screen"""
         self.dialog.update_idletasks()
-        x = (self.dialog.winfo_screenwidth() // 2) - (900 // 2)
-        y = (self.dialog.winfo_screenheight() // 2) - (700 // 2)
-        self.dialog.geometry(f"+{x}+{y}")
+        screen_width = self.dialog.winfo_screenwidth()
+        screen_height = self.dialog.winfo_screenheight()
+        width = int(screen_width * 0.8)
+        height = int(screen_height * 0.8)
+        x = (screen_width - width) // 2
+        y = (screen_height - height) // 2
+        self.dialog.geometry(f"{width}x{height}+{x}+{y}")
     
     def setup_ui(self):
         # Title
-        title_frame = ttk.Frame(self.dialog)
-        title_frame.pack(fill=X, padx=20, pady=(20, 10))
+        title_frame = ctk.CTkFrame(self.dialog, fg_color="transparent")
+        title_frame.pack(fill="x", padx=20, pady=(20, 10))
         
-        ttk.Label(
+        ctk.CTkLabel(
             title_frame,
             text="Select or Create User",
-            font=("Segoe UI", 16, "bold")
+            font=("Inter", 20, "bold")
         ).pack()
         
         # User list frame
-        list_frame = ttk.Labelframe(self.dialog, text="Users", padding=10)
-        list_frame.pack(fill=BOTH, expand=True, padx=20, pady=10)
+        list_frame = ctk.CTkFrame(self.dialog, corner_radius=10)
+        list_frame.pack(fill="both", expand=True, padx=20, pady=10)
         
-        # Scrollable user list
-        list_container = ttk.Frame(list_frame)
-        list_container.pack(fill=BOTH, expand=True)
+        ctk.CTkLabel(list_frame, text="Users", font=("Inter", 14, "bold")).pack(anchor="w", pady=(10, 5), padx=10)
         
-        scrollbar = ttk.Scrollbar(list_container)
-        scrollbar.pack(side=RIGHT, fill=Y)
+        # Scrollable user list (using tkinter Treeview since CTk doesn't have one)
+        list_container = ctk.CTkFrame(list_frame)
+        list_container.pack(fill="both", expand=True, padx=10, pady=(0, 10))
         
-        self.user_listbox = ttk.Treeview(
+        from tkinter import ttk as tkttk
+        scrollbar = tkttk.Scrollbar(list_container)
+        scrollbar.pack(side="right", fill="y")
+        
+        style = tkttk.Style()
+        style.configure('Custom.Treeview', font=('Inter', 14), rowheight=30)
+        style.configure('Custom.Treeview.Heading', font=('Inter', 14, 'bold'))
+        
+        self.user_listbox = tkttk.Treeview(
             list_container,
             columns=("name", "status", "created"),
             show="headings",
             yscrollcommand=scrollbar.set,
-            height=12
+            height=12,
+            style='Custom.Treeview'
         )
         
         self.user_listbox.heading("name", text="Name")
@@ -95,67 +109,84 @@ class UserManagementDialog:
         self.user_listbox.column("status", width=100)
         self.user_listbox.column("created", width=200)
         
-        self.user_listbox.pack(side=LEFT, fill=BOTH, expand=True)
+        self.user_listbox.pack(side="left", fill="both", expand=True)
         scrollbar.config(command=self.user_listbox.yview)
         
         # Bind double-click to select
         self.user_listbox.bind('<Double-Button-1>', lambda e: self.select_user())
         
         # New user frame
-        new_user_frame = ttk.Labelframe(self.dialog, text="Create New User", padding=10)
-        new_user_frame.pack(fill=X, padx=20, pady=10)
+        new_user_frame = ctk.CTkFrame(self.dialog, corner_radius=10)
+        new_user_frame.pack(fill="x", padx=20, pady=10)
         
-        input_frame = ttk.Frame(new_user_frame)
-        input_frame.pack(fill=X)
+        ctk.CTkLabel(new_user_frame, text="Create New User", font=("Inter", 14, "bold")).pack(anchor="w", pady=(10, 5), padx=10)
         
-        ttk.Label(input_frame, text="Name:").pack(side=LEFT, padx=(0, 10))
+        input_frame = ctk.CTkFrame(new_user_frame, fg_color="transparent")
+        input_frame.pack(fill="x", padx=10, pady=(0, 10))
         
-        self.name_entry = ttk.Entry(input_frame, width=30)
-        self.name_entry.pack(side=LEFT, padx=(0, 10))
+        ctk.CTkLabel(input_frame, text="Name:", font=("Inter", 14)).pack(side="left", padx=(0, 10))
+        
+        self.name_entry = ctk.CTkEntry(input_frame, width=300, font=("Inter", 14), corner_radius=10)
+        self.name_entry.pack(side="left", padx=(0, 10))
         self.name_entry.bind('<Return>', lambda e: self.create_user())
         
-        ttk.Button(
+        ctk.CTkButton(
             input_frame,
             text="Create User",
             command=self.create_user,
-            bootstyle=SUCCESS
-        ).pack(side=LEFT)
+            fg_color="#27ae60",
+            hover_color="#229954",
+            corner_radius=20,
+            font=("Inter", 14)
+        ).pack(side="left")
         
         # Action buttons
-        button_frame = ttk.Frame(self.dialog)
-        button_frame.pack(fill=X, padx=20, pady=(0, 20))
+        button_frame = ctk.CTkFrame(self.dialog, fg_color="transparent")
+        button_frame.pack(fill="x", padx=20, pady=(0, 20))
         
-        ttk.Button(
+        ctk.CTkButton(
             button_frame,
             text="Select User",
             command=self.select_user,
-            bootstyle=PRIMARY,
-            width=15
-        ).pack(side=LEFT, padx=5)
+            fg_color="#3498db",
+            hover_color="#2980b9",
+            corner_radius=20,
+            font=("Inter", 14),
+            width=150
+        ).pack(side="left", padx=5)
         
-        ttk.Button(
+        ctk.CTkButton(
             button_frame,
             text="Delete User",
             command=self.delete_user,
-            bootstyle=DANGER,
-            width=15
-        ).pack(side=LEFT, padx=5)
+            fg_color="#e74c3c",
+            hover_color="#c0392b",
+            corner_radius=20,
+            font=("Inter", 14),
+            width=150
+        ).pack(side="left", padx=5)
         
-        ttk.Button(
+        ctk.CTkButton(
             button_frame,
             text="Toggle Active/Inactive",
             command=self.toggle_user_status,
-            bootstyle=WARNING,
-            width=20
-        ).pack(side=LEFT, padx=5)
+            fg_color="#f39c12",
+            hover_color="#d68910",
+            corner_radius=20,
+            font=("Inter", 14),
+            width=200
+        ).pack(side="left", padx=5)
         
-        ttk.Button(
+        ctk.CTkButton(
             button_frame,
             text="Exit",
             command=self.exit_dialog,
-            bootstyle=SECONDARY,
-            width=10
-        ).pack(side=RIGHT, padx=5)
+            fg_color="#95a5a6",
+            hover_color="#7f8c8d",
+            corner_radius=20,
+            font=("Inter", 14),
+            width=100
+        ).pack(side="right", padx=5)
     
     def refresh_user_list(self):
         """Refresh the user list display"""
@@ -189,7 +220,7 @@ class UserManagementDialog:
         print(f"[DEBUG-CREATE] User name entered: '{name}'")
         
         if not name:
-            Messagebox.show_error("Please enter a name", "Error")
+            messagebox.showerror("Error", "Please enter a name")
             return
         
         print(f"[DEBUG-CREATE] Calling db.create_user('{name}')...")
@@ -197,7 +228,7 @@ class UserManagementDialog:
         print(f"[DEBUG-CREATE] User ID returned: {user_id}")
         
         if user_id is None:
-            Messagebox.show_error(f"User '{name}' already exists", "Error")
+            messagebox.showerror("Error", f"User '{name}' already exists")
             return
         
         #get the newly created user
@@ -222,18 +253,18 @@ class UserManagementDialog:
         selection = self.user_listbox.selection()
         
         if not selection:
-            Messagebox.show_error("Please select a user", "Error")
+            messagebox.showerror("Error", "Please select a user")
             return
         
         user_id = int(selection[0])
         user = self.db.get_user_by_id(user_id)
         
         if not user['is_active']:
-            result = Messagebox.show_question(
-                f"User '{user['name']}' is inactive. Activate and continue?",
-                "Inactive User"
+            result = messagebox.askyesno(
+                "Inactive User",
+                f"User '{user['name']}' is inactive. Activate and continue?"
             )
-            if result == "Yes":
+            if result:
                 self.db.update_user_status(user_id, True)
                 #re-fetch user to get updated status
                 user = self.db.get_user_by_id(user_id)
@@ -253,7 +284,7 @@ class UserManagementDialog:
         selection = self.user_listbox.selection()
         
         if not selection:
-            Messagebox.show_error("Please select a user", "Error")
+            messagebox.showerror("Error", "Please select a user")
             return
         
         user_id = int(selection[0])
@@ -263,7 +294,7 @@ class UserManagementDialog:
         self.db.update_user_status(user_id, new_status)
         
         status_text = "activated" if new_status else "deactivated"
-        Messagebox.show_info(f"User '{user['name']}' {status_text}", "Success")
+        messagebox.showinfo("Success", f"User '{user['name']}' {status_text}")
         
         self.refresh_user_list()
     
@@ -272,34 +303,32 @@ class UserManagementDialog:
         selection = self.user_listbox.selection()
         
         if not selection:
-            Messagebox.show_error("Please select a user", "Error")
+            messagebox.showerror("Error", "Please select a user")
             return
         
         user_id = int(selection[0])
         user = self.db.get_user_by_id(user_id)
         
-        result = Messagebox.show_question(
-            f"Delete user '{user['name']}' and all their data?\nThis cannot be undone!",
+        result = messagebox.askyesno(
             "Confirm Delete",
-            buttons=["Yes:danger", "No:secondary"]
+            f"Delete user '{user['name']}' and all their data?\nThis cannot be undone!"
         )
         
-        if result == "Yes":
+        if result:
             self.db.delete_user(user_id)
-            Messagebox.show_info(f"User '{user['name']}' deleted", "Success")
+            messagebox.showinfo("Success", f"User '{user['name']}' deleted")
             self.refresh_user_list()
     
     def exit_dialog(self):
         """Handle dialog exit - warn if no user selected"""
         print("[DEBUG-EXIT] exit_dialog called")
         if self.selected_user is None:
-            result = Messagebox.show_question(
-                "No user selected. The application will exit.\nContinue?",
+            result = messagebox.askyesno(
                 "No User Selected",
-                buttons=["Yes:danger", "No:secondary"]
+                "No user selected. The application will exit.\nContinue?"
             )
             print(f"[DEBUG-EXIT] User response: {result}")
-            if result == "Yes":
+            if result:
                 print("[DEBUG-EXIT] Destroying dialog...")
                 try:
                     self.dialog.destroy()

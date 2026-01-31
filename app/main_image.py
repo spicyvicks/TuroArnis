@@ -84,17 +84,17 @@ class TuroArnisGUI:
         self.controls_panel.grid(row=0, column=0, sticky="nsew")
         self.controls_panel.grid_propagate(False) 
         
-        ttk.Label(self.controls_panel, text="Controls", font=("-size 14 -weight bold"), bootstyle="dark").pack(pady=(0, 10), anchor=W)
+        ttk.Label(self.controls_panel, text="Controls", font=("Inter", 18, "bold"), bootstyle="dark").pack(pady=(0, 10), anchor=W)
 
         user_frame = ttk.Labelframe(self.controls_panel, text="Current User", padding=10)
         user_frame.pack(fill=X, pady=5)
-        ttk.Label(user_frame, text=self.current_user['name'], font=("-size 12 -weight bold"), bootstyle="info").pack(anchor=W)
-        ttk.Label(user_frame, text="Image Testing Mode", font=("-size 9"), bootstyle="secondary").pack(anchor=W)
+        ttk.Label(user_frame, text=self.current_user['name'], font=("Inter", 16, "bold"), bootstyle="info").pack(anchor=W)
+        ttk.Label(user_frame, text="Image Testing Mode", font=("Inter", 12), bootstyle="secondary").pack(anchor=W)
 
         session_frame = ttk.Labelframe(self.controls_panel, text="Session", padding=10)
         session_frame.pack(fill=X, pady=5)
         
-        self.session_status_label = ttk.Label(session_frame, text="Image Testing - No Sessions", font=("-size 9"), bootstyle="secondary")
+        self.session_status_label = ttk.Label(session_frame, text="Image Testing - No Sessions", font=("Inter", 12), bootstyle="secondary")
         self.session_status_label.pack(anchor=W, pady=2)
         
         ttk.Separator(self.controls_panel, orient=HORIZONTAL).pack(fill=X, pady=10)
@@ -115,10 +115,10 @@ class TuroArnisGUI:
         self.form_button["menu"] = self.form_menu
         
         ttk.Separator(self.controls_panel, orient=HORIZONTAL).pack(fill=X, pady=15)
-        self.status_label = ttk.Label(self.controls_panel, text="Status: Select a form", font="-size 12", wraplength=220, bootstyle="dark")
+        self.status_label = ttk.Label(self.controls_panel, text="Status: Select a form", font=("Inter", 14), wraplength=220, bootstyle="dark")
         self.status_label.pack(fill=X, pady=5, anchor=W)
         
-        self.keras_status_label = ttk.Label(self.controls_panel, text="Keras: N/A (0.00)", font="-size 10", bootstyle="warning")
+        self.keras_status_label = ttk.Label(self.controls_panel, text="Keras: N/A (0.00)", font=("Inter", 12), bootstyle="warning")
         self.keras_status_label.pack(fill=X, pady=5, anchor=W)
         
         self.view_all_results_button = ttk.Button(self.controls_panel, text="View All Results", command=self.open_results_window, bootstyle="info")

@@ -1,9 +1,9 @@
 """
 Multi-user management dialog for assigning users to detected people in frame
 """
-import ttkbootstrap as ttk
-from ttkbootstrap.constants import *
-from ttkbootstrap.dialogs import Messagebox
+import customtkinter as ctk
+import tkinter as tk
+from tkinter import messagebox
 from app.database.db_manager import DatabaseManager
 
 
@@ -22,7 +22,7 @@ class MultiUserDialog:
         self.user_assignments = {}  #{person_id: user_dict}
         
         #create dialog window
-        self.dialog = ttk.Toplevel(parent)
+        self.dialog = ctk.CTkToplevel(parent)
         self.dialog.title(f"Assign Users to {num_people} Detected {'Person' if num_people == 1 else 'People'}")
         self.dialog.geometry("900x700")
         self.dialog.resizable(False, False)
@@ -49,44 +49,45 @@ class MultiUserDialog:
     
     def setup_ui(self):
         # Title
-        ttk.Label(
+        ctk.CTkLabel(
             self.dialog,
             text=f"Assign Users to Detected People",
-            font=("Segoe UI", 16, "bold")
+            font=("Inter", 16, "bold")
         ).pack(pady=20)
         
-        ttk.Label(
+        ctk.CTkLabel(
             self.dialog,
             text=f"{self.num_people} {'person' if self.num_people == 1 else 'people'} detected in frame. Assign a user to each person.",
-            font=("Segoe UI", 10)
+            font=("Inter", 10)
         ).pack(pady=(0, 20))
         
         # Get all active users
         self.users = self.db.get_active_users()
         
         if not self.users:
-            ttk.Label(
+            ctk.CTkLabel(
                 self.dialog,
                 text="No active users found! Please create users first.",
-                font=("Segoe UI", 12),
-                bootstyle="danger"
+                font=("Inter", 12),
+                text_color="#e74c3c"
             ).pack(pady=20)
             
-            ttk.Button(
+            ctk.CTkButton(
                 self.dialog,
                 text="Close",
                 command=self.dialog.destroy,
-                bootstyle=SECONDARY
+                fg_color="#95a5a6",
+                corner_radius=20
             ).pack(pady=10)
             return
         
         # Scrollable frame for person assignments
-        canvas_frame = ttk.Frame(self.dialog)
-        canvas_frame.pack(fill=BOTH, expand=True, padx=20, pady=10)
+        canvas_frame = ctk.CTkFrame(self.dialog)
+        canvas_frame.pack(fill="both", expand=True, padx=20, pady=10)
         
-        canvas = ttk.Canvas(canvas_frame)
-        scrollbar = ttk.Scrollbar(canvas_frame, orient=VERTICAL, command=canvas.yview)
-        scrollable_frame = ttk.Frame(canvas)
+        canvas = tk.Canvas(canvas_frame, bg="white")
+        scrollbar = tk.Scrollbar(canvas_frame, orient="vertical", command=canvas.yview)
+        scrollable_frame = ctk.CTkFrame(canvas)
         
         scrollable_frame.bind(
             "<Configure>",
@@ -96,8 +97,8 @@ class MultiUserDialog:
         canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
         canvas.configure(yscrollcommand=scrollbar.set)
         
-        canvas.pack(side=LEFT, fill=BOTH, expand=True)
-        scrollbar.pack(side=RIGHT, fill=Y)
+        canvas.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
         
         # Create assignment UI for each person
         self.person_vars = {}
@@ -105,51 +106,57 @@ class MultiUserDialog:
             self.create_person_assignment(scrollable_frame, person_id)
         
         # Buttons
-        btn_frame = ttk.Frame(self.dialog)
-        btn_frame.pack(fill=X, padx=20, pady=20)
+        btn_frame = ctk.CTkFrame(self.dialog, fg_color="transparent")
+        btn_frame.pack(fill="x", padx=20, pady=20)
         
-        ttk.Button(
+        ctk.CTkButton(
             btn_frame,
             text="Confirm Assignments",
             command=self.confirm_assignments,
-            bootstyle=SUCCESS
-        ).pack(side=LEFT, padx=5, expand=True, fill=X)
+            fg_color="#27ae60",
+            corner_radius=20
+        ).pack(side="left", padx=5, expand=True, fill="x")
         
-        ttk.Button(
+        ctk.CTkButton(
             btn_frame,
             text="Cancel",
             command=self.cancel,
-            bootstyle=SECONDARY
-        ).pack(side=RIGHT, padx=5, expand=True, fill=X)
+            fg_color="#95a5a6",
+            corner_radius=20
+        ).pack(side="right", padx=5, expand=True, fill="x")
     
     def create_person_assignment(self, parent, person_id):
         """Create UI for assigning a user to a person"""
-        person_frame = ttk.Labelframe(
+        person_frame = ctk.CTkFrame(
             parent,
-            text=f"Person #{person_id}",
-            padding=15,
-            bootstyle=PRIMARY
+            corner_radius=10
         )
-        person_frame.pack(fill=X, pady=10, padx=10)
+        person_frame.pack(fill="x", pady=10, padx=10)
         
-        ttk.Label(
+        ctk.CTkLabel(
+            person_frame,
+            text=f"Person #{person_id}",
+            font=("Inter", 14, "bold"),
+            text_color="#3498db"
+        ).pack(anchor="w", padx=15, pady=(15, 5))
+        
+        ctk.CTkLabel(
             person_frame,
             text="Assign to user:",
-            font=("Segoe UI", 10)
-        ).pack(anchor=W, pady=(0, 5))
+            font=("Inter", 10)
+        ).pack(anchor="w", padx=15, pady=(0, 5))
         
-        #combobox for user selection
+        #option menu for user selection
         user_names = [u['name'] for u in self.users]
-        user_var = ttk.StringVar(value=user_names[min(person_id - 1, len(user_names) - 1)])
+        user_var = tk.StringVar(value=user_names[min(person_id - 1, len(user_names) - 1)])
         
-        combobox = ttk.Combobox(
+        option_menu = ctk.CTkOptionMenu(
             person_frame,
-            textvariable=user_var,
+            variable=user_var,
             values=user_names,
-            state="readonly",
-            width=40
+            width=400
         )
-        combobox.pack(fill=X, pady=5)
+        option_menu.pack(fill="x", padx=15, pady=(0, 15))
         
         self.person_vars[person_id] = user_var
     

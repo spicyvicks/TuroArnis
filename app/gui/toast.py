@@ -1,5 +1,5 @@
-import ttkbootstrap as ttk
-from ttkbootstrap.constants import *
+import customtkinter as ctk
+import tkinter as tk
 import threading
 
 
@@ -22,41 +22,41 @@ class ToastNotification:
         """
         #determine style based on type
         style_map = {
-            "success": ("success", "✓"),
-            "error": ("danger", "✗"),
-            "warning": ("warning", "⚠"),
-            "info": ("info", "ℹ")
+            "success": ("#27ae60", "✓"),
+            "error": ("#e74c3c", "✗"),
+            "warning": ("#f39c12", "⚠"),
+            "info": ("#3498db", "ℹ")
         }
-        bootstyle, icon = style_map.get(type, ("secondary", "•"))
+        color, icon = style_map.get(type, ("#95a5a6", "•"))
         
         #create toast window
-        toast = ttk.Toplevel(self.parent)
+        toast = tk.Toplevel(self.parent)
         toast.withdraw()
         toast.overrideredirect(True)
         toast.attributes('-topmost', True)
         
         #create frame with content
-        frame = ttk.Frame(toast, bootstyle=bootstyle, padding=10)
-        frame.pack(fill=BOTH, expand=True)
+        frame = ctk.CTkFrame(toast, fg_color=color, corner_radius=10)
+        frame.pack(fill="both", expand=True)
         
         #icon + message
-        content_frame = ttk.Frame(frame)
-        content_frame.pack()
+        content_frame = ctk.CTkFrame(frame, fg_color="transparent")
+        content_frame.pack(padx=10, pady=10)
         
-        ttk.Label(
+        ctk.CTkLabel(
             content_frame,
             text=f"{icon}",
-            font=("-size 14 -weight bold"),
-            bootstyle=bootstyle
-        ).pack(side=LEFT, padx=(0, 8))
+            font=("Inter", 14, "bold"),
+            text_color="white"
+        ).pack(side="left", padx=(0, 8))
         
-        ttk.Label(
+        ctk.CTkLabel(
             content_frame,
             text=message,
-            font=("-size 10"),
-            bootstyle=bootstyle,
+            font=("Inter", 10),
+            text_color="white",
             wraplength=300
-        ).pack(side=LEFT)
+        ).pack(side="left")
         
         #position toast
         toast.update_idletasks()

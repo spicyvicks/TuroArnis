@@ -1,5 +1,5 @@
-import ttkbootstrap as ttk
-from ttkbootstrap.constants import *
+import customtkinter as ctk
+import tkinter as tk
 import math
 
 
@@ -24,15 +24,15 @@ class LoadingSpinner:
         self.is_showing = True
         
         #create overlay
-        self.overlay = ttk.Frame(self.parent, bootstyle="dark")
+        self.overlay = ctk.CTkFrame(self.parent, fg_color=("#2b3e50", "#2b3e50"))
         self.overlay.place(relx=0, rely=0, relwidth=1, relheight=1)
         
         #center container
-        center_frame = ttk.Frame(self.overlay)
+        center_frame = ctk.CTkFrame(self.overlay, fg_color="transparent")
         center_frame.place(relx=0.5, rely=0.5, anchor="center")
         
         #spinner canvas
-        self.canvas = ttk.Canvas(
+        self.canvas = tk.Canvas(
             center_frame,
             width=60,
             height=60,
@@ -42,11 +42,11 @@ class LoadingSpinner:
         self.canvas.pack(pady=(0, 10))
         
         #loading text
-        self.label = ttk.Label(
+        self.label = ctk.CTkLabel(
             center_frame,
             text=self.message,
-            font=("-size 12"),
-            bootstyle="inverse-dark"
+            font=("Inter", 12),
+            text_color="white"
         )
         self.label.pack()
         
@@ -60,7 +60,7 @@ class LoadingSpinner:
     def update_message(self, message):
         """update loading message"""
         if self.is_showing and self.label:
-            self.label.config(text=message)
+            self.label.configure(text=message)
             self.message = message
     
     def _animate(self):

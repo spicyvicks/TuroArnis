@@ -5,11 +5,15 @@ import threading
 import time
 import re
 from PIL import Image, ImageTk
-import ttkbootstrap as ttk
-from ttkbootstrap.constants import *
+import customtkinter as ctk
+import tkinter as tk
 import queue
 import numpy as np
 import mediapipe as mp
+
+# Set CustomTkinter appearance
+ctk.set_appearance_mode("light")
+ctk.set_default_color_theme("blue")
 
 #add project root to sys.path for dev execution
 if not getattr(sys, 'frozen', False):
@@ -22,7 +26,8 @@ from app.gui.results_window import ResultsWindow
 from app.gui.user_dialog import show_user_dialog
 from app.gui.toast import ToastNotification
 from app.gui.loading_spinner import LoadingSpinner
-from app.gui.status_bar import StatusBar
+# from app.gui.splash_screen import SplashScreen  # Integrated inline
+# from app.gui.status_bar import StatusBar  # Moved to controls panel
 from app.computer_vision.pose_analyzer import PoseAnalyzer
 from app.database.db_manager import DatabaseManager
 from app.utils.resource_path import get_resource_path, get_app_data_path
@@ -33,15 +38,84 @@ class TuroArnisGUI:
         self.window.title(window_title)
         
         #set app icon for taskbar
-        icon_path = get_resource_path('assets/TA.ico')
+        icon_path = get_resource_path('app/assets/TA.ico')
+        print(f"[DEBUG-ICON] Icon path resolved to: {icon_path}")
+        print(f"[DEBUG-ICON] Icon exists: {os.path.exists(icon_path)}")
         if os.path.exists(icon_path):
             self.window.iconbitmap(icon_path)
+            print(f"[DEBUG-ICON] Icon set successfully")
+        else:
+            print(f"[DEBUG-ICON] Icon file not found at {icon_path}")
         
         self.window.update_idletasks()
         self.screen_width = self.window.winfo_screenwidth()
         self.screen_height = self.window.winfo_screenheight()
         
-        self.window.withdraw()
+        # Create splash frame inside main window with pale blue background
+        self.splash_frame = ctk.CTkFrame(self.window, fg_color="#74b9ff", corner_radius=0)
+        self.splash_frame.pack(fill="both", expand=True)
+        
+        # Splash content
+        splash_content = ctk.CTkFrame(self.splash_frame, fg_color="#74b9ff")
+        splash_content.place(relx=0.5, rely=0.5, anchor="center")
+        
+        # Add logo image
+        try:
+            logo_path = get_resource_path('app/assets/TA.png')
+            from PIL import Image
+            logo_img = Image.open(logo_path)
+            logo_img = logo_img.resize((120, 120), Image.Resampling.LANCZOS)
+            self.logo_photo = ImageTk.PhotoImage(logo_img)
+            ctk.CTkLabel(
+                splash_content,
+                image=self.logo_photo,
+                text="",
+                fg_color="#74b9ff"
+            ).pack(pady=(0, 20))
+        except Exception as e:
+            print(f"[WARN] Could not load logo: {e}")
+        
+        ctk.CTkLabel(
+            splash_content,
+            text="TuroArnis",
+            font=("Inter", 48, "bold"),
+            fg_color="#74b9ff",
+            text_color="black"
+        ).pack(pady=(0, 5))
+        
+        ctk.CTkLabel(
+            splash_content,
+            text="Arnis Form Correction System",
+            font=("Inter", 16),
+            fg_color="#74b9ff",
+            text_color="black"
+        ).pack(pady=(0, 30))
+        
+        self.splash_progress = ctk.CTkProgressBar(
+            splash_content,
+            mode='indeterminate',
+            width=300,
+            progress_color="#3498db"
+        )
+        self.splash_progress.pack(pady=(0, 10))
+        self.splash_progress.start()
+        
+        self.splash_status = ctk.CTkLabel(
+            splash_content,
+            text="Initializing...",
+            font=("Inter", 14),
+            fg_color="#74b9ff",
+            text_color="black"
+        )
+        self.splash_status.pack()
+        
+        # Center and size the window to match main window size (80% of screen)
+        width = int(self.screen_width * 0.8)
+        height = int(self.screen_height * 0.8)
+        x = (self.screen_width - width) // 2
+        y = (self.screen_height - height) // 2
+        self.window.geometry(f"{width}x{height}+{x}+{y}")
+        self.window.update()
 
         #app data directory for database (persists across updates)
         db_path = os.path.join(get_app_data_path(), 'turoarnis.db')
@@ -50,8 +124,29 @@ class TuroArnisGUI:
         self.current_user = None
         self.current_session_id = None
         
+        # Wait 3 seconds to show splash screen - update periodically for animation
+        import time
+        for i in range(30):  # 30 iterations of 0.1 seconds = 3 seconds
+            time.sleep(0.1)
+            self.window.update()  # Keep progress bar animating
+        
         print("[DEBUG-INIT] Showing user selection dialog...")
+        self.splash_status.config(text="Loading user management...")
+        self.window.update()
+        for i in range(10):  # 1 second with animation
+            time.sleep(0.1)
+            self.window.update()
+        
+        # Hide splash screen before showing user dialog
+        self.splash_frame.pack_forget()
+        self.window.update()
+        
         self.show_user_selection()
+        
+        # Show splash screen again after user selection
+        if self.current_user:
+            self.splash_frame.pack(fill=BOTH, expand=YES)
+            self.window.update()
         
         print(f"[DEBUG-INIT] After show_user_selection, current_user = {self.current_user}")
         
@@ -84,17 +179,15 @@ class TuroArnisGUI:
         self.smooth_window = 3  # Smooth over 3 frames
         self.last_person_bbox = {}  # Track bounding boxes to detect movement
 
-        #initialize ux components first (before heavy loading)
+        #initialize ux components
         print("[DEBUG-INIT] Initializing UX components...")
         self.toast = ToastNotification(self.window)
-        self.spinner = LoadingSpinner(self.window)
-        
-        #show loading spinner for initialization
-        self.spinner.show("Initializing TuroArnis...")
-        self.window.update()
 
         print("[DEBUG-INIT] Loading stick detector model...")
-        self.spinner.update_message("Loading stick detector...")
+        self.splash_status.config(text="Loading stick detector...")
+        self.window.update()
+        import time
+        time.sleep(0.3)  # Pause to show status
         self.window.update()
         
         #use resource path for stick detector model
@@ -103,24 +196,30 @@ class TuroArnisGUI:
         print(f"[DEBUG-INIT] Stick model path: {stick_model_path}")
         
         print("[DEBUG-INIT] Initializing PoseAnalyzer...")
-        self.spinner.update_message("Loading pose detection models...")
+        self.splash_status.config(text="Loading AI models...")
         self.window.update()
+        import time
+        time.sleep(0.3)  # Pause to show status
         
         self.analyzer = PoseAnalyzer(
             detection_interval=self.processing_interval,
             stick_model_path=stick_model_path if os.path.exists(stick_model_path) else None,
             debug_stick=False
         )
+        import time
+        time.sleep(0.3)  # Pause to show status
         
         print("[DEBUG-INIT] Opening camera...")
-        self.spinner.update_message("Connecting to camera...")
+        self.splash_status.config(text="Connecting to camera...")
+        self.window.update()
         self.window.update()
         
         self.cap = cv2.VideoCapture(0)
         
         #check if camera opened successfully
         if not self.cap.isOpened():
-            self.spinner.hide()
+            self.splash_progress.stop()
+            self.splash_frame.destroy()
             self.toast.show("Camera not detected. Please check your camera connection.", "error", duration=5000)
             print("[ERROR] Camera failed to open")
         else:
@@ -128,50 +227,60 @@ class TuroArnisGUI:
             cam_width = int(self.cap.get(cv2.CAP_PROP_FRAME_WIDTH))
             cam_height = int(self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
             print(f"[INFO] Camera opened: {cam_width}x{cam_height}")
+            
+            # Destroy splash screen before showing video interface
+            self.splash_progress.stop()
+            self.splash_frame.destroy()
         
         print("[DEBUG-INIT] Setting up GUI components...")
         self.queue = queue.Queue(maxsize=1)
         self.target_form = None
         
-        self.window.grid_rowconfigure(0, weight=1)
-        self.window.grid_rowconfigure(1, weight=0)  # Row for status bar
-        self.window.grid_columnconfigure(0, weight=0)
-        self.window.grid_columnconfigure(1, weight=1) 
+        # Create main container frame to avoid geometry manager conflicts
+        main_container = ctk.CTkFrame(self.window, fg_color="transparent")
+        main_container.pack(fill="both", expand=True)
+        
+        main_container.grid_rowconfigure(0, weight=1)
+        main_container.grid_columnconfigure(0, weight=0)
+        main_container.grid_columnconfigure(1, weight=1) 
 
-        self.video_canvas = ttk.Canvas(self.window, background='black')
+        self.video_canvas = tk.Canvas(main_container, background='black', highlightthickness=0)
         self.video_canvas.grid(row=0, column=1, sticky="nsew")
         self.video_canvas.bind('<Configure>', self.on_canvas_resize)
         self.tk_image = None
 
-        self.controls_panel = ttk.Frame(self.window, padding=15, bootstyle="light", width=250)
+        self.controls_panel = ctk.CTkFrame(main_container, width=250, corner_radius=0, fg_color="#f0f0f0")
         self.controls_panel.grid(row=0, column=0, sticky="nsew")
         self.controls_panel.grid_propagate(False) 
         
-        ttk.Label(self.controls_panel, text="Controls", font=("-size 14 -weight bold"), bootstyle="dark").pack(pady=(0, 10), anchor=W)
+        ctk.CTkLabel(self.controls_panel, text="Controls", font=("Inter", 18, "bold"), text_color="#2c3e50").pack(pady=(10, 10), anchor="w", padx=15)
 
-        user_frame = ttk.Labelframe(self.controls_panel, text="Current User", padding=10)
-        user_frame.pack(fill=X, pady=5)
+        user_frame = ctk.CTkFrame(self.controls_panel, corner_radius=10)
+        user_frame.pack(fill="x", pady=5, padx=10)
         
         print(f"[DEBUG-INIT] Creating user label with name: {self.current_user['name']}")
-        ttk.Label(user_frame, text=self.current_user['name'], font=("-size 12 -weight bold"), bootstyle="success").pack(anchor=W)
-        ttk.Label(user_frame, text=f"ID: {self.current_user['id']}", font=("-size 9"), bootstyle="secondary").pack(anchor=W)
+        ctk.CTkLabel(user_frame, text=self.current_user['name'], font=("Inter", 16, "bold"), text_color="#27ae60").pack(anchor="w", padx=10)
+        ctk.CTkLabel(user_frame, text=f"ID: {self.current_user['id']}", font=("Inter", 12), text_color="#95a5a6").pack(anchor="w", padx=10, pady=(0, 10))
 
-        session_frame = ttk.Labelframe(self.controls_panel, text="Session", padding=10)
-        session_frame.pack(fill=X, pady=5)
+        session_frame = ctk.CTkFrame(self.controls_panel, corner_radius=10)
+        session_frame.pack(fill="x", pady=5, padx=10)
         
-        self.session_status_label = ttk.Label(session_frame, text="No active session", font=("-size 9"), bootstyle="warning")
-        self.session_status_label.pack(anchor=W, pady=2)
+        ctk.CTkLabel(session_frame, text="Session", font=("Inter", 12, "bold"), text_color="#7f8c8d").pack(anchor="w", pady=(5, 2), padx=10)
         
-        session_btn_frame = ttk.Frame(session_frame)
-        session_btn_frame.pack(fill=X, pady=5)
+        self.session_status_label = ctk.CTkLabel(session_frame, text="No active session", font=("Inter", 12), text_color="#f39c12")
+        self.session_status_label.pack(anchor="w", pady=2, padx=10)
         
-        self.start_session_btn = ttk.Button(session_btn_frame, text="Start", command=self.manual_start_session, bootstyle="success", width=10)
-        self.start_session_btn.pack(side=LEFT, padx=2)
+        session_btn_frame = ctk.CTkFrame(session_frame, fg_color="transparent")
+        session_btn_frame.pack(fill="x", pady=5, padx=10)
         
-        self.end_session_btn = ttk.Button(session_btn_frame, text="End", command=self.end_session, bootstyle="danger", width=10, state=DISABLED)
-        self.end_session_btn.pack(side=LEFT, padx=2)
+        self.start_session_btn = ctk.CTkButton(session_btn_frame, text="Start", command=self.manual_start_session, fg_color="#27ae60", hover_color="#229954", width=100, corner_radius=20, font=("Inter", 14))
+        self.start_session_btn.pack(side="left", padx=2)
         
-        ttk.Separator(self.controls_panel, orient=HORIZONTAL).pack(fill=X, pady=10)
+        self.end_session_btn = ctk.CTkButton(session_btn_frame, text="End", command=self.end_session, fg_color="#e74c3c", hover_color="#c0392b", width=100, corner_radius=20, font=("Inter", 14), state="disabled")
+        self.end_session_btn.pack(side="left", padx=2)
+        
+        # Separator
+        ctk.CTkFrame(self.controls_panel, height=2, fg_color="#bdc3c7").pack(fill="x", pady=10, padx=15)
         
         self.practice_stances = {
             "Crown Thrust": "crown_thrust_correct", "Left Chest Thrust": "left_chest_thrust_correct",
@@ -181,28 +290,67 @@ class TuroArnisGUI:
             "Right Eye Thrust": "right_eye_thrust_correct", "Right Knee Block": "right_knee_block_correct",
             "Right Temple Block": "right_temple_block_correct", "Solar Plexus Thrust": "solar_plexus_thrust_correct"
         }
-        self.form_button = ttk.Menubutton(self.controls_panel, text="Choose Arnis Form", bootstyle="primary")
-        self.form_button.pack(fill=X, pady=5)
-        self.form_menu = ttk.Menu(self.form_button)
-        for pretty_name in self.practice_stances.keys():
-            self.form_menu.add_command(label=pretty_name, command=lambda p=pretty_name: self.on_action_selected(p))
-        self.form_button["menu"] = self.form_menu
+        self.selected_form = ctk.StringVar(value="Choose Arnis Form")
+        self.form_button = ctk.CTkOptionMenu(
+            self.controls_panel,
+            variable=self.selected_form,
+            values=list(self.practice_stances.keys()),
+            command=self.on_action_selected,
+            fg_color="#3498db",
+            button_color="#2980b9",
+            button_hover_color="#21618c",
+            corner_radius=20,
+            font=("Inter", 14)
+        )
+        self.form_button.pack(fill="x", pady=5, padx=10)
         
-        ttk.Separator(self.controls_panel, orient=HORIZONTAL).pack(fill=X, pady=15)
-        self.status_label = ttk.Label(self.controls_panel, text="Status: Select a form", font="-size 12", wraplength=220, bootstyle="dark")
-        self.status_label.pack(fill=X, pady=5, anchor=W)
+        # Separator
+        ctk.CTkFrame(self.controls_panel, height=2, fg_color="#bdc3c7").pack(fill="x", pady=15, padx=15)
         
-        self.keras_status_label = ttk.Label(self.controls_panel, text="Keras: N/A (0.00)", font="-size 10", bootstyle="warning")
-        self.keras_status_label.pack(fill=X, pady=5, anchor=W)
+        self.status_label = ctk.CTkLabel(self.controls_panel, text="Status: Select a form", font=("Inter", 14), wraplength=220, text_color="#2c3e50")
+        self.status_label.pack(fill="x", pady=5, anchor="w", padx=15)
         
-        self.view_all_results_button = ttk.Button(self.controls_panel, text="View All Results", command=self.open_results_window, bootstyle="info")
-        self.view_all_results_button.pack(fill=X, pady=10, side=BOTTOM)
+        self.keras_status_label = ctk.CTkLabel(self.controls_panel, text="Keras: N/A (0.00)", font=("Inter", 12), text_color="#f39c12")
+        self.keras_status_label.pack(fill="x", pady=5, anchor="w", padx=15)
+        
+        # System Status section
+        ctk.CTkFrame(self.controls_panel, height=2, fg_color="#bdc3c7").pack(fill="x", pady=15, padx=15)
+        
+        system_frame = ctk.CTkFrame(self.controls_panel, corner_radius=10)
+        system_frame.pack(fill="x", pady=5, padx=10)
+        
+        ctk.CTkLabel(system_frame, text="System Status", font=("Inter", 12, "bold"), text_color="#7f8c8d").pack(anchor="w", pady=(5, 2), padx=10)
+        
+        # FPS
+        self.fps_label = ctk.CTkLabel(system_frame, text="FPS: --", font=("Inter", 18), text_color="#95a5a6")
+        self.fps_label.pack(fill="x", pady=2, anchor="w", padx=10)
+        
+        # Camera status
+        camera_status = "Connected" if self.cap.isOpened() else "Disconnected"
+        camera_color = "#27ae60" if self.cap.isOpened() else "#e74c3c"
+        self.camera_label = ctk.CTkLabel(system_frame, text=f"📷 Camera: {camera_status}", font=("Inter", 18), text_color=camera_color)
+        self.camera_label.pack(fill="x", pady=2, anchor="w", padx=10)
+        
+        # Model status
+        self.model_label = ctk.CTkLabel(system_frame, text="🤖 Model: Loaded", font=("Inter", 18), text_color="#27ae60")
+        self.model_label.pack(fill="x", pady=2, anchor="w", padx=10, pady=(0, 10))
+        
+        # FPS tracking
+        self.frame_times = []
+        self.last_fps_update = time.time()
+        
+        self.view_all_results_button = ctk.CTkButton(
+            self.controls_panel,
+            text="View All Results",
+            command=self.open_results_window,
+            fg_color="#3498db",
+            hover_color="#2980b9",
+            corner_radius=20,
+            font=("Inter", 14)
+        )
+        self.view_all_results_button.pack(fill="x", pady=10, side="bottom", padx=10)
 
-        print("[DEBUG-INIT] Creating status bar...")
-        self.status_bar = StatusBar(self.window)
-        self.status_bar.set_camera_status("Connected", is_ok=self.cap.isOpened())
-        self.status_bar.set_model_status("Loaded", is_ok=True)
-        self.status_bar.set_status(f"Welcome, {self.current_user['name']}!")
+        print("[DEBUG-INIT] System status added to controls panel...")
 
         print("[DEBUG-INIT] Starting video thread...")
         self.is_running = True
@@ -221,10 +369,15 @@ class TuroArnisGUI:
         self.window.geometry(f"{width}x{height}+{x}+{y}")
         
         print("[DEBUG-INIT] Showing window...")
-        self.window.deiconify()
         
-        #hide spinner and show success
-        self.spinner.hide()
+        # Destrfor professional transition feel
+        import time
+        time.sleep(1.0)  # Increased from 0.5 to 1.0 secondme.destroy()
+        
+        # Wait minimum time for professional feel
+        import time
+        time.sleep(0.5)
+        
         self.toast.show(f"Welcome, {self.current_user['name']}!", "success", duration=2000)
         
         print("[DEBUG-INIT] Initialization complete, starting mainloop...")
@@ -309,9 +462,9 @@ class TuroArnisGUI:
                 confidence = result['confidence']
                 pretty_class_name = predicted_class.replace('_correct', '').replace('_', ' ').title()
                 keras_status_text = f"Keras: {pretty_class_name} ({confidence:.2f})"
-                if confidence > 0.60: self.keras_status_label.config(bootstyle="success")
-                elif confidence > 0.40: self.keras_status_label.config(bootstyle="warning")
-                else: self.keras_status_label.config(bootstyle="danger")
+                if confidence > 0.60: self.keras_status_label.configure(text_color="#27ae60")
+                elif confidence > 0.40: self.keras_status_label.configure(text_color="#f39c12")
+                else: self.keras_status_label.configure(text_color="#e74c3c")
             self.keras_status_label.config(text=keras_status_text)
             
             if self.last_known_results:
@@ -373,40 +526,29 @@ class TuroArnisGUI:
                     landmarks_abs = result['landmarks_absolute']
                     person_id = result['id']
                     
-                    # Debug: check if landmarks are reasonable
-                    if landmarks_abs:
-                        nose_x, nose_y, _ = landmarks_abs[0]  # Nose landmark
-                        frame_h, frame_w = processing_frame.shape[:2]
-                        if nose_x < 0 or nose_x >= frame_w or nose_y < 0 or nose_y >= frame_h:
-                            print(f"[WARN] Landmark out of bounds: nose at ({nose_x}, {nose_y}), frame size: {frame_w}x{frame_h}")
-                    
-                    #detect significant movement and reset smoothing buffer
-                    current_bbox = (x1, y1, x2, y2)
-                    if person_id in self.last_person_bbox:
-                        prev_bbox = self.last_person_bbox[person_id]
-                        #check if bbox moved significantly (>20 pixels)
-                        bbox_shift = max(abs(x1 - prev_bbox[0]), abs(y1 - prev_bbox[1]))
-                        if bbox_shift > 20:
-                            #person moved significantly, reset smoothing buffer
-                            self.landmark_smooth_buffer[person_id] = []
-                    self.last_person_bbox[person_id] = current_bbox
-                    
-                    # DISABLE SMOOTHING TEMPORARILY TO TEST
-                    # Just draw raw landmarks without smoothing
+                    frame_h, frame_w = processing_frame.shape[:2]
                     
                     #determine drawing color based on correctness
                     landmark_color = (0, 255, 0) if is_correct else (0, 0, 255)
                     connection_color = (0, 255, 0) if is_correct else (0, 0, 255)
                     
-                    #draw landmarks with anti-aliasing for smooth appearance
+                    #draw landmarks with boundary checking
+                    visible_landmarks = set()
                     for idx, (lx, ly, lz) in enumerate(landmarks_abs):
-                        cv2.circle(processing_frame, (int(lx), int(ly)), 4, landmark_color, -1, lineType=cv2.LINE_AA)
+                        # Only draw if within frame bounds
+                        if 0 <= lx < frame_w and 0 <= ly < frame_h:
+                            cv2.circle(processing_frame, (int(lx), int(ly)), 4, landmark_color, -1, lineType=cv2.LINE_AA)
+                            visible_landmarks.add(idx)
                     
-                    #draw connections with anti-aliasing
+                    #draw connections only if both endpoints are visible
                     pose_connections = self.analyzer.mp_pose.POSE_CONNECTIONS
                     for connection in pose_connections:
                         start_idx, end_idx = connection
-                        if start_idx < len(landmarks_abs) and end_idx < len(landmarks_abs):
+                        
+                        # Check if both landmarks are valid and visible
+                        if (start_idx < len(landmarks_abs) and end_idx < len(landmarks_abs) and
+                            start_idx in visible_landmarks and end_idx in visible_landmarks):
+                            
                             start_pt = (int(landmarks_abs[start_idx][0]), int(landmarks_abs[start_idx][1]))
                             end_pt = (int(landmarks_abs[end_idx][0]), int(landmarks_abs[end_idx][1]))
                             cv2.line(processing_frame, start_pt, end_pt, connection_color, 3, lineType=cv2.LINE_AA)
@@ -418,7 +560,7 @@ class TuroArnisGUI:
                     processing_frame = cv2.addWeighted(overlay, alpha, processing_frame, 1 - alpha, 0)
                     
                     if is_correct:
-                        cv2.putText(processing_frame, "Correct!", (feedback_x, feedback_y), cv2.FONT_HERSHEY_SIMPLEX, 0.7, COLOR_CORRECT, 2)
+                        cv2.putText(processing_frame, "Correct!", (feedback_x, feedback_y), cv2.FONT_HERSHEY_SIMPLEX, 0.5, COLOR_CORRECT, 2)
                     else:
                         error_display_list = []
                         if result['grip_angle'] is not None:
@@ -430,14 +572,14 @@ class TuroArnisGUI:
                         error_display_list.extend(error_messages)
 
                         if error_display_list:
-                            cv2.putText(processing_frame, "Feedback:", (feedback_x, feedback_y), cv2.FONT_HERSHEY_SIMPLEX, 0.7, COLOR_PROMPT, 2)
+                            cv2.putText(processing_frame, "Feedback:", (feedback_x, feedback_y), cv2.FONT_HERSHEY_SIMPLEX, 0.5, COLOR_PROMPT, 2)
                             for i, msg in enumerate(error_display_list[:4]):
-                                cv2.putText(processing_frame, msg, (feedback_x, feedback_y + 30 + (i * 25)), cv2.FONT_HERSHEY_SIMPLEX, 0.6, COLOR_ERROR, 2)
+                                cv2.putText(processing_frame, msg, (feedback_x, feedback_y + 30 + (i * 25)), cv2.FONT_HERSHEY_SIMPLEX, 0.4, COLOR_ERROR, 2)
                         else:
                             pretty_form_name = self.form_button.cget('text')
                             if pretty_form_name != "Choose Arnis Form":
-                                cv2.putText(processing_frame, f"Adjust to Form:", (feedback_x, feedback_y), cv2.FONT_HERSHEY_SIMPLEX, 0.7, COLOR_PROMPT, 2)
-                                cv2.putText(processing_frame, pretty_form_name, (feedback_x, feedback_y + 30), cv2.FONT_HERSHEY_SIMPLEX, 0.6, COLOR_WHITE, 2)
+                                cv2.putText(processing_frame, f"Adjust to Form:", (feedback_x, feedback_y), cv2.FONT_HERSHEY_SIMPLEX, 0.5, COLOR_PROMPT, 2)
+                                cv2.putText(processing_frame, pretty_form_name, (feedback_x, feedback_y + 30), cv2.FONT_HERSHEY_SIMPLEX, 0.4, COLOR_WHITE, 2)
             
             canvas_width = self.video_canvas.winfo_width(); canvas_height = self.video_canvas.winfo_height()
             final_frame = self.resize_and_pad(processing_frame, size=(canvas_width, canvas_height))
@@ -448,8 +590,8 @@ class TuroArnisGUI:
             
             self.frame_counter += 1
             
-            #update fps in status bar
-            self.status_bar.update_fps(time.time())
+            #update fps
+            self.update_fps_display(time.time())
             
             time.sleep(0.01)
 
@@ -469,7 +611,7 @@ class TuroArnisGUI:
 
     def on_action_selected(self, pretty_name):
         self.target_form = self.practice_stances[pretty_name]
-        self.form_button.config(text=pretty_name)
+        self.selected_form.set(pretty_name)
         self.status_label.config(text=f"Status: Analyzing '{pretty_name}'")
         self.status_bar.set_status(f"Practicing: {pretty_name}")
         print(f"[INFO] targeting: '{self.target_form}'")
@@ -506,9 +648,9 @@ class TuroArnisGUI:
         )
         print(f"[INFO] session {self.current_session_id} started")
 
-        self.session_status_label.config(text=f"Session #{self.current_session_id} - active", bootstyle="success")
-        self.start_session_btn.config(state=DISABLED)
-        self.end_session_btn.config(state=NORMAL)
+        self.session_status_label.configure(text=f"Session #{self.current_session_id} - active", text_color="#27ae60")
+        self.start_session_btn.configure(state="disabled")
+        self.end_session_btn.configure(state="normal")
         
         #show toast notification
         self.toast.show(f"Session #{self.current_session_id} started", "success", duration=2000)
@@ -541,9 +683,9 @@ class TuroArnisGUI:
 
             self.current_session_id = None
 
-            self.session_status_label.config(text="No active session", bootstyle="warning")
-            self.start_session_btn.config(state=NORMAL)
-            self.end_session_btn.config(state=DISABLED)
+            self.session_status_label.configure(text="No active session", text_color="#f39c12")
+            self.start_session_btn.configure(state="normal")
+            self.end_session_btn.configure(state="disabled")
     
     def save_performance(self, result, is_correct):
         if not self.current_session_id:
@@ -589,8 +731,39 @@ class TuroArnisGUI:
     
     def reset_feedback(self):
         self.target_form = None
-        self.form_button.config(text="Choose Arnis Form")
+        self.selected_form.set("Choose Arnis Form")
         self.status_label.config(text="Status: Select a form")
+    
+    def update_fps_display(self, frame_time=None):
+        """Update FPS display in controls panel"""
+        if frame_time is None:
+            frame_time = time.time()
+        
+        self.frame_times.append(frame_time)
+        
+        # Keep last 30 frames
+        if len(self.frame_times) > 30:
+            self.frame_times.pop(0)
+        
+        # Update every 0.5 seconds
+        if time.time() - self.last_fps_update > 0.5:
+            if len(self.frame_times) > 1:
+                fps = len(self.frame_times) / (self.frame_times[-1] - self.frame_times[0])
+                
+                # Color code FPS
+                if fps >= 25:
+                    color = "#27ae60"
+                elif fps >= 15:
+                    color = "#f39c12"
+                else:
+                    color = "#e74c3c"
+                
+                self.fps_label.configure(
+                    text=f"FPS: {fps:.0f}",
+                    text_color=color
+                )
+            
+            self.last_fps_update = time.time()
 
 if __name__ == "__main__":
     #windows: set app id so taskbar icon shows properly
@@ -601,14 +774,19 @@ if __name__ == "__main__":
     except:
         pass  #not on windows or failed
     
-    root = ttk.Window(themename="flatly")
+    root = ctk.CTk()  # CustomTkinter window
     
     #set icon before creating the gui
     try:
         from app.utils.resource_path import get_resource_path
-        icon_path = get_resource_path('assets/TA.ico')
+        icon_path = get_resource_path('app/assets/TA.ico')
+        print(f"[DEBUG-ICON-MAIN] Icon path resolved to: {icon_path}")
+        print(f"[DEBUG-ICON-MAIN] Icon exists: {os.path.exists(icon_path)}")
         if os.path.exists(icon_path):
             root.iconbitmap(icon_path)
+            print(f"[DEBUG-ICON-MAIN] Icon set successfully")
+        else:
+            print(f"[DEBUG-ICON-MAIN] Icon file not found at {icon_path}")
     except Exception as e:
         print(f"[WARNING] Could not set icon: {e}")
     

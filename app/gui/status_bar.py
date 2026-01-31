@@ -21,7 +21,7 @@ class StatusBar:
         self.fps_label = ttk.Label(
             left_frame,
             text="FPS: --",
-            font=("-size 9"),
+            font=("-size 11"),
             bootstyle="inverse-dark"
         )
         self.fps_label.pack(side=LEFT, padx=5)
@@ -31,7 +31,7 @@ class StatusBar:
         self.camera_label = ttk.Label(
             left_frame,
             text="📷 Camera: Initializing...",
-            font=("-size 9"),
+            font=("-size 11"),
             bootstyle="inverse-dark"
         )
         self.camera_label.pack(side=LEFT, padx=5)

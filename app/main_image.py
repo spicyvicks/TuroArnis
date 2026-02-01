@@ -19,6 +19,7 @@ if not getattr(sys, 'frozen', False):
 
 from app.gui.results_window import ResultsWindow
 from app.computer_vision.pose_analyzer import PoseAnalyzer
+from app.computer_vision.feedback_analyzer import FeedbackAnalyzer
 from app.utils.resource_path import get_resource_path
 
 #image testing config - uses resource path for deployment
@@ -60,6 +61,9 @@ class TuroArnisGUI:
             stick_model_path=stick_model_path if os.path.exists(stick_model_path) else None,
             debug_stick=True
         )
+        
+        #initialize feedback analyzer
+        self.feedback_analyzer = FeedbackAnalyzer()
         
         #load test image
         self.static_image_original = cv2.imread(TEST_IMAGE_PATH)
@@ -222,20 +226,17 @@ class TuroArnisGUI:
                 person_id = result['id']
                 
                 draw_color = COLOR_ERROR; box_color = COLOR_DEFAULT; is_correct = False
-                error_messages = []
 
                 if self.target_form:
-                    predicted_class = result['predicted_class']
-                    predicted_class = re.sub(r'^\d+\.\s*', '', predicted_class)
-                    confidence = result['confidence']
+                    #use feedback analyzer to determine correctness
+                    feedback = self.feedback_analyzer.analyze(result, self.target_form)
+                    is_correct = feedback['is_correct']
                     
-                    if predicted_class.strip() == self.target_form.strip() and confidence > 0.60:
-                        is_correct = True
+                    if is_correct:
                         draw_color = COLOR_CORRECT
                         box_color = COLOR_CORRECT
                         current_state = 'correct'
                     else:
-                        is_correct = False
                         current_state = 'incorrect'
                     
                     #state transition tracking (logs only)
@@ -274,32 +275,109 @@ class TuroArnisGUI:
                             cv2.line(processing_frame, start_pt, end_pt, draw_color, 2)
 
                 if self.target_form:
+                    #use feedback analyzer to get detailed feedback
+                    feedback = self.feedback_analyzer.analyze(result, self.target_form)
+                    prioritized_messages = self.feedback_analyzer.get_prioritized_messages(feedback, max_messages=4)
+                    
+                    #enhanced feedback UI with better styling
+                    box_width = 420  #larger for 640x480 image
+                    box_height = 220
+                    box_x = processing_frame.shape[1] - box_width - 20
+                    box_y = 20
+                    
+                    #draw shadow for depth
+                    shadow_offset = 5
+                    cv2.rectangle(processing_frame, 
+                        (box_x + shadow_offset, box_y + shadow_offset), 
+                        (box_x + box_width + shadow_offset, box_y + box_height + shadow_offset), 
+                        (20, 20, 20), -1)
+                    
+                    #draw main feedback box
                     overlay = processing_frame.copy()
-                    cv2.rectangle(overlay, (feedback_x - 10, feedback_y - 20), (processing_frame.shape[1] - 10, feedback_y + 150), COLOR_BG_TRANSPARENT, -1)
-                    alpha = 0.6
+                    cv2.rectangle(overlay, (box_x, box_y), (box_x + box_width, box_y + box_height), 
+                        (40, 44, 52), -1)
+                    alpha = 0.92
                     processing_frame = cv2.addWeighted(overlay, alpha, processing_frame, 1 - alpha, 0)
                     
-                    if is_correct:
-                        cv2.putText(processing_frame, "Correct!", (feedback_x, feedback_y), cv2.FONT_HERSHEY_SIMPLEX, 0.7, COLOR_CORRECT, 2)
+                    #draw border
+                    if feedback['is_correct']:
+                        border_color = (0, 200, 0)
+                    elif feedback['severity'] == 'critical':
+                        border_color = (0, 0, 220)
                     else:
-                        error_display_list = []
-                        if result['grip_angle'] is not None:
-                            target_min, target_max = 80, 120 
-                            if not (target_min <= result['grip_angle'] <= target_max):
-                                feedback = "Extend stick" if result['grip_angle'] < target_min else "Retract stick"
-                                error_display_list.append(f"Grip: {feedback}")
-                        
-                        error_display_list.extend(error_messages)
-
-                        if error_display_list:
-                            cv2.putText(processing_frame, "Feedback:", (feedback_x, feedback_y), cv2.FONT_HERSHEY_SIMPLEX, 0.7, COLOR_PROMPT, 2)
-                            for i, msg in enumerate(error_display_list[:4]):
-                                cv2.putText(processing_frame, msg, (feedback_x, feedback_y + 30 + (i * 25)), cv2.FONT_HERSHEY_SIMPLEX, 0.6, COLOR_ERROR, 2)
+                        border_color = (52, 152, 219)
+                    cv2.rectangle(processing_frame, (box_x, box_y), (box_x + box_width, box_y + box_height), 
+                        border_color, 3)
+                    
+                    #render content
+                    content_x = box_x + 20
+                    content_y = box_y + 35
+                    
+                    if feedback['is_correct']:
+                        cv2.putText(processing_frame, "Perfect Form!", 
+                            (content_x, content_y), 
+                            cv2.FONT_HERSHEY_DUPLEX, 1.0, (0, 255, 0), 2, cv2.LINE_AA)
+                        cv2.putText(processing_frame, "Maintain this position", 
+                            (content_x, content_y + 45), 
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.65, (200, 200, 200), 1, cv2.LINE_AA)
+                    else:
+                        if prioritized_messages:
+                            cv2.putText(processing_frame, "Form Feedback", 
+                                (content_x, content_y), 
+                                cv2.FONT_HERSHEY_DUPLEX, 0.9, (255, 255, 255), 2, cv2.LINE_AA)
+                            
+                            cv2.line(processing_frame, 
+                                (content_x, content_y + 10), 
+                                (box_x + box_width - 20, content_y + 10), 
+                                (100, 100, 100), 1)
+                            
+                            msg_y = content_y + 45
+                            for i, (message, msg_type) in enumerate(prioritized_messages):
+                                if msg_y > box_y + box_height - 25:
+                                    break
+                                
+                                if msg_type == 'error':
+                                    icon = "X"
+                                    msg_color = (0, 100, 255)
+                                    icon_color = (0, 100, 255)
+                                elif msg_type == 'warning':
+                                    icon = "!"
+                                    msg_color = (0, 165, 255)
+                                    icon_color = (0, 165, 255)
+                                else:
+                                    icon = ">"
+                                    msg_color = (200, 200, 0)
+                                    icon_color = (200, 200, 0)
+                                
+                                cv2.putText(processing_frame, icon, 
+                                    (content_x, msg_y), 
+                                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, icon_color, 2, cv2.LINE_AA)
+                                
+                                max_chars = 42
+                                display_msg = message[:max_chars] + "..." if len(message) > max_chars else message
+                                cv2.putText(processing_frame, display_msg, 
+                                    (content_x + 25, msg_y), 
+                                    cv2.FONT_HERSHEY_SIMPLEX, 0.58, msg_color, 1, cv2.LINE_AA)
+                                
+                                msg_y += 40
                         else:
                             pretty_form_name = self.form_button.cget('text')
                             if pretty_form_name != "Choose Arnis Form":
-                                cv2.putText(processing_frame, f"Adjust to Form:", (feedback_x, feedback_y), cv2.FONT_HERSHEY_SIMPLEX, 0.7, COLOR_PROMPT, 2)
-                                cv2.putText(processing_frame, pretty_form_name, (feedback_x, feedback_y + 30), cv2.FONT_HERSHEY_SIMPLEX, 0.6, COLOR_WHITE, 2)
+                                cv2.putText(processing_frame, "Adjust to:", 
+                                    (content_x, content_y), 
+                                    cv2.FONT_HERSHEY_DUPLEX, 0.9, (255, 255, 255), 2, cv2.LINE_AA)
+                                
+                                words = pretty_form_name.split()
+                                line1 = ' '.join(words[:3])
+                                line2 = ' '.join(words[3:]) if len(words) > 3 else ""
+                                
+                                cv2.putText(processing_frame, line1, 
+                                    (content_x, content_y + 45), 
+                                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (200, 200, 200), 1, cv2.LINE_AA)
+                                if line2:
+                                    cv2.putText(processing_frame, line2, 
+                                        (content_x, content_y + 80), 
+                                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (200, 200, 200), 1, cv2.LINE_AA)
             
             canvas_width = self.video_canvas.winfo_width(); canvas_height = self.video_canvas.winfo_height()
             final_frame = self.resize_and_pad(processing_frame, size=(canvas_width, canvas_height))

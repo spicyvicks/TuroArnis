@@ -25,6 +25,7 @@ from app.gui.user_dialog import show_user_dialog
 from app.gui.toast import ToastNotification
 from app.gui.loading_spinner import LoadingSpinner
 from app.computer_vision.pose_analyzer import PoseAnalyzer
+from app.computer_vision.feedback_analyzer import FeedbackAnalyzer
 from app.database.db_manager import DatabaseManager
 from app.utils.resource_path import get_resource_path, get_app_data_path
 
@@ -186,6 +187,10 @@ class TuroArnisGUI:
             stick_model_path=stick_model_path if os.path.exists(stick_model_path) else None,
             debug_stick=False
         )
+        
+        #initialize feedback analyzer
+        self.feedback_analyzer = FeedbackAnalyzer()
+        
         time.sleep(0.3)
         
         # Camera init
@@ -213,10 +218,58 @@ class TuroArnisGUI:
         main_container.grid_columnconfigure(0, weight=0)
         main_container.grid_columnconfigure(1, weight=1) 
 
-        self.video_canvas = tk.Canvas(main_container, background='black', highlightthickness=0)
-        self.video_canvas.grid(row=0, column=1, sticky="nsew")
+        #create frame to hold video canvas (for layering feedback panel)
+        video_frame = ctk.CTkFrame(main_container, fg_color="black")
+        video_frame.grid(row=0, column=1, sticky="nsew")
+        
+        self.video_canvas = tk.Canvas(video_frame, background='black', highlightthickness=0)
+        self.video_canvas.pack(fill="both", expand=True)
         self.video_canvas.bind('<Configure>', self.on_canvas_resize)
         self.tk_image = None
+        
+        #floating feedback panel (TTK overlay with proper Inter font)
+        self.feedback_panel = ctk.CTkFrame(
+            video_frame,
+            corner_radius=12,
+            fg_color=("#2c3e50", "#1a252f"),
+            border_width=3,
+            border_color="#3498db"
+        )
+        self.feedback_panel.place(relx=0.98, rely=0.02, anchor="ne", width=350, height=200)
+        
+        #feedback header
+        self.feedback_header = ctk.CTkLabel(
+            self.feedback_panel,
+            text="Form Feedback",
+            font=("Inter", 18, "bold"),
+            text_color="white",
+            anchor="w"
+        )
+        self.feedback_header.pack(pady=(12, 5), padx=15, anchor="w")
+        
+        #separator line
+        ctk.CTkFrame(self.feedback_panel, height=2, fg_color="#34495e").pack(fill="x", padx=15, pady=(0, 8))
+        
+        #messages container
+        self.feedback_messages_frame = ctk.CTkFrame(self.feedback_panel, fg_color="transparent")
+        self.feedback_messages_frame.pack(fill="both", expand=True, padx=15, pady=(0, 12))
+        
+        #message labels (4 slots for priority messages)
+        self.feedback_message_labels = []
+        for i in range(4):
+            msg_label = ctk.CTkLabel(
+                self.feedback_messages_frame,
+                text="",
+                font=("Inter", 12),
+                text_color="#95a5a6",
+                anchor="w",
+                wraplength=300
+            )
+            msg_label.pack(anchor="w", pady=2)
+            self.feedback_message_labels.append(msg_label)
+        
+        #track last feedback to minimize updates (throttling)
+        self.last_feedback_state = None
 
         self.controls_panel = ctk.CTkFrame(main_container, width=250, corner_radius=0, fg_color="white")
         self.controls_panel.grid(row=0, column=0, sticky="nsew")
@@ -477,20 +530,17 @@ class TuroArnisGUI:
                 person_id = result['id']
                 
                 draw_color = COLOR_ERROR; box_color = COLOR_DEFAULT; is_correct = False
-                error_messages = []
 
                 if self.target_form:
-                    predicted_class = result['predicted_class']
-                    predicted_class = re.sub(r'^\d+\.\s*', '', predicted_class)
-                    confidence = result['confidence']
+                    #use feedback analyzer to determine correctness
+                    feedback = self.feedback_analyzer.analyze(result, self.target_form)
+                    is_correct = feedback['is_correct']
                     
-                    if predicted_class.strip() == self.target_form.strip() and confidence > 0.60:
-                        is_correct = True
+                    if is_correct:
                         draw_color = COLOR_CORRECT
                         box_color = COLOR_CORRECT
                         current_state = 'correct'
                     else:
-                        is_correct = False
                         current_state = 'incorrect'
                     
                     # State tracking
@@ -547,32 +597,12 @@ class TuroArnisGUI:
                             cv2.line(processing_frame, start_pt, end_pt, connection_color, 3, lineType=cv2.LINE_AA)
 
                 if self.target_form:
-                    overlay = processing_frame.copy()
-                    cv2.rectangle(overlay, (feedback_x - 10, feedback_y - 20), (processing_frame.shape[1] - 10, feedback_y + 150), COLOR_BG_TRANSPARENT, -1)
-                    alpha = 0.6
-                    processing_frame = cv2.addWeighted(overlay, alpha, processing_frame, 1 - alpha, 0)
+                    #use feedback analyzer to get detailed feedback
+                    feedback = self.feedback_analyzer.analyze(result, self.target_form)
+                    prioritized_messages = self.feedback_analyzer.get_prioritized_messages(feedback, max_messages=4)
                     
-                    if is_correct:
-                        cv2.putText(processing_frame, "Correct!", (feedback_x, feedback_y), cv2.FONT_HERSHEY_SIMPLEX, 0.5, COLOR_CORRECT, 2)
-                    else:
-                        error_display_list = []
-                        if result['grip_angle'] is not None:
-                            target_min, target_max = 80, 120 
-                            if not (target_min <= result['grip_angle'] <= target_max):
-                                feedback = "Extend stick" if result['grip_angle'] < target_min else "Retract stick"
-                                error_display_list.append(f"Grip: {feedback}")
-                        
-                        error_display_list.extend(error_messages)
-
-                        if error_display_list:
-                            cv2.putText(processing_frame, "Feedback:", (feedback_x, feedback_y), cv2.FONT_HERSHEY_SIMPLEX, 0.5, COLOR_PROMPT, 2)
-                            for i, msg in enumerate(error_display_list[:4]):
-                                cv2.putText(processing_frame, msg, (feedback_x, feedback_y + 30 + (i * 25)), cv2.FONT_HERSHEY_SIMPLEX, 0.4, COLOR_ERROR, 2)
-                        else:
-                            pretty_form_name = self.form_button.cget('text')
-                            if pretty_form_name != "Choose Arnis Form":
-                                cv2.putText(processing_frame, f"Adjust to Form:", (feedback_x, feedback_y), cv2.FONT_HERSHEY_SIMPLEX, 0.5, COLOR_PROMPT, 2)
-                                cv2.putText(processing_frame, pretty_form_name, (feedback_x, feedback_y + 30), cv2.FONT_HERSHEY_SIMPLEX, 0.4, COLOR_WHITE, 2)
+                    #update TTK feedback panel (throttled - only when feedback changes)
+                    self.update_feedback_ui(feedback, prioritized_messages)
             
             canvas_width = self.video_canvas.winfo_width(); canvas_height = self.video_canvas.winfo_height()
             final_frame = self.resize_and_pad(processing_frame, size=(canvas_width, canvas_height))
@@ -744,6 +774,65 @@ class TuroArnisGUI:
         self.target_form = None
         self.selected_form.set("Choose Arnis Form")
         self.status_label.configure(text="Status: Select a form")
+    
+    def update_feedback_ui(self, feedback, prioritized_messages):
+        """
+        Update the TTK feedback panel (called only when feedback changes)
+        This runs independently from video loop - only 2-3 times per second
+        """
+        #create state key to check if feedback actually changed
+        state_key = (feedback.get('is_correct'), len(prioritized_messages), feedback.get('severity'))
+        
+        if state_key == self.last_feedback_state:
+            return  #no change, skip update
+        
+        self.last_feedback_state = state_key
+        
+        #update border color based on state
+        if feedback['is_correct']:
+            self.feedback_panel.configure(border_color="#27ae60")  #green
+            self.feedback_header.configure(text="Perfect Form!", text_color="#27ae60")
+        elif feedback.get('severity') == 'critical':
+            self.feedback_panel.configure(border_color="#e74c3c")  #red
+            self.feedback_header.configure(text="Form Feedback", text_color="white")
+        else:
+            self.feedback_panel.configure(border_color="#3498db")  #blue
+            self.feedback_header.configure(text="Form Feedback", text_color="white")
+        
+        #update messages
+        if feedback['is_correct']:
+            #show success message
+            self.feedback_message_labels[0].configure(
+                text="✓ Maintain this position",
+                text_color="#27ae60",
+                font=("Inter", 13, "bold")
+            )
+            for i in range(1, 4):
+                self.feedback_message_labels[i].configure(text="")
+        else:
+            #show prioritized messages
+            for i in range(4):
+                if i < len(prioritized_messages):
+                    message, msg_type = prioritized_messages[i]
+                    
+                    #set icon and color
+                    if msg_type == 'error':
+                        icon = "✗"
+                        color = "#e74c3c"  #red
+                    elif msg_type == 'warning':
+                        icon = "⚠"
+                        color = "#f39c12"  #orange
+                    else:  #suggestion
+                        icon = "→"
+                        color = "#3498db"  #blue
+                    
+                    self.feedback_message_labels[i].configure(
+                        text=f"{icon} {message}",
+                        text_color=color,
+                        font=("Inter", 12)
+                    )
+                else:
+                    self.feedback_message_labels[i].configure(text="")
     
     def update_fps_display(self, frame_time=None):
         if frame_time is None:

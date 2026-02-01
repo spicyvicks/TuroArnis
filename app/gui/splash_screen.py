@@ -19,11 +19,11 @@ class SplashScreen:
         """Display splash screen"""
         self.start_time = time.time()
         
-        # Create splash window
+        #create splash window
         self.splash_window = ttk.Toplevel(self.parent)
-        self.splash_window.overrideredirect(True)  # Remove window decorations
+        self.splash_window.overrideredirect(True)  #remove window decorations
         
-        # Set size and position
+        #set size and position
         width, height = 500, 350
         screen_width = self.splash_window.winfo_screenwidth()
         screen_height = self.splash_window.winfo_screenheight()
@@ -31,15 +31,15 @@ class SplashScreen:
         y = (screen_height - height) // 2
         self.splash_window.geometry(f"{width}x{height}+{x}+{y}")
         
-        # Main container with gradient effect
+        #main container with gradient effect
         main_frame = ttk.Frame(self.splash_window, bootstyle="dark")
         main_frame.pack(fill=BOTH, expand=YES)
         
-        # Content frame
+        #content frame
         content_frame = ttk.Frame(main_frame, bootstyle="dark")
         content_frame.place(relx=0.5, rely=0.5, anchor=CENTER)
         
-        # App name (large)
+        #app name (large)
         app_label = ttk.Label(
             content_frame,
             text=self.app_name,
@@ -48,7 +48,7 @@ class SplashScreen:
         )
         app_label.pack(pady=(0, 5))
         
-        # Subtitle
+        #subtitle
         subtitle_label = ttk.Label(
             content_frame,
             text="Arnis Form Correction System",
@@ -57,7 +57,7 @@ class SplashScreen:
         )
         subtitle_label.pack(pady=(0, 30))
         
-        # Progress bar
+        #progress bar
         self.progress = ttk.Progressbar(
             content_frame,
             mode='indeterminate',
@@ -65,9 +65,9 @@ class SplashScreen:
             length=300
         )
         self.progress.pack(pady=(0, 10))
-        self.progress.start(10)  # Animate
+        self.progress.start(10)  #animate
         
-        # Status label
+        #status label
         self.progress_label = ttk.Label(
             content_frame,
             text="Initializing...",
@@ -76,7 +76,7 @@ class SplashScreen:
         )
         self.progress_label.pack()
         
-        # Version at bottom
+        #version at bottom
         version_label = ttk.Label(
             main_frame,
             text=f"Version {self.version}",
@@ -85,7 +85,7 @@ class SplashScreen:
         )
         version_label.pack(side=BOTTOM, pady=10)
         
-        # Copyright
+        #copyright
         copyright_label = ttk.Label(
             main_frame,
             text="© 2026 TuroArnis Team",
@@ -105,7 +105,7 @@ class SplashScreen:
     def hide(self):
         """Hide splash screen (with minimum display time)"""
         if self.splash_window:
-            # Ensure minimum display time
+            #ensure minimum display time
             elapsed = time.time() - self.start_time
             if elapsed < self.min_display_time:
                 remaining = self.min_display_time - elapsed

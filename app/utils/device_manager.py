@@ -14,14 +14,14 @@ def get_device():
         'details': []
     }
     
-    #check tensorflow GPU availability
+    #check tensorflow gpu availability
     try:
         import tensorflow as tf
         gpus = tf.config.list_physical_devices('GPU')
         
         if gpus:
             try:
-                #enable memory growth to prevent tensorflow from allocating all GPU memory
+                #enable memory growth to prevent tensorflow from allocating all gpu memory
                 for gpu in gpus:
                     tf.config.experimental.set_memory_growth(gpu, True)
                 
@@ -38,7 +38,7 @@ def get_device():
     except Exception as e:
         device_info['details'].append(f'tensorflow check failed: {e}')
     
-    #check pytorch (used by ultralytics YOLO) GPU availability
+    #check pytorch (used by ultralytics yolo) gpu availability
     try:
         import torch
         
@@ -103,7 +103,7 @@ def get_yolo_device(device_info=None):
     if device_info is None:
         device_info = get_device()
     
-    #ultralytics YOLO accepts: 'cpu', 'cuda', or device number (0, 1, etc.)
+    #ultralytics yolo accepts: 'cpu', 'cuda', or device number (0, 1, etc.)
     return 0 if device_info['has_gpu'] else 'cpu'
 
 

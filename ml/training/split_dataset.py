@@ -3,7 +3,7 @@ import shutil
 from pathlib import Path
 from sklearn.model_selection import train_test_split
 
-#split original dataset into train/test BEFORE augmentation
+#split original dataset into train/test before augmentation
 #this prevents data leakage from augmented images
 
 INPUT_FOLDER = "dataset"  #original images

@@ -279,7 +279,7 @@ class TuroArnisGUI:
                     feedback = self.feedback_analyzer.analyze(result, self.target_form)
                     prioritized_messages = self.feedback_analyzer.get_prioritized_messages(feedback, max_messages=4)
                     
-                    #enhanced feedback UI with better styling
+                    #enhanced feedback ui with better styling
                     box_width = 420  #larger for 640x480 image
                     box_height = 220
                     box_x = processing_frame.shape[1] - box_width - 20

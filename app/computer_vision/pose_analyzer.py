@@ -17,14 +17,14 @@ class PoseAnalyzer:
     def __init__(self, detection_interval=3, stick_model_path=None, debug_stick=False):
         print("[info] initializing computer vision components...")
         
-        #configure device (GPU/CPU) for tensorflow and pytorch/YOLO
+        #configure device (gpu/cpu) for tensorflow and pytorch/yolo
         self.device_info = configure_device(verbose=True)
         self.yolo_device = get_yolo_device(self.device_info)
         
         #use resource path helper for pyinstaller compatibility
         yolo_base_path = get_resource_path('yolov8n.pt')
         self.yolo_model = YOLO(yolo_base_path)
-        self.yolo_model.to(self.yolo_device)  #move model to GPU if available
+        self.yolo_model.to(self.yolo_device)  #move model to gpu if available
         
         #cached stick detection results
         self._cached_stick_results = {}
@@ -38,7 +38,7 @@ class PoseAnalyzer:
         if stick_model_path and os.path.exists(stick_model_path):
             try:
                 self.stick_detector = YOLO(stick_model_path)
-                self.stick_detector.to(self.yolo_device)  #move model to GPU if available
+                self.stick_detector.to(self.yolo_device)  #move model to gpu if available
                 print(f"[info] Stick detector model loaded from {stick_model_path}")
                 print(f"[DEBUG-INIT] Stick detector type: {type(self.stick_detector)}")
                 print(f"[DEBUG-INIT] Stick detector model names: {self.stick_detector.names if hasattr(self.stick_detector, 'names') else 'N/A'}")
@@ -103,7 +103,7 @@ class PoseAnalyzer:
                 
                 print(f"[info] using model version: {version_name}")
                 
-                #check if this is an ensemble model FIRST (before checking model.keras)
+                #check if this is an ensemble model first (before checking model.keras)
                 version_path = get_resource_path(os.path.join('ml/models', version_name))
                 metadata_path = os.path.join(version_path, 'metadata.json')
                 ensemble_config_path = os.path.join(version_path, 'ensemble_config.json')
@@ -113,7 +113,7 @@ class PoseAnalyzer:
                 print(f"[debug] ensemble_config exists: {os.path.exists(ensemble_config_path)}")
                 
                 is_ensemble = False
-                model_type = 'dnn'  # default
+                model_type = 'dnn'  #default
                 if os.path.exists(metadata_path):
                     with open(metadata_path, 'r') as f:
                         metadata = json.load(f)
@@ -218,12 +218,12 @@ class PoseAnalyzer:
                     print(f"[error] encoder_path: {encoder_path}")
                     raise FileNotFoundError("model or encoder not found")
 
-                # Load model with compile=False to handle Keras 2.x/3.x compatibility
+                #load model with compile=false to handle keras 2.x/3.x compatibility
                 print("[info] loading model (Keras 2.x/3.x compatibility mode)...")
                 import keras
                 self.pose_classifier_model = keras.saving.load_model(model_path, compile=False)
                 
-                # Manually compile the model
+                #manually compile the model
                 self.pose_classifier_model.compile(
                     optimizer='adam',
                     loss='sparse_categorical_crossentropy',
@@ -440,10 +440,10 @@ class PoseAnalyzer:
                 #landmarks are relative to the crop, so we add the offset
                 abs_landmarks = []
                 for lm in landmarks_2d:
-                    # Convert normalized coordinates to crop space, then to frame space
+                    #convert normalized coordinates to crop space, then to frame space
                     abs_x = int(lm.x * crop_w) + offset_x
                     abs_y = int(lm.y * crop_h) + offset_y
-                    # Clamp to ensure they stay within reasonable bounds
+                    #clamp to ensure they stay within reasonable bounds
                     abs_x = max(0, min(abs_x, frame.shape[1] - 1))
                     abs_y = max(0, min(abs_y, frame.shape[0] - 1))
                     abs_landmarks.append((abs_x, abs_y, lm.z))

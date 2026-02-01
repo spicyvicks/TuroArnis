@@ -23,7 +23,7 @@ class UserManagementDialog:
         from utils.resource_path import get_resource_path
         icon_path = get_resource_path('app/assets/TA.ico')
         if os.path.exists(icon_path):
-            # Delay icon setting for CTkToplevel compatibility
+            #delay icon setting for ctktoplevel compatibility
             self.dialog.after(200, lambda: self.dialog.iconbitmap(icon_path))
         
         #calculate centered position (80% of screen to match main window)
@@ -44,7 +44,7 @@ class UserManagementDialog:
         self.setup_ui()
         self.refresh_user_list()
         
-        #handle window close (X button)
+        #handle window close (x button)
         self.dialog.protocol("WM_DELETE_WINDOW", self.exit_dialog)
         
         #ensure dialog is visible and focused

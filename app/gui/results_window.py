@@ -8,7 +8,7 @@ class ResultsWindow(ctk.CTkToplevel):
         super().__init__(master=parent)
         self.title("Performance Results & Statistics")
         
-        #set app icon for taskbar (use after() for CTkToplevel compatibility)
+        #set app icon for taskbar (use after() for ctktoplevel compatibility)
         from utils.resource_path import get_resource_path
         import os
         icon_path = get_resource_path('app/assets/TA.ico')
@@ -83,15 +83,15 @@ class ResultsWindow(ctk.CTkToplevel):
         cards_frame = ctk.CTkFrame(stats_frame, fg_color="transparent")
         cards_frame.pack(fill="x", pady=(0, 20), padx=10)
         
-        self.create_stat_card(cards_frame, "Total Attempts", str(stats['total_attempts'] or 0), "#27ae60").pack(side="left", padx=10, expand=True, fill="x")
+        self.create_stat_card(cards_frame, "Total Attempts", str(stats['total_attempts'] or 0), "#27ae60").pack(side="left", padx=10, expand=true, fill="x")
         
         correct = stats['correct_attempts'] or 0
         total = stats['total_attempts'] or 1
         accuracy = (correct / total * 100) if total > 0 else 0
-        self.create_stat_card(cards_frame, "Correct Forms", f"{correct} ({accuracy:.1f}%)", "#3498db").pack(side="left", padx=10, expand=True, fill="x")
+        self.create_stat_card(cards_frame, "Correct Forms", f"{correct} ({accuracy:.1f}%)", "#3498db").pack(side="left", padx=10, expand=true, fill="x")
         
         avg_conf = stats['avg_confidence'] or 0
-        self.create_stat_card(cards_frame, "Avg Confidence", f"{avg_conf:.2f}", "#f39c12").pack(side="left", padx=10, expand=True, fill="x")
+        self.create_stat_card(cards_frame, "Avg Confidence", f"{avg_conf:.2f}", "#f39c12").pack(side="left", padx=10, expand=true, fill="x")
         
         #pose breakdown table
         if stats['pose_breakdown']:

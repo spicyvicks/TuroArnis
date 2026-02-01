@@ -27,7 +27,7 @@ class MultiUserDialog:
         self.dialog.geometry("900x700")
         self.dialog.resizable(False, False)
         
-        #set app icon for taskbar (use after() for CTkToplevel compatibility)
+        #set app icon for taskbar (use after() for ctktoplevel compatibility)
         from app.utils.resource_path import get_resource_path
         import os
         icon_path = get_resource_path('app/assets/TA.ico')

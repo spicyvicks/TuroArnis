@@ -6,7 +6,7 @@ import os
 import zipfile
 import json
 
-# Add parent directory to path
+#add parent directory to path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from app.utils.resource_path import get_resource_path
 
@@ -62,7 +62,7 @@ def check_keras_version():
         import keras
         print(f"\n🔧 Installed Keras version: {keras.__version__}")
         
-        # Check if it's Keras 3
+        #check if it's keras 3
         if hasattr(keras, 'src'):
             print("   Type: Keras 3.x (standalone)")
         else:
@@ -78,19 +78,19 @@ if __name__ == "__main__":
     print("Keras Model Format Checker")
     print("="*60)
     
-    # Check Keras version
+    #check keras version
     check_keras_version()
     
-    # Check models
+    #check models
     print("\n" + "="*60)
     print("Checking Models")
     print("="*60 + "\n")
     
-    # Check main model
+    #check main model
     model_path = get_resource_path('ml/models/arnis_coordinates_classifier.keras')
     format_type = check_model_format(model_path)
     
-    # Check versioned models if they exist
+    #check versioned models if they exist
     print("\n" + "-"*60)
     models_dir = get_resource_path('ml/models')
     
@@ -99,7 +99,7 @@ if __name__ == "__main__":
         for item in os.listdir(models_dir):
             item_path = os.path.join(models_dir, item)
             if os.path.isdir(item_path):
-                # Check for model.keras in version directory
+                #check for model.keras in version directory
                 version_model = os.path.join(item_path, 'model.keras')
                 if os.path.exists(version_model):
                     print(f"\n📦 Version: {item}")

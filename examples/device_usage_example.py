@@ -8,7 +8,7 @@ in custom scripts or notebooks.
 import sys
 import os
 
-# Add project root to path
+#add project root to path
 current_dir = os.path.dirname(os.path.abspath(__file__))
 project_root = os.path.dirname(current_dir)
 if project_root not in sys.path:
@@ -60,19 +60,19 @@ def example_yolo():
     print("YOLO EXAMPLE")
     print("="*70)
     
-    # Configure device
+    #configure device
     device_info = configure_device(verbose=False)
     yolo_device = get_yolo_device(device_info)
     
     print(f"\nYOLO will use device: {yolo_device}")
     
-    # Load YOLO model
+    #load yolo model
     try:
         from app.utils.resource_path import get_resource_path
         model_path = get_resource_path('yolov8n.pt')
         
         model = YOLO(model_path)
-        model.to(yolo_device)  # Move to GPU or CPU
+        model.to(yolo_device)  #move to gpu or cpu
         
         print(f"YOLO model loaded on device: {yolo_device}")
         print("✓ YOLO example completed successfully")

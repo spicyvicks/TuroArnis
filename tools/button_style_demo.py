@@ -14,15 +14,15 @@ class ButtonStyleDemo(ctk.CTk):
         self.title("Button Style Demo - Choose Your Style")
         self.geometry("1200x800")
         
-        # Main scrollable frame
+        #main scrollable frame
         main_frame = ctk.CTkScrollableFrame(self, width=1150, height=750)
         main_frame.pack(fill="both", expand=True, padx=20, pady=20)
         
-        # Title
+        #title
         ctk.CTkLabel(main_frame, text="Button Style Gallery", 
                      font=("Inter", 28, "bold")).pack(pady=(0, 20))
         
-        # ========== CORNER RADIUS SECTION ==========
+        #========== corner radius section ==========
         self.create_section(main_frame, "Corner Radius Options", [
             ("Square (0px)", {"corner_radius": 0}),
             ("Slight (5px)", {"corner_radius": 5}),
@@ -33,7 +33,7 @@ class ButtonStyleDemo(ctk.CTk):
             ("Max Pill (50px)", {"corner_radius": 50}),
         ])
         
-        # ========== COLOR PALETTE SECTION ==========
+        #========== color palette section ==========
         self.create_section(main_frame, "Color Palette - Solid", [
             ("Primary Blue", {"fg_color": "#3498db", "hover_color": "#2980b9"}),
             ("Success Green", {"fg_color": "#27ae60", "hover_color": "#229954"}),
@@ -45,7 +45,7 @@ class ButtonStyleDemo(ctk.CTk):
             ("Gray", {"fg_color": "#95a5a6", "hover_color": "#7f8c8d"}),
         ])
         
-        # ========== PASTEL COLORS ==========
+        #========== pastel colors ==========
         self.create_section(main_frame, "Pastel Colors", [
             ("Pastel Blue", {"fg_color": "#74b9ff", "hover_color": "#5dade2"}),
             ("Pastel Green", {"fg_color": "#55efc4", "hover_color": "#00cec9"}),
@@ -55,7 +55,7 @@ class ButtonStyleDemo(ctk.CTk):
             ("Pastel Coral", {"fg_color": "#fab1a0", "hover_color": "#e17055"}),
         ])
         
-        # ========== OUTLINE/BORDER STYLES ==========
+        #========== outline/border styles ==========
         self.create_section(main_frame, "Outline Styles", [
             ("Blue Outline", {"fg_color": "transparent", "border_width": 2, "border_color": "#3498db", "text_color": "#3498db", "hover_color": "#3498db"}),
             ("Green Outline", {"fg_color": "transparent", "border_width": 2, "border_color": "#27ae60", "text_color": "#27ae60", "hover_color": "#27ae60"}),
@@ -64,7 +64,7 @@ class ButtonStyleDemo(ctk.CTk):
             ("Thick Border", {"fg_color": "transparent", "border_width": 3, "border_color": "#9b59b6", "text_color": "#9b59b6", "hover_color": "#9b59b6"}),
         ])
         
-        # ========== GRADIENT-LIKE (Two-tone) ==========
+        #========== gradient-like (two-tone) ==========
         self.create_section(main_frame, "Two-Tone Styles", [
             ("Ocean", {"fg_color": "#0984e3", "hover_color": "#74b9ff"}),
             ("Forest", {"fg_color": "#00b894", "hover_color": "#55efc4"}),
@@ -73,22 +73,22 @@ class ButtonStyleDemo(ctk.CTk):
             ("Midnight", {"fg_color": "#2d3436", "hover_color": "#636e72"}),
         ])
         
-        # ========== WIDTH VARIATIONS ==========
+        #========== width variations ==========
         self.create_width_section(main_frame)
         
-        # ========== HEIGHT VARIATIONS ==========
+        #========== height variations ==========
         self.create_height_section(main_frame)
         
-        # ========== FONT STYLES ==========
+        #========== font styles ==========
         self.create_font_section(main_frame)
         
-        # ========== ICON BUTTONS (Using Unicode) ==========
+        #========== icon buttons (using unicode) ==========
         self.create_icon_section(main_frame)
         
-        # ========== COMBINED EXAMPLES ==========
+        #========== combined examples ==========
         self.create_combined_section(main_frame)
         
-        # ========== RECOMMENDED STYLES ==========
+        #========== recommended styles ==========
         self.create_recommended_section(main_frame)
     
     def create_section(self, parent, title, buttons):
@@ -192,23 +192,23 @@ class ButtonStyleDemo(ctk.CTk):
         btn_frame = ctk.CTkFrame(parent, fg_color="transparent")
         btn_frame.pack(fill="x", pady=(0, 10))
         
-        # Modern card-like button
+        #modern card-like button
         ctk.CTkButton(btn_frame, text="Modern Card", width=180, height=60, 
                      corner_radius=15, fg_color="#ffffff", text_color="#2c3e50",
                      border_width=1, border_color="#e0e0e0", hover_color="#f5f5f5",
                      font=("Inter", 16, "bold")).grid(row=0, column=0, padx=10, pady=5)
         
-        # Neon style
+        #neon style
         ctk.CTkButton(btn_frame, text="Neon Glow", width=180, height=60, 
                      corner_radius=30, fg_color="#00ff88", text_color="#000000",
-                     hover_color="#00cc6a", font=("Inter", 16, "bold")).grid(row=0, column=1, padx=10, pady=5)
+                     hover_color="#00cc6a", font=("inter", 16, "bold")).grid(row=0, column=1, padx=10, pady=5)
         
-        # Dark mode style
+        #dark mode style
         ctk.CTkButton(btn_frame, text="Dark Mode", width=180, height=60, 
                      corner_radius=10, fg_color="#1a1a2e", text_color="#eaeaea",
-                     hover_color="#16213e", font=("Inter", 16, "bold")).grid(row=0, column=2, padx=10, pady=5)
+                     hover_color="#16213e", font=("inter", 16, "bold")).grid(row=0, column=2, padx=10, pady=5)
         
-        # Minimal
+        #minimal
         ctk.CTkButton(btn_frame, text="Minimal", width=180, height=60, 
                      corner_radius=5, fg_color="transparent", text_color="#555555",
                      border_width=1, border_color="#cccccc", hover_color="#f0f0f0",

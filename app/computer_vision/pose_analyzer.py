@@ -11,13 +11,20 @@ from ultralytics import YOLO
 #import resource path helper for pyinstaller compatibility
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from app.utils.resource_path import get_resource_path
+from app.utils.device_manager import configure_device, get_yolo_device
 
 class PoseAnalyzer:
     def __init__(self, detection_interval=3, stick_model_path=None, debug_stick=False):
         print("[info] initializing computer vision components...")
+        
+        #configure device (GPU/CPU) for tensorflow and pytorch/YOLO
+        self.device_info = configure_device(verbose=True)
+        self.yolo_device = get_yolo_device(self.device_info)
+        
         #use resource path helper for pyinstaller compatibility
         yolo_base_path = get_resource_path('yolov8n.pt')
         self.yolo_model = YOLO(yolo_base_path)
+        self.yolo_model.to(self.yolo_device)  #move model to GPU if available
         
         #cached stick detection results
         self._cached_stick_results = {}
@@ -31,6 +38,7 @@ class PoseAnalyzer:
         if stick_model_path and os.path.exists(stick_model_path):
             try:
                 self.stick_detector = YOLO(stick_model_path)
+                self.stick_detector.to(self.yolo_device)  #move model to GPU if available
                 print(f"[info] Stick detector model loaded from {stick_model_path}")
                 print(f"[DEBUG-INIT] Stick detector type: {type(self.stick_detector)}")
                 print(f"[DEBUG-INIT] Stick detector model names: {self.stick_detector.names if hasattr(self.stick_detector, 'names') else 'N/A'}")

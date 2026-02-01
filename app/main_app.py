@@ -28,6 +28,12 @@ from app.computer_vision.pose_analyzer import PoseAnalyzer
 from app.database.db_manager import DatabaseManager
 from app.utils.resource_path import get_resource_path, get_app_data_path
 
+# ============================================
+# DEBUG MODE - Set to True to skip splash screen and auto-select user
+# ============================================
+DEBUG_MODE = True  # Change to False for production
+# ============================================
+
 class TuroArnisGUI:
     def __init__(self, window, window_title):
         self.window = window
@@ -74,7 +80,7 @@ class TuroArnisGUI:
         
         ctk.CTkLabel(
             splash_content,
-            text="Arnis Form Correction System",
+            text="Arnis Form Correction",
             font=("Inter", 16),
             fg_color="#74b9ff",
             text_color="black"
@@ -112,22 +118,26 @@ class TuroArnisGUI:
         self.current_user = None
         self.current_session_id = None
         
-        # Show splash for 3 seconds
-        for i in range(30):
-            time.sleep(0.1)
+        if not DEBUG_MODE:
+            for i in range(30):
+                time.sleep(0.1)
+                self.window.update()
+            
+            self.splash_status.configure(text="Loading user management...")
             self.window.update()
-        
-        self.splash_status.configure(text="Loading user management...")
-        self.window.update()
-        for i in range(10):
-            time.sleep(0.1)
+            for i in range(10):
+                time.sleep(0.1)
+                self.window.update()
+            self.splash_frame.pack_forget()
             self.window.update()
-        self.splash_frame.pack_forget()
-        self.window.update()
+        else:
+            # Debug mode: skip splash instantly
+            self.splash_frame.pack_forget()
+            self.window.update()
         
         self.show_user_selection()
         
-        if self.current_user:
+        if self.current_user and not DEBUG_MODE:
             self.splash_frame.pack(fill="both", expand=True)
             self.window.update()
         
@@ -226,6 +236,17 @@ class TuroArnisGUI:
         self.session_status_label = ctk.CTkLabel(session_frame, text="No active session", font=("Inter", 12), text_color="#f39c12")
         self.session_status_label.pack(anchor="w", pady=2, padx=10)
         
+        # Session timer
+        self.session_start_time = None
+        self.timer_update_id = None
+        self.timer_label = ctk.CTkLabel(
+            session_frame,
+            text="⏱️ 00:00",
+            font=("Inter", 16, "bold"),
+            text_color="#3498db"
+        )
+        self.timer_label.pack(anchor="w", pady=(5, 10), padx=10)
+        
         self.practice_stances = {
             "Crown Thrust": "crown_thrust_correct", "Left Chest Thrust": "left_chest_thrust_correct",
             "Left Elbow Block": "left_elbow_block_correct", "Left Eye Thrust": "left_eye_thrust_correct",
@@ -251,10 +272,10 @@ class TuroArnisGUI:
         session_btn_frame = ctk.CTkFrame(session_frame, fg_color="transparent")
         session_btn_frame.pack(fill="x", pady=5, padx=10)
         
-        self.start_session_btn = ctk.CTkButton(session_btn_frame, text="Start", command=self.manual_start_session, fg_color="#27ae60", hover_color="#229954", width=100, corner_radius=10, font=("Inter", 14), text_color="black")
+        self.start_session_btn = ctk.CTkButton(session_btn_frame, text="Start", command=self.manual_start_session, fg_color="#27ae60", hover_color="#229954", width=100, corner_radius=10, font=("Inter", 14), text_color="white")
         self.start_session_btn.pack(side="left", padx=2)
         
-        self.end_session_btn = ctk.CTkButton(session_btn_frame, text="End", command=self.end_session, fg_color="#e74c3c", hover_color="#c0392b", width=100, corner_radius=10, font=("Inter", 14), state="disabled", text_color="black")
+        self.end_session_btn = ctk.CTkButton(session_btn_frame, text="End", command=self.end_session, fg_color="#e74c3c", hover_color="#c0392b", width=100, corner_radius=10, font=("Inter", 14), state="disabled", text_color="white")
         self.end_session_btn.pack(side="left", padx=2)
         
         ctk.CTkFrame(self.controls_panel, height=2, fg_color="#bdc3c7").pack(fill="x", pady=10, padx=15)
@@ -270,6 +291,35 @@ class TuroArnisGUI:
         
         self.prediction_label = ctk.CTkLabel(system_frame, text="Prediction: N/A (0.00)", font=("Inter", 12), text_color="#f39c12")
         self.prediction_label.pack(fill="x", pady=2, anchor="w", padx=10)
+        
+        # Confidence progress bar
+        confidence_frame = ctk.CTkFrame(system_frame, fg_color="transparent")
+        confidence_frame.pack(fill="x", pady=(5, 10), padx=10)
+        
+        ctk.CTkLabel(
+            confidence_frame,
+            text="Confidence:",
+            font=("Inter", 11),
+            text_color="#7f8c8d"
+        ).pack(side="left", padx=(0, 5))
+        
+        self.confidence_progress = ctk.CTkProgressBar(
+            confidence_frame,
+            mode='determinate',
+            progress_color="#27ae60",
+            height=10,
+            width=120
+        )
+        self.confidence_progress.pack(side="left", fill="x", expand=True)
+        self.confidence_progress.set(0)
+        
+        self.confidence_percent_label = ctk.CTkLabel(
+            confidence_frame,
+            text="0%",
+            font=("Inter", 11, "bold"),
+            text_color="#27ae60"
+        )
+        self.confidence_percent_label.pack(side="left", padx=(5, 0))
         
         self.fps_label = ctk.CTkLabel(system_frame, text="FPS: --", font=("Inter", 18), text_color="#95a5a6")
         self.fps_label.pack(fill="x", pady=2, anchor="w", padx=10)
@@ -293,7 +343,7 @@ class TuroArnisGUI:
             hover_color="#2980b9",
             corner_radius=10,
             font=("Inter", 14),
-            text_color="black"
+            text_color="white"
         )
         self.view_all_results_button.pack(fill="x", pady=10, side="bottom", padx=10)
 
@@ -303,6 +353,14 @@ class TuroArnisGUI:
         self.thread.start()
 
         self.window.protocol("WM_DELETE_WINDOW", self.on_closing)
+        
+        # Keyboard shortcuts
+        self.window.bind("<space>", self.toggle_session_keybind)
+        self.window.bind("<Control-q>", lambda e: self.on_closing())
+        self.window.bind("<Control-r>", lambda e: self.open_results_window())
+        self.window.bind("<F11>", self.toggle_fullscreen)
+        self.is_fullscreen = False
+        
         self.process_queue()
         
         width = int(self.screen_width * 0.8)
@@ -310,9 +368,6 @@ class TuroArnisGUI:
         x = (self.screen_width // 2) - (width // 2)
         y = (self.screen_height // 2) - (height // 2)
         self.window.geometry(f"{width}x{height}+{x}+{y}")
-        
-        time.sleep(0.5)
-        self.toast.show(f"Welcome, {self.current_user['name']}!", "success", duration=2000)
         
         self.window.mainloop()
     
@@ -391,9 +446,29 @@ class TuroArnisGUI:
                 confidence = result['confidence']
                 pretty_class_name = predicted_class.replace('_correct', '').replace('_', ' ').title()
                 prediction_text = f"Prediction: {pretty_class_name} ({confidence:.2f})"
-                if confidence > 0.60: self.prediction_label.configure(text_color="#27ae60")
-                elif confidence > 0.40: self.prediction_label.configure(text_color="#f39c12")
-                else: self.prediction_label.configure(text_color="#e74c3c")
+                
+                # Update confidence progress bar
+                self.confidence_progress.set(confidence)
+                self.confidence_percent_label.configure(text=f"{int(confidence * 100)}%")
+                
+                # Color code based on confidence
+                if confidence > 0.60:
+                    self.prediction_label.configure(text_color="#27ae60")
+                    self.confidence_progress.configure(progress_color="#27ae60")
+                    self.confidence_percent_label.configure(text_color="#27ae60")
+                elif confidence > 0.40:
+                    self.prediction_label.configure(text_color="#f39c12")
+                    self.confidence_progress.configure(progress_color="#f39c12")
+                    self.confidence_percent_label.configure(text_color="#f39c12")
+                else:
+                    self.prediction_label.configure(text_color="#e74c3c")
+                    self.confidence_progress.configure(progress_color="#e74c3c")
+                    self.confidence_percent_label.configure(text_color="#e74c3c")
+            else:
+                # Reset when no results
+                self.confidence_progress.set(0)
+                self.confidence_percent_label.configure(text="0%", text_color="#95a5a6")
+                
             self.prediction_label.configure(text=prediction_text)
             
             if self.last_known_results:
@@ -528,16 +603,51 @@ class TuroArnisGUI:
         self.target_form = self.practice_stances[pretty_name]
         self.selected_form.set(pretty_name)
         self.status_label.configure(text=f"Status: Analyzing '{pretty_name}'")
-        self.status_bar.set_status(f"Practicing: {pretty_name}")
         
         self.toast.show(f"Now practicing: {pretty_name}", "info", duration=2000)
 
         if self.current_user and not self.current_session_id:
             self.start_session()
     
+    
     def show_user_selection(self):
-        selected = show_user_dialog(self.window, self.db)
-        self.current_user = selected if selected else None
+        if DEBUG_MODE:
+            # Auto-select last active user or create test user
+            cursor = self.db.conn.cursor()
+            cursor.execute('SELECT * FROM users WHERE is_active = 1 ORDER BY id DESC LIMIT 1')
+            user = cursor.fetchone()
+            
+            if user:
+                self.current_user = {
+                    'id': user[0],
+                    'name': user[1],
+                    'created_at': user[2],
+                    'is_active': user[3]
+                }
+                print(f"[DEBUG] Auto-selected user: {self.current_user['name']}")
+            else:
+                # Create test user if none exists
+                test_name = "TestUser"
+                user_id = self.db.create_user(test_name)
+                if user_id:
+                    self.current_user = self.db.get_user_by_id(user_id)
+                    print(f"[DEBUG] Created test user: {test_name}")
+                else:
+                    # Test user already exists, fetch it
+                    cursor.execute('SELECT * FROM users WHERE name = ?', (test_name,))
+                    user = cursor.fetchone()
+                    if user:
+                        self.current_user = {
+                            'id': user[0],
+                            'name': user[1],
+                            'created_at': user[2],
+                            'is_active': user[3]
+                        }
+                        print(f"[DEBUG] Using existing TestUser")
+        else:
+            # Normal mode: show user dialog
+            selected = show_user_dialog(self.window, self.db)
+            self.current_user = selected if selected else None
     
     def start_session(self):
         if not self.current_user:
@@ -552,8 +662,11 @@ class TuroArnisGUI:
         self.start_session_btn.configure(state="disabled")
         self.end_session_btn.configure(state="normal")
         
+        # Start timer
+        self.session_start_time = time.time()
+        self.update_timer()
+        
         self.toast.show(f"Session #{self.current_session_id} started", "success", duration=2000)
-        self.status_bar.set_status("Session active - Good luck!")
     
     def manual_start_session(self):
         if not self.target_form:
@@ -575,9 +688,15 @@ class TuroArnisGUI:
                 toast_type = "info"
             
             self.toast.show(msg, toast_type, duration=5000)
-            self.status_bar.set_status("Session ended")
 
             self.current_session_id = None
+            
+            # Stop timer
+            if self.timer_update_id:
+                self.window.after_cancel(self.timer_update_id)
+                self.timer_update_id = None
+            self.session_start_time = None
+            self.timer_label.configure(text="⏱️ 00:00")
 
             self.session_status_label.configure(text="No active session", text_color="#f39c12")
             self.start_session_btn.configure(state="normal")
@@ -652,6 +771,35 @@ class TuroArnisGUI:
                 )
             
             self.last_fps_update = time.time()
+    
+    def update_timer(self):
+        """Update session timer every second"""
+        if self.session_start_time:
+            elapsed = int(time.time() - self.session_start_time)
+            minutes = elapsed // 60
+            seconds = elapsed % 60
+            self.timer_label.configure(text=f"⏱️ {minutes:02d}:{seconds:02d}")
+            
+            # Schedule next update
+            self.timer_update_id = self.window.after(1000, self.update_timer)
+    
+    def toggle_session_keybind(self, event):
+        """Toggle session start/stop with spacebar"""
+        if self.current_session_id:
+            self.end_session()
+        else:
+            if self.target_form:
+                self.start_session()
+            else:
+                self.toast.show("Select a form first (use dropdown)", "warning", duration=2000)
+    
+    def toggle_fullscreen(self, event):
+        """Toggle fullscreen mode with F11"""
+        self.is_fullscreen = not self.is_fullscreen
+        self.window.attributes("-fullscreen", self.is_fullscreen)
+        
+        if self.is_fullscreen:
+            self.toast.show("Fullscreen mode (F11 to exit)", "info", duration=2000)
 
 if __name__ == "__main__":
     # Windows taskbar icon

@@ -218,7 +218,7 @@ class TuroArnisGUI:
         main_container.grid_columnconfigure(0, weight=0)
         main_container.grid_columnconfigure(1, weight=1) 
 
-        #create frame to hold video canvas (for layering feedback panel)
+        #create frame to hold video canvas
         video_frame = ctk.CTkFrame(main_container, fg_color="black")
         video_frame.grid(row=0, column=1, sticky="nsew")
         
@@ -226,50 +226,6 @@ class TuroArnisGUI:
         self.video_canvas.pack(fill="both", expand=True)
         self.video_canvas.bind('<Configure>', self.on_canvas_resize)
         self.tk_image = None
-        
-        #floating feedback panel (ttk overlay with proper inter font)
-        self.feedback_panel = ctk.CTkFrame(
-            video_frame,
-            corner_radius=12,
-            fg_color=("#2c3e50", "#1a252f"),
-            border_width=3,
-            border_color="#3498db"
-        )
-        self.feedback_panel.place(relx=0.98, rely=0.02, anchor="ne", width=350, height=200)
-        
-        #feedback header
-        self.feedback_header = ctk.CTkLabel(
-            self.feedback_panel,
-            text="Form Feedback",
-            font=("Inter", 18, "bold"),
-            text_color="white",
-            anchor="w"
-        )
-        self.feedback_header.pack(pady=(12, 5), padx=15, anchor="w")
-        
-        #separator line
-        ctk.CTkFrame(self.feedback_panel, height=2, fg_color="#34495e").pack(fill="x", padx=15, pady=(0, 8))
-        
-        #messages container
-        self.feedback_messages_frame = ctk.CTkFrame(self.feedback_panel, fg_color="transparent")
-        self.feedback_messages_frame.pack(fill="both", expand=True, padx=15, pady=(0, 12))
-        
-        #message labels (4 slots for priority messages)
-        self.feedback_message_labels = []
-        for i in range(4):
-            msg_label = ctk.CTkLabel(
-                self.feedback_messages_frame,
-                text="",
-                font=("Inter", 12),
-                text_color="#95a5a6",
-                anchor="w",
-                wraplength=300
-            )
-            msg_label.pack(anchor="w", pady=2)
-            self.feedback_message_labels.append(msg_label)
-        
-        #track last feedback to minimize updates (throttling)
-        self.last_feedback_state = None
 
         self.controls_panel = ctk.CTkFrame(main_container, width=250, corner_radius=0, fg_color="white")
         self.controls_panel.grid(row=0, column=0, sticky="nsew")
@@ -283,8 +239,7 @@ class TuroArnisGUI:
         
         ctk.CTkLabel(session_frame, text="Session", font=("Inter", 12, "bold"), text_color="#7f8c8d").pack(anchor="w", pady=(5, 2), padx=10)
         
-        ctk.CTkLabel(session_frame, text=self.current_user['name'], font=("Inter", 16, "bold"), text_color="#27ae60").pack(anchor="w", padx=10)
-        ctk.CTkLabel(session_frame, text=f"ID: {self.current_user['id']}", font=("Inter", 12), text_color="#95a5a6").pack(anchor="w", padx=10, pady=(0, 5))
+        ctk.CTkLabel(session_frame, text=self.current_user['name'], font=("Inter", 14, "bold"), text_color="#27ae60").pack(anchor="w", padx=10, pady=(0, 5))
         
         self.session_status_label = ctk.CTkLabel(session_frame, text="No active session", font=("Inter", 12), text_color="#f39c12")
         self.session_status_label.pack(anchor="w", pady=2, padx=10)
@@ -333,21 +288,15 @@ class TuroArnisGUI:
         
         ctk.CTkFrame(self.controls_panel, height=2, fg_color="#bdc3c7").pack(fill="x", pady=10, padx=15)
         
-        #system status frame (includes status, prediction, fps, camera, model)
+        #system status frame (confidence, camera, model only)
         system_frame = ctk.CTkFrame(self.controls_panel, corner_radius=10, fg_color="white")
         system_frame.pack(fill="x", pady=5, padx=10)
         
         ctk.CTkLabel(system_frame, text="System Status", font=("Inter", 12, "bold"), text_color="#7f8c8d").pack(anchor="w", pady=(5, 2), padx=10)
         
-        self.status_label = ctk.CTkLabel(system_frame, text="Status: Select a form", font=("Inter", 14), wraplength=220, text_color="#2c3e50")
-        self.status_label.pack(fill="x", pady=2, anchor="w", padx=10)
-        
-        self.prediction_label = ctk.CTkLabel(system_frame, text="Prediction: N/A (0.00)", font=("Inter", 12), text_color="#f39c12")
-        self.prediction_label.pack(fill="x", pady=2, anchor="w", padx=10)
-        
         #confidence progress bar
         confidence_frame = ctk.CTkFrame(system_frame, fg_color="transparent")
-        confidence_frame.pack(fill="x", pady=(5, 10), padx=10)
+        confidence_frame.pack(fill="x", pady=(5, 5), padx=10)
         
         ctk.CTkLabel(
             confidence_frame,
@@ -374,20 +323,18 @@ class TuroArnisGUI:
         )
         self.confidence_percent_label.pack(side="left", padx=(5, 0))
         
-        self.fps_label = ctk.CTkLabel(system_frame, text="FPS: --", font=("Inter", 18), text_color="#95a5a6")
-        self.fps_label.pack(fill="x", pady=2, anchor="w", padx=10)
-        
         camera_status = "Connected" if self.cap.isOpened() else "Disconnected"
-        camera_color = "#27ae60" if self.cap.isopened() else "#e74c3c"
-        self.camera_label = ctk.CTkLabel(system_frame, text=f"📷 Camera: {camera_status}", font=("Inter", 18), text_color=camera_color)
-        self.camera_label.pack(fill="x", pady=2, anchor="w", padx=10)
+        camera_color = "#27ae60" if self.cap.isOpened() else "#e74c3c"
+        self.camera_label = ctk.CTkLabel(system_frame, text=f"Camera: {camera_status}", font=("Inter", 11), text_color=camera_color, anchor="w")
+        self.camera_label.pack(fill="x", pady=2, padx=10)
         
-        self.model_label = ctk.CTkLabel(system_frame, text="🤖 Model: Loaded", font=("Inter", 18), text_color="#27ae60")
-        self.model_label.pack(fill="x", anchor="w", padx=10, pady=(0, 10))
+        self.model_label = ctk.CTkLabel(system_frame, text="Model: Loaded", font=("Inter", 11), text_color="#27ae60", anchor="w")
+        self.model_label.pack(fill="x", padx=10, pady=(0, 10))
         
         self.frame_times = []
         self.last_fps_update = time.time()
         
+        #activity log and button - pack button first (bottom), then activity label above it
         self.view_all_results_button = ctk.CTkButton(
             self.controls_panel,
             text="View All Results",
@@ -398,7 +345,16 @@ class TuroArnisGUI:
             font=("Inter", 14),
             text_color="white"
         )
-        self.view_all_results_button.pack(fill="x", pady=10, side="bottom", padx=10)
+        self.view_all_results_button.pack(fill="x", pady=(0, 10), side="bottom", padx=10)
+        
+        self.activity_label = ctk.CTkLabel(
+            self.controls_panel, 
+            text="Ready", 
+            font=("Inter", 12), 
+            text_color="#7f8c8d",
+            wraplength=220
+        )
+        self.activity_label.pack(fill="x", pady=(10, 5), padx=10, side="bottom")
 
         #start video thread
         self.is_running = True
@@ -506,15 +462,12 @@ class TuroArnisGUI:
                 
                 #color code based on confidence
                 if confidence > 0.60:
-                    self.prediction_label.configure(text_color="#27ae60")
                     self.confidence_progress.configure(progress_color="#27ae60")
                     self.confidence_percent_label.configure(text_color="#27ae60")
                 elif confidence > 0.40:
-                    self.prediction_label.configure(text_color="#f39c12")
                     self.confidence_progress.configure(progress_color="#f39c12")
                     self.confidence_percent_label.configure(text_color="#f39c12")
                 else:
-                    self.prediction_label.configure(text_color="#e74c3c")
                     self.confidence_progress.configure(progress_color="#e74c3c")
                     self.confidence_percent_label.configure(text_color="#e74c3c")
             else:
@@ -522,7 +475,7 @@ class TuroArnisGUI:
                 self.confidence_progress.set(0)
                 self.confidence_percent_label.configure(text="0%", text_color="#95a5a6")
                 
-            self.prediction_label.configure(text=prediction_text)
+
             
             if self.last_known_results:
                 result = self.last_known_results[0]
@@ -567,8 +520,7 @@ class TuroArnisGUI:
                     pt1, pt2 = result['stick_endpoints']
                     cv2.line(processing_frame, pt1, pt2, COLOR_PROMPT, 4)
 
-                user_display_name = self.current_user['name'] if self.current_user else f"Person {person_id}"
-                self.draw_text_with_bg(img=processing_frame, text=user_display_name, pos=(x1, y1 - 10), font_face=cv2.FONT_HERSHEY_SIMPLEX, font_scale=0.9, text_color=COLOR_BLACK, bg_color=COLOR_WHITE, thickness=2)
+
 
                 if result.get('landmarks_absolute'):
                     landmarks_abs = result['landmarks_absolute']
@@ -599,10 +551,49 @@ class TuroArnisGUI:
                 if self.target_form:
                     #use feedback analyzer to get detailed feedback
                     feedback = self.feedback_analyzer.analyze(result, self.target_form)
-                    prioritized_messages = self.feedback_analyzer.get_prioritized_messages(feedback, max_messages=4)
+                    prioritized_messages = self.feedback_analyzer.get_prioritized_messages(feedback, max_messages=3)
                     
-                    #update ttk feedback panel (throttled - only when feedback changes)
-                    self.update_feedback_ui(feedback, prioritized_messages)
+                    #opencv feedback rendering - compact size
+                    box_width = 220
+                    box_height = 110
+                    box_x = processing_frame.shape[1] - box_width - 10
+                    box_y = 10
+                    
+                    #semi-transparent background
+                    overlay = processing_frame.copy()
+                    cv2.rectangle(overlay, (box_x, box_y), (box_x + box_width, box_y + box_height), (30, 30, 30), -1)
+                    processing_frame = cv2.addWeighted(overlay, 0.8, processing_frame, 0.2, 0)
+                    
+                    #border color based on state
+                    if feedback['is_correct']:
+                        border_color = (0, 200, 0)
+                    elif feedback.get('severity') == 'critical':
+                        border_color = (0, 0, 200)
+                    else:
+                        border_color = (200, 150, 50)
+                    cv2.rectangle(processing_frame, (box_x, box_y), (box_x + box_width, box_y + box_height), border_color, 2)
+                    
+                    content_x = box_x + 10
+                    content_y = box_y + 20
+                    
+                    if feedback['is_correct']:
+                        cv2.putText(processing_frame, "Perfect Form!", (content_x, content_y), 
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0, 255, 0), 1, cv2.LINE_AA)
+                        cv2.putText(processing_frame, "Maintain position", (content_x, content_y + 22), 
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 255, 255), 1, cv2.LINE_AA)
+                    else:
+                        if prioritized_messages:
+                            cv2.putText(processing_frame, "Feedback:", (content_x, content_y), 
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1, cv2.LINE_AA)
+                            
+                            msg_y = content_y + 24
+                            for i, (message, msg_type) in enumerate(prioritized_messages):
+                                if msg_y > box_y + box_height - 10:
+                                    break
+                                display_msg = message[:28] + ".." if len(message) > 28 else message
+                                cv2.putText(processing_frame, display_msg, (content_x, msg_y), 
+                                    cv2.FONT_HERSHEY_SIMPLEX, 0.38, (255, 255, 255), 1, cv2.LINE_AA)
+                                msg_y += 22
             
             canvas_width = self.video_canvas.winfo_width(); canvas_height = self.video_canvas.winfo_height()
             final_frame = self.resize_and_pad(processing_frame, size=(canvas_width, canvas_height))
@@ -632,9 +623,9 @@ class TuroArnisGUI:
     def on_action_selected(self, pretty_name):
         self.target_form = self.practice_stances[pretty_name]
         self.selected_form.set(pretty_name)
-        self.status_label.configure(text=f"Status: Analyzing '{pretty_name}'")
+
         
-        self.toast.show(f"Now practicing: {pretty_name}", "info", duration=2000)
+        self.activity_label.configure(text=f"▶ Practicing: {pretty_name}", text_color="#3498db")
 
         if self.current_user and not self.current_session_id:
             self.start_session()
@@ -696,11 +687,11 @@ class TuroArnisGUI:
         self.session_start_time = time.time()
         self.update_timer()
         
-        self.toast.show(f"Session #{self.current_session_id} started", "success", duration=2000)
+        self.activity_label.configure(text=f"● Session #{self.current_session_id} started", text_color="#27ae60")
     
     def manual_start_session(self):
         if not self.target_form:
-            self.toast.show("Please select a target form first", "warning", duration=3000)
+            self.activity_label.configure(text="⚠ Select a target form first", text_color="#f39c12")
             return
         self.start_session()
     
@@ -717,7 +708,8 @@ class TuroArnisGUI:
                 msg = "Session ended - No attempts recorded"
                 toast_type = "info"
             
-            self.toast.show(msg, toast_type, duration=5000)
+            color = "#27ae60" if toast_type == "success" else "#f39c12" if toast_type == "warning" else "#7f8c8d"
+            self.activity_label.configure(text=msg, text_color=color)
 
             self.current_session_id = None
             
@@ -773,66 +765,7 @@ class TuroArnisGUI:
     def reset_feedback(self):
         self.target_form = None
         self.selected_form.set("Choose Arnis Form")
-        self.status_label.configure(text="Status: Select a form")
-    
-    def update_feedback_ui(self, feedback, prioritized_messages):
-        """
-        Update the TTK feedback panel (called only when feedback changes)
-        This runs independently from video loop - only 2-3 times per second
-        """
-        #create state key to check if feedback actually changed
-        state_key = (feedback.get('is_correct'), len(prioritized_messages), feedback.get('severity'))
-        
-        if state_key == self.last_feedback_state:
-            return  #no change, skip update
-        
-        self.last_feedback_state = state_key
-        
-        #update border color based on state
-        if feedback['is_correct']:
-            self.feedback_panel.configure(border_color="#27ae60")  #green
-            self.feedback_header.configure(text="Perfect Form!", text_color="#27ae60")
-        elif feedback.get('severity') == 'critical':
-            self.feedback_panel.configure(border_color="#e74c3c")  #red
-            self.feedback_header.configure(text="Form Feedback", text_color="white")
-        else:
-            self.feedback_panel.configure(border_color="#3498db")  #blue
-            self.feedback_header.configure(text="Form Feedback", text_color="white")
-        
-        #update messages
-        if feedback['is_correct']:
-            #show success message
-            self.feedback_message_labels[0].configure(
-                text="✓ Maintain this position",
-                text_color="#27ae60",
-                font=("Inter", 13, "bold")
-            )
-            for i in range(1, 4):
-                self.feedback_message_labels[i].configure(text="")
-        else:
-            #show prioritized messages
-            for i in range(4):
-                if i < len(prioritized_messages):
-                    message, msg_type = prioritized_messages[i]
-                    
-                    #set icon and color
-                    if msg_type == 'error':
-                        icon = "✗"
-                        color = "#e74c3c"  #red
-                    elif msg_type == 'warning':
-                        icon = "⚠"
-                        color = "#f39c12"  #orange
-                    else:  #suggestion
-                        icon = "→"
-                        color = "#3498db"  #blue
-                    
-                    self.feedback_message_labels[i].configure(
-                        text=f"{icon} {message}",
-                        text_color=color,
-                        font=("Inter", 12)
-                    )
-                else:
-                    self.feedback_message_labels[i].configure(text="")
+        self.activity_label.configure(text="Ready", text_color="#7f8c8d")
     
     def update_fps_display(self, frame_time=None):
         if frame_time is None:
@@ -854,10 +787,7 @@ class TuroArnisGUI:
                 else:
                     color = "#e74c3c"
                 
-                self.fps_label.configure(
-                    text=f"FPS: {fps:.0f}",
-                    text_color=color
-                )
+
             
             self.last_fps_update = time.time()
     
@@ -880,7 +810,7 @@ class TuroArnisGUI:
             if self.target_form:
                 self.start_session()
             else:
-                self.toast.show("Select a form first (use dropdown)", "warning", duration=2000)
+                self.activity_label.configure(text="⚠ Select a form first", text_color="#f39c12")
     
     def toggle_fullscreen(self, event):
         """Toggle fullscreen mode with F11"""
@@ -888,7 +818,7 @@ class TuroArnisGUI:
         self.window.attributes("-fullscreen", self.is_fullscreen)
         
         if self.is_fullscreen:
-            self.toast.show("Fullscreen mode (F11 to exit)", "info", duration=2000)
+            self.activity_label.configure(text="Fullscreen (F11 to exit)", text_color="#7f8c8d")
 
 if __name__ == "__main__":
     # Windows taskbar icon

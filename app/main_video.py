@@ -46,8 +46,15 @@ class TuroArnisVideoGUI:
         self.current_session_id = None
 
         self.frame_counter = 0
-        self.processing_interval = 3
+        self.processing_interval = 1
         self.last_known_results = []
+        
+        #performance optimization - skip heavy processing on some frames
+        self.ml_inference_interval = 8  #run ML every 8 frames
+        self.stick_detection_interval = 4  #run stick detection every 4 frames
+        self.last_ml_inference_frame = 0
+        self.last_stick_detection_frame = 0
+        self.analysis_mode = "balanced"  #fast, balanced, detailed
         
         #state tracking
         self.last_pose_state = None
@@ -62,6 +69,7 @@ class TuroArnisVideoGUI:
         self.current_frame_idx = 0
         self.is_playing = False
         self.is_video_loaded = False
+        self.display_mode = "fit"  #fit (letterbox) or fill (crop)
 
         #use resource path for stick detector
         stick_model_relative = 'runs/pose/arnis_stick_detector/weights/best.pt'
@@ -150,11 +158,27 @@ class TuroArnisVideoGUI:
         
         #speed control
         speed_row = ctk.CTkFrame(playback_frame, fg_color="transparent")
-        speed_row.pack(fill="x", pady=(5, 10), padx=10)
+        speed_row.pack(fill="x", pady=(5, 5), padx=10)
         ctk.CTkLabel(speed_row, text="Speed:", font=("Inter", 11), text_color="#7f8c8d").pack(side="left")
         self.speed_var = ctk.StringVar(value="1.0")
         speed_menu = ctk.CTkOptionMenu(speed_row, variable=self.speed_var, values=["0.25", "0.5", "0.75", "1.0", "1.5", "2.0"], width=80, fg_color="#3498db", button_color="#2980b9", font=("Inter", 12))
         speed_menu.pack(side="left", padx=5)
+        
+        #display mode control
+        display_row = ctk.CTkFrame(playback_frame, fg_color="transparent")
+        display_row.pack(fill="x", pady=(5, 5), padx=10)
+        ctk.CTkLabel(display_row, text="Display:", font=("Inter", 11), text_color="#7f8c8d").pack(side="left")
+        self.display_mode_var = ctk.StringVar(value="Fit")
+        display_menu = ctk.CTkOptionMenu(display_row, variable=self.display_mode_var, values=["Fit", "Fill"], command=self.on_display_mode_change, width=80, fg_color="#9b59b6", button_color="#8e44ad", font=("Inter", 12))
+        display_menu.pack(side="left", padx=5)
+        
+        #analysis mode control (performance vs accuracy)
+        analysis_row = ctk.CTkFrame(playback_frame, fg_color="transparent")
+        analysis_row.pack(fill="x", pady=(5, 10), padx=10)
+        ctk.CTkLabel(analysis_row, text="Analysis:", font=("Inter", 11), text_color="#7f8c8d").pack(side="left")
+        self.analysis_mode_var = ctk.StringVar(value="Balanced")
+        analysis_menu = ctk.CTkOptionMenu(analysis_row, variable=self.analysis_mode_var, values=["Fast", "Balanced", "Detailed"], command=self.on_analysis_mode_change, width=90, fg_color="#e67e22", button_color="#d35400", font=("Inter", 12))
+        analysis_menu.pack(side="left", padx=5)
 
         ctk.CTkFrame(self.controls_panel, height=2, fg_color="#bdc3c7").pack(fill="x", pady=10, padx=15)
         
@@ -313,6 +337,7 @@ class TuroArnisVideoGUI:
         cv2.putText(img, text, (pos[0], pos[1]), font_face, font_scale, text_color, thickness)
 
     def resize_and_pad(self, img, size, pad_color=0):
+        #fit mode - letterbox/pillarbox to preserve aspect ratio
         h, w, _ = img.shape; sw, sh = size
         if w == 0 or h == 0 or sw == 0 or sh == 0: return np.zeros((sh, sw, 3), dtype=np.uint8)
         aspect = w / h; canvas_aspect = sw / sh
@@ -328,6 +353,55 @@ class TuroArnisVideoGUI:
         scaled_img = cv2.resize(img, (new_w, new_h), interpolation=interp)
         padded_img = cv2.copyMakeBorder(scaled_img, pad_top, pad_bot, pad_left, pad_right, borderType=cv2.BORDER_CONSTANT, value=[pad_color]*3)
         return padded_img
+    
+    def resize_and_crop(self, img, size):
+        #fill mode - crop to fill canvas while preserving aspect ratio
+        h, w, _ = img.shape; sw, sh = size
+        if w == 0 or h == 0 or sw == 0 or sh == 0: return np.zeros((sh, sw, 3), dtype=np.uint8)
+        aspect = w / h; canvas_aspect = sw / sh
+        if aspect > canvas_aspect:
+            #image is wider - scale to match height, crop width
+            new_h = sh; new_w = int(new_h * aspect)
+        else:
+            #image is taller - scale to match width, crop height
+            new_w = sw; new_h = int(new_w / aspect)
+        interp = cv2.INTER_AREA if new_w < w or new_h < h else cv2.INTER_LINEAR
+        scaled_img = cv2.resize(img, (new_w, new_h), interpolation=interp)
+        #center crop
+        start_x = (new_w - sw) // 2
+        start_y = (new_h - sh) // 2
+        cropped = scaled_img[start_y:start_y+sh, start_x:start_x+sw]
+        return cropped
+    
+    def resize_preserve_aspect(self, img, target_width, target_height):
+        #resize for processing while preserving aspect ratio
+        h, w = img.shape[:2]
+        if w == 0 or h == 0: return img
+        aspect = w / h
+        if aspect > target_width / target_height:
+            new_w = target_width
+            new_h = int(new_w / aspect)
+        else:
+            new_h = target_height
+            new_w = int(new_h * aspect)
+        return cv2.resize(img, (new_w, new_h), interpolation=cv2.INTER_LINEAR)
+    
+    def on_display_mode_change(self, value):
+        self.display_mode = value.lower()
+    
+    def on_analysis_mode_change(self, value):
+        #adjust processing intervals based on analysis mode
+        self.analysis_mode = value.lower()
+        if value == "Fast":
+            self.ml_inference_interval = 12
+            self.stick_detection_interval = 8
+        elif value == "Detailed":
+            self.ml_inference_interval = 4
+            self.stick_detection_interval = 2
+        else:  #balanced
+            self.ml_inference_interval = 8
+            self.stick_detection_interval = 4
+        print(f"[INFO] analysis mode: {value} (ML every {self.ml_inference_interval}, stick every {self.stick_detection_interval})")
     
     def video_loop(self):
         COLOR_DEFAULT = (255, 0, 0); COLOR_CORRECT = (0, 255, 0); COLOR_ERROR = (0, 0, 255)
@@ -391,11 +465,24 @@ class TuroArnisVideoGUI:
                 self.update_time_label()
             
             frame = cv2.flip(frame, 1)
-            processing_frame = cv2.resize(frame, (640, 480))
+            #preserve aspect ratio during processing resize - use lower res for performance
+            processing_frame = self.resize_preserve_aspect(frame, 480, 360)
             
-            analysis_results = self.analyzer.process_frame(processing_frame)
+            #skip heavy processing on some frames for performance
+            run_full_ml = (self.frame_counter - self.last_ml_inference_frame) >= self.ml_inference_interval
+            run_stick_detection = (self.frame_counter - self.last_stick_detection_frame) >= self.stick_detection_interval
+            
+            analysis_results = self.analyzer.process_frame(
+                processing_frame,
+                skip_ml_inference=not run_full_ml,
+                skip_stick_detection=not run_stick_detection
+            )
             if analysis_results:
                 self.last_known_results = analysis_results
+                if run_full_ml:
+                    self.last_ml_inference_frame = self.frame_counter
+                if run_stick_detection:
+                    self.last_stick_detection_frame = self.frame_counter
 
             #update confidence display
             if self.last_known_results:
@@ -466,66 +553,58 @@ class TuroArnisVideoGUI:
                             cv2.line(processing_frame, start_pt, end_pt, draw_color, 2)
 
                 if self.target_form:
+                    #use feedback analyzer to get detailed feedback
                     feedback = self.feedback_analyzer.analyze(result, self.target_form)
-                    prioritized_messages = self.feedback_analyzer.get_prioritized_messages(feedback, max_messages=4)
+                    prioritized_messages = self.feedback_analyzer.get_prioritized_messages(feedback, max_messages=3)
                     
-                    box_width = 420
-                    box_height = 220
-                    box_x = processing_frame.shape[1] - box_width - 20
-                    box_y = 20
+                    #opencv feedback rendering - compact size (same as main app)
+                    box_width = 220
+                    box_height = 110
+                    box_x = processing_frame.shape[1] - box_width - 10
+                    box_y = 10
                     
-                    shadow_offset = 5
-                    cv2.rectangle(processing_frame, 
-                        (box_x + shadow_offset, box_y + shadow_offset), 
-                        (box_x + box_width + shadow_offset, box_y + box_height + shadow_offset), 
-                        (20, 20, 20), -1)
-                    
+                    #semi-transparent background
                     overlay = processing_frame.copy()
-                    cv2.rectangle(overlay, (box_x, box_y), (box_x + box_width, box_y + box_height), (40, 44, 52), -1)
-                    alpha = 0.92
-                    processing_frame = cv2.addWeighted(overlay, alpha, processing_frame, 1 - alpha, 0)
+                    cv2.rectangle(overlay, (box_x, box_y), (box_x + box_width, box_y + box_height), (30, 30, 30), -1)
+                    processing_frame = cv2.addWeighted(overlay, 0.8, processing_frame, 0.2, 0)
                     
+                    #border color based on state
                     if feedback['is_correct']:
                         border_color = (0, 200, 0)
-                    elif feedback['severity'] == 'critical':
-                        border_color = (0, 0, 220)
+                    elif feedback.get('severity') == 'critical':
+                        border_color = (0, 0, 200)
                     else:
-                        border_color = (52, 152, 219)
-                    cv2.rectangle(processing_frame, (box_x, box_y), (box_x + box_width, box_y + box_height), border_color, 3)
+                        border_color = (200, 150, 50)
+                    cv2.rectangle(processing_frame, (box_x, box_y), (box_x + box_width, box_y + box_height), border_color, 2)
                     
-                    content_x = box_x + 20
-                    content_y = box_y + 35
+                    content_x = box_x + 10
+                    content_y = box_y + 20
                     
                     if feedback['is_correct']:
-                        cv2.putText(processing_frame, "Perfect Form!", (content_x, content_y), cv2.FONT_HERSHEY_DUPLEX, 1.0, (0, 255, 0), 2, cv2.LINE_AA)
-                        cv2.putText(processing_frame, "Maintain this position", (content_x, content_y + 45), cv2.FONT_HERSHEY_SIMPLEX, 0.65, (200, 200, 200), 1, cv2.LINE_AA)
+                        cv2.putText(processing_frame, "Perfect Form!", (content_x, content_y), 
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0, 255, 0), 1, cv2.LINE_AA)
+                        cv2.putText(processing_frame, "Maintain position", (content_x, content_y + 22), 
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 255, 255), 1, cv2.LINE_AA)
                     else:
                         if prioritized_messages:
-                            cv2.putText(processing_frame, "Form Feedback", (content_x, content_y), cv2.FONT_HERSHEY_DUPLEX, 0.9, (255, 255, 255), 2, cv2.LINE_AA)
-                            cv2.line(processing_frame, (content_x, content_y + 10), (box_x + box_width - 20, content_y + 10), (100, 100, 100), 1)
+                            cv2.putText(processing_frame, "Feedback:", (content_x, content_y), 
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1, cv2.LINE_AA)
                             
-                            msg_y = content_y + 45
+                            msg_y = content_y + 24
                             for i, (message, msg_type) in enumerate(prioritized_messages):
-                                if msg_y > box_y + box_height - 25:
+                                if msg_y > box_y + box_height - 10:
                                     break
-                                
-                                if msg_type == 'error':
-                                    icon = "X"; msg_color = (0, 100, 255)
-                                elif msg_type == 'warning':
-                                    icon = "!"; msg_color = (0, 165, 255)
-                                else:
-                                    icon = ">"; msg_color = (200, 200, 0)
-                                
-                                cv2.putText(processing_frame, icon, (content_x, msg_y), cv2.FONT_HERSHEY_SIMPLEX, 0.6, msg_color, 2, cv2.LINE_AA)
-                                
-                                max_chars = 42
-                                display_msg = message[:max_chars] + "..." if len(message) > max_chars else message
-                                cv2.putText(processing_frame, display_msg, (content_x + 25, msg_y), cv2.FONT_HERSHEY_SIMPLEX, 0.58, msg_color, 1, cv2.LINE_AA)
-                                msg_y += 40
+                                display_msg = message[:28] + ".." if len(message) > 28 else message
+                                cv2.putText(processing_frame, display_msg, (content_x, msg_y), 
+                                    cv2.FONT_HERSHEY_SIMPLEX, 0.38, (255, 255, 255), 1, cv2.LINE_AA)
+                                msg_y += 22
             
             canvas_width = self.video_canvas.winfo_width()
             canvas_height = self.video_canvas.winfo_height()
-            final_frame = self.resize_and_pad(processing_frame, size=(canvas_width, canvas_height))
+            if self.display_mode == "fill":
+                final_frame = self.resize_and_crop(processing_frame, size=(canvas_width, canvas_height))
+            else:
+                final_frame = self.resize_and_pad(processing_frame, size=(canvas_width, canvas_height))
             if self.queue.full():
                 try: self.queue.get_nowait()
                 except queue.Empty: pass

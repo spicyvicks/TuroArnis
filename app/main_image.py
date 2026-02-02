@@ -57,6 +57,7 @@ class TuroArnisImageGUI:
         #image state
         self.image_path = None
         self.static_image_original = None
+        self.display_mode = "fit"  #fit (letterbox) or fill (crop)
         self.is_image_loaded = False
 
         #use resource path for stick detector
@@ -116,7 +117,15 @@ class TuroArnisImageGUI:
         self.image_name_label = ctk.CTkLabel(image_frame, text="No image loaded", font=("Inter", 11), text_color="#7f8c8d", wraplength=200)
         self.image_name_label.pack(anchor="w", pady=(0, 5), padx=10)
         
-        ctk.CTkButton(image_frame, text="📂 Open Image", command=self.open_image_dialog, fg_color="#3498db", hover_color="#2980b9", corner_radius=10, font=("Inter", 14)).pack(fill="x", pady=(0, 10), padx=10)
+        ctk.CTkButton(image_frame, text="📂 Open Image", command=self.open_image_dialog, fg_color="#3498db", hover_color="#2980b9", corner_radius=10, font=("Inter", 14)).pack(fill="x", pady=(0, 5), padx=10)
+        
+        #display mode control
+        display_row = ctk.CTkFrame(image_frame, fg_color="transparent")
+        display_row.pack(fill="x", pady=(0, 10), padx=10)
+        ctk.CTkLabel(display_row, text="Display:", font=("Inter", 11), text_color="#7f8c8d").pack(side="left")
+        self.display_mode_var = ctk.StringVar(value="Fit")
+        display_menu = ctk.CTkOptionMenu(display_row, variable=self.display_mode_var, values=["Fit", "Fill"], command=self.on_display_mode_change, width=80, fg_color="#9b59b6", button_color="#8e44ad", font=("Inter", 12))
+        display_menu.pack(side="left", padx=5)
 
         ctk.CTkFrame(self.controls_panel, height=2, fg_color="#bdc3c7").pack(fill="x", pady=10, padx=15)
         
@@ -218,6 +227,7 @@ class TuroArnisImageGUI:
         cv2.putText(img, text, (pos[0], pos[1]), font_face, font_scale, text_color, thickness)
 
     def resize_and_pad(self, img, size, pad_color=0):
+        #fit mode - letterbox/pillarbox to preserve aspect ratio
         h, w, _ = img.shape; sw, sh = size
         if w == 0 or h == 0 or sw == 0 or sh == 0: return np.zeros((sh, sw, 3), dtype=np.uint8)
         aspect = w / h; canvas_aspect = sw / sh
@@ -233,6 +243,38 @@ class TuroArnisImageGUI:
         scaled_img = cv2.resize(img, (new_w, new_h), interpolation=interp)
         padded_img = cv2.copyMakeBorder(scaled_img, pad_top, pad_bot, pad_left, pad_right, borderType=cv2.BORDER_CONSTANT, value=[pad_color]*3)
         return padded_img
+    
+    def resize_and_crop(self, img, size):
+        #fill mode - crop to fill canvas while preserving aspect ratio
+        h, w, _ = img.shape; sw, sh = size
+        if w == 0 or h == 0 or sw == 0 or sh == 0: return np.zeros((sh, sw, 3), dtype=np.uint8)
+        aspect = w / h; canvas_aspect = sw / sh
+        if aspect > canvas_aspect:
+            new_h = sh; new_w = int(new_h * aspect)
+        else:
+            new_w = sw; new_h = int(new_w / aspect)
+        interp = cv2.INTER_AREA if new_w < w or new_h < h else cv2.INTER_LINEAR
+        scaled_img = cv2.resize(img, (new_w, new_h), interpolation=interp)
+        start_x = (new_w - sw) // 2
+        start_y = (new_h - sh) // 2
+        cropped = scaled_img[start_y:start_y+sh, start_x:start_x+sw]
+        return cropped
+    
+    def resize_preserve_aspect(self, img, target_width, target_height):
+        #resize for processing while preserving aspect ratio
+        h, w = img.shape[:2]
+        if w == 0 or h == 0: return img
+        aspect = w / h
+        if aspect > target_width / target_height:
+            new_w = target_width
+            new_h = int(new_w / aspect)
+        else:
+            new_h = target_height
+            new_w = int(new_h * aspect)
+        return cv2.resize(img, (new_w, new_h), interpolation=cv2.INTER_LINEAR)
+    
+    def on_display_mode_change(self, value):
+        self.display_mode = value.lower()
     
     def video_loop(self):
         COLOR_DEFAULT = (255, 0, 0); COLOR_CORRECT = (0, 255, 0); COLOR_ERROR = (0, 0, 255)
@@ -261,7 +303,8 @@ class TuroArnisImageGUI:
             
             frame = self.static_image_original.copy()
             frame = cv2.flip(frame, 1)
-            processing_frame = cv2.resize(frame, (640, 480))
+            #preserve aspect ratio during processing resize
+            processing_frame = self.resize_preserve_aspect(frame, 640, 480)
             
             analysis_results = self.analyzer.process_frame(processing_frame)
             if analysis_results:
@@ -336,66 +379,58 @@ class TuroArnisImageGUI:
                             cv2.line(processing_frame, start_pt, end_pt, draw_color, 2)
 
                 if self.target_form:
+                    #use feedback analyzer to get detailed feedback
                     feedback = self.feedback_analyzer.analyze(result, self.target_form)
-                    prioritized_messages = self.feedback_analyzer.get_prioritized_messages(feedback, max_messages=4)
+                    prioritized_messages = self.feedback_analyzer.get_prioritized_messages(feedback, max_messages=3)
                     
-                    box_width = 420
-                    box_height = 220
-                    box_x = processing_frame.shape[1] - box_width - 20
-                    box_y = 20
+                    #opencv feedback rendering - compact size (same as main app)
+                    box_width = 220
+                    box_height = 110
+                    box_x = processing_frame.shape[1] - box_width - 10
+                    box_y = 10
                     
-                    shadow_offset = 5
-                    cv2.rectangle(processing_frame, 
-                        (box_x + shadow_offset, box_y + shadow_offset), 
-                        (box_x + box_width + shadow_offset, box_y + box_height + shadow_offset), 
-                        (20, 20, 20), -1)
-                    
+                    #semi-transparent background
                     overlay = processing_frame.copy()
-                    cv2.rectangle(overlay, (box_x, box_y), (box_x + box_width, box_y + box_height), (40, 44, 52), -1)
-                    alpha = 0.92
-                    processing_frame = cv2.addWeighted(overlay, alpha, processing_frame, 1 - alpha, 0)
+                    cv2.rectangle(overlay, (box_x, box_y), (box_x + box_width, box_y + box_height), (30, 30, 30), -1)
+                    processing_frame = cv2.addWeighted(overlay, 0.8, processing_frame, 0.2, 0)
                     
+                    #border color based on state
                     if feedback['is_correct']:
                         border_color = (0, 200, 0)
-                    elif feedback['severity'] == 'critical':
-                        border_color = (0, 0, 220)
+                    elif feedback.get('severity') == 'critical':
+                        border_color = (0, 0, 200)
                     else:
-                        border_color = (52, 152, 219)
-                    cv2.rectangle(processing_frame, (box_x, box_y), (box_x + box_width, box_y + box_height), border_color, 3)
+                        border_color = (200, 150, 50)
+                    cv2.rectangle(processing_frame, (box_x, box_y), (box_x + box_width, box_y + box_height), border_color, 2)
                     
-                    content_x = box_x + 20
-                    content_y = box_y + 35
+                    content_x = box_x + 10
+                    content_y = box_y + 20
                     
                     if feedback['is_correct']:
-                        cv2.putText(processing_frame, "Perfect Form!", (content_x, content_y), cv2.FONT_HERSHEY_DUPLEX, 1.0, (0, 255, 0), 2, cv2.LINE_AA)
-                        cv2.putText(processing_frame, "Maintain this position", (content_x, content_y + 45), cv2.FONT_HERSHEY_SIMPLEX, 0.65, (200, 200, 200), 1, cv2.LINE_AA)
+                        cv2.putText(processing_frame, "Perfect Form!", (content_x, content_y), 
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0, 255, 0), 1, cv2.LINE_AA)
+                        cv2.putText(processing_frame, "Maintain position", (content_x, content_y + 22), 
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 255, 255), 1, cv2.LINE_AA)
                     else:
                         if prioritized_messages:
-                            cv2.putText(processing_frame, "Form Feedback", (content_x, content_y), cv2.FONT_HERSHEY_DUPLEX, 0.9, (255, 255, 255), 2, cv2.LINE_AA)
-                            cv2.line(processing_frame, (content_x, content_y + 10), (box_x + box_width - 20, content_y + 10), (100, 100, 100), 1)
+                            cv2.putText(processing_frame, "Feedback:", (content_x, content_y), 
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1, cv2.LINE_AA)
                             
-                            msg_y = content_y + 45
+                            msg_y = content_y + 24
                             for i, (message, msg_type) in enumerate(prioritized_messages):
-                                if msg_y > box_y + box_height - 25:
+                                if msg_y > box_y + box_height - 10:
                                     break
-                                
-                                if msg_type == 'error':
-                                    icon = "X"; msg_color = (0, 100, 255)
-                                elif msg_type == 'warning':
-                                    icon = "!"; msg_color = (0, 165, 255)
-                                else:
-                                    icon = ">"; msg_color = (200, 200, 0)
-                                
-                                cv2.putText(processing_frame, icon, (content_x, msg_y), cv2.FONT_HERSHEY_SIMPLEX, 0.6, msg_color, 2, cv2.LINE_AA)
-                                
-                                max_chars = 42
-                                display_msg = message[:max_chars] + "..." if len(message) > max_chars else message
-                                cv2.putText(processing_frame, display_msg, (content_x + 25, msg_y), cv2.FONT_HERSHEY_SIMPLEX, 0.58, msg_color, 1, cv2.LINE_AA)
-                                msg_y += 40
+                                display_msg = message[:28] + ".." if len(message) > 28 else message
+                                cv2.putText(processing_frame, display_msg, (content_x, msg_y), 
+                                    cv2.FONT_HERSHEY_SIMPLEX, 0.38, (255, 255, 255), 1, cv2.LINE_AA)
+                                msg_y += 22
             
             canvas_width = self.video_canvas.winfo_width()
             canvas_height = self.video_canvas.winfo_height()
-            final_frame = self.resize_and_pad(processing_frame, size=(canvas_width, canvas_height))
+            if self.display_mode == "fill":
+                final_frame = self.resize_and_crop(processing_frame, size=(canvas_width, canvas_height))
+            else:
+                final_frame = self.resize_and_pad(processing_frame, size=(canvas_width, canvas_height))
             if self.queue.full():
                 try: self.queue.get_nowait()
                 except queue.Empty: pass

@@ -26,7 +26,7 @@ from app.computer_vision.pose_analyzer import PoseAnalyzer
 from app.computer_vision.feedback_analyzer import FeedbackAnalyzer
 from app.utils.resource_path import get_resource_path
 
-class TuroArnisImageGUI:
+class TuroArnisVideoGUI:
     def __init__(self, window, window_title):
         self.window = window
         self.window.title(window_title)
@@ -42,7 +42,7 @@ class TuroArnisImageGUI:
         self.screen_height = self.window.winfo_screenheight()
         
         #test user, no db
-        self.current_user = {'id': 0, 'name': 'Test User (Image Mode)'}
+        self.current_user = {'id': 0, 'name': 'Test User (Video Mode)'}
         self.current_session_id = None
 
         self.frame_counter = 0
@@ -54,10 +54,14 @@ class TuroArnisImageGUI:
         self.state_frame_count = 0
         self.min_state_frames = 15
 
-        #image state
-        self.image_path = None
-        self.static_image_original = None
-        self.is_image_loaded = False
+        #video playback state
+        self.video_path = None
+        self.cap = None
+        self.video_fps = 30
+        self.total_frames = 0
+        self.current_frame_idx = 0
+        self.is_playing = False
+        self.is_video_loaded = False
 
         #use resource path for stick detector
         stick_model_relative = 'runs/pose/arnis_stick_detector/weights/best.pt'
@@ -71,7 +75,6 @@ class TuroArnisImageGUI:
         #initialize feedback analyzer
         self.feedback_analyzer = FeedbackAnalyzer()
         
-        self.cap = None
         self.queue = queue.Queue(maxsize=1)
         self.target_form = None
         
@@ -105,18 +108,53 @@ class TuroArnisImageGUI:
         
         ctk.CTkLabel(user_frame, text="Current User", font=("Inter", 12, "bold"), text_color="#7f8c8d").pack(anchor="w", pady=(5, 2), padx=10)
         ctk.CTkLabel(user_frame, text=self.current_user['name'], font=("Inter", 14, "bold"), text_color="#3498db").pack(anchor="w", padx=10)
-        ctk.CTkLabel(user_frame, text="Image Testing Mode", font=("Inter", 11), text_color="#7f8c8d").pack(anchor="w", padx=10, pady=(0, 10))
+        ctk.CTkLabel(user_frame, text="Video Testing Mode", font=("Inter", 11), text_color="#7f8c8d").pack(anchor="w", padx=10, pady=(0, 10))
 
-        #image file section
-        image_frame = ctk.CTkFrame(self.controls_panel, corner_radius=10, fg_color="white")
-        image_frame.pack(fill="x", pady=5, padx=10)
+        #video file section
+        video_frame_ctrl = ctk.CTkFrame(self.controls_panel, corner_radius=10, fg_color="white")
+        video_frame_ctrl.pack(fill="x", pady=5, padx=10)
         
-        ctk.CTkLabel(image_frame, text="Image File", font=("Inter", 12, "bold"), text_color="#7f8c8d").pack(anchor="w", pady=(5, 2), padx=10)
+        ctk.CTkLabel(video_frame_ctrl, text="Video File", font=("Inter", 12, "bold"), text_color="#7f8c8d").pack(anchor="w", pady=(5, 2), padx=10)
         
-        self.image_name_label = ctk.CTkLabel(image_frame, text="No image loaded", font=("Inter", 11), text_color="#7f8c8d", wraplength=200)
-        self.image_name_label.pack(anchor="w", pady=(0, 5), padx=10)
+        self.video_name_label = ctk.CTkLabel(video_frame_ctrl, text="No video loaded", font=("Inter", 11), text_color="#7f8c8d", wraplength=200)
+        self.video_name_label.pack(anchor="w", pady=(0, 5), padx=10)
         
-        ctk.CTkButton(image_frame, text="📂 Open Image", command=self.open_image_dialog, fg_color="#3498db", hover_color="#2980b9", corner_radius=10, font=("Inter", 14)).pack(fill="x", pady=(0, 10), padx=10)
+        ctk.CTkButton(video_frame_ctrl, text="📂 Open Video", command=self.open_video_dialog, fg_color="#3498db", hover_color="#2980b9", corner_radius=10, font=("Inter", 14)).pack(fill="x", pady=(0, 10), padx=10)
+
+        #playback controls section
+        playback_frame = ctk.CTkFrame(self.controls_panel, corner_radius=10, fg_color="white")
+        playback_frame.pack(fill="x", pady=5, padx=10)
+        
+        ctk.CTkLabel(playback_frame, text="Playback", font=("Inter", 12, "bold"), text_color="#7f8c8d").pack(anchor="w", pady=(5, 2), padx=10)
+        
+        btn_row = ctk.CTkFrame(playback_frame, fg_color="transparent")
+        btn_row.pack(fill="x", pady=5, padx=10)
+        
+        self.play_btn = ctk.CTkButton(btn_row, text="▶ Play", command=self.toggle_playback, fg_color="#27ae60", hover_color="#229954", width=90, corner_radius=10, font=("Inter", 13))
+        self.play_btn.pack(side="left", padx=2)
+        
+        self.stop_btn = ctk.CTkButton(btn_row, text="⏹ Stop", command=self.stop_video, fg_color="#e74c3c", hover_color="#c0392b", width=90, corner_radius=10, font=("Inter", 13))
+        self.stop_btn.pack(side="left", padx=2)
+        
+        #seek slider
+        self.seek_var = tk.IntVar(value=0)
+        self.seek_slider = ctk.CTkSlider(playback_frame, from_=0, to=100, variable=self.seek_var, command=self.on_seek, progress_color="#3498db", button_color="#2980b9")
+        self.seek_slider.pack(fill="x", pady=5, padx=10)
+        
+        self.time_label = ctk.CTkLabel(playback_frame, text="00:00 / 00:00", font=("Inter", 11), text_color="#7f8c8d")
+        self.time_label.pack(anchor="w", padx=10)
+        
+        #loop checkbox
+        self.loop_var = ctk.BooleanVar(value=True)
+        ctk.CTkCheckBox(playback_frame, text="Loop Video", variable=self.loop_var, fg_color="#3498db", hover_color="#2980b9", font=("Inter", 12)).pack(anchor="w", pady=5, padx=10)
+        
+        #speed control
+        speed_row = ctk.CTkFrame(playback_frame, fg_color="transparent")
+        speed_row.pack(fill="x", pady=(5, 10), padx=10)
+        ctk.CTkLabel(speed_row, text="Speed:", font=("Inter", 11), text_color="#7f8c8d").pack(side="left")
+        self.speed_var = ctk.StringVar(value="1.0")
+        speed_menu = ctk.CTkOptionMenu(speed_row, variable=self.speed_var, values=["0.25", "0.5", "0.75", "1.0", "1.5", "2.0"], width=80, fg_color="#3498db", button_color="#2980b9", font=("Inter", 12))
+        speed_menu.pack(side="left", padx=5)
 
         ctk.CTkFrame(self.controls_panel, height=2, fg_color="#bdc3c7").pack(fill="x", pady=10, padx=15)
         
@@ -147,7 +185,7 @@ class TuroArnisImageGUI:
         ctk.CTkFrame(self.controls_panel, height=2, fg_color="#bdc3c7").pack(fill="x", pady=10, padx=15)
         
         #status section
-        self.status_label = ctk.CTkLabel(self.controls_panel, text="Status: Load an image", font=("Inter", 14), wraplength=220, text_color="#2c3e50")
+        self.status_label = ctk.CTkLabel(self.controls_panel, text="Status: Load a video", font=("Inter", 14), wraplength=220, text_color="#2c3e50")
         self.status_label.pack(fill="x", pady=5, anchor="w", padx=10)
         
         #confidence display
@@ -162,9 +200,12 @@ class TuroArnisImageGUI:
         
         self.confidence_label = ctk.CTkLabel(confidence_frame, text="0%", font=("Inter", 11, "bold"), text_color="#27ae60")
         self.confidence_label.pack(side="left", padx=(5, 0))
-        
+
         #keyboard shortcuts
-        self.window.bind('<Control-o>', lambda e: self.open_image_dialog())
+        self.window.bind('<space>', lambda e: self.toggle_playback())
+        self.window.bind('<Left>', lambda e: self.step_frame(-1))
+        self.window.bind('<Right>', lambda e: self.step_frame(1))
+        self.window.bind('<Control-o>', lambda e: self.open_video_dialog())
 
         self.is_running = True
         self.thread = threading.Thread(target=self.video_loop, daemon=True)
@@ -182,33 +223,87 @@ class TuroArnisImageGUI:
         
         self.window.mainloop()
     
-    def open_image_dialog(self):
+    def open_video_dialog(self):
         filetypes = [
-            ("Image files", "*.jpg *.jpeg *.png *.bmp *.gif *.webp"),
-            ("JPEG files", "*.jpg *.jpeg"),
-            ("PNG files", "*.png"),
+            ("Video files", "*.mp4 *.avi *.mov *.mkv *.wmv *.flv *.webm"),
+            ("MP4 files", "*.mp4"),
+            ("AVI files", "*.avi"),
             ("All files", "*.*")
         ]
-        path = filedialog.askopenfilename(title="Select Image File", filetypes=filetypes)
+        path = filedialog.askopenfilename(title="Select Video File", filetypes=filetypes)
         if path:
-            self.load_image(path)
+            self.load_video(path)
     
-    def load_image(self, path):
-        img = cv2.imread(path)
-        if img is None:
-            self.image_name_label.configure(text="Error: Could not open image")
-            self.status_label.configure(text="Status: Image load failed")
+    def load_video(self, path):
+        if self.cap is not None:
+            self.cap.release()
+        
+        self.cap = cv2.VideoCapture(path)
+        if not self.cap.isOpened():
+            self.video_name_label.configure(text="Error: Could not open video")
+            self.status_label.configure(text="Status: Video load failed")
             return
         
-        self.image_path = path
-        self.static_image_original = img
-        self.is_image_loaded = True
+        self.video_path = path
+        self.video_fps = self.cap.get(cv2.CAP_PROP_FPS) or 30
+        self.total_frames = int(self.cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        self.current_frame_idx = 0
+        self.is_video_loaded = True
+        self.is_playing = False
         
-        image_name = os.path.basename(path)
-        self.image_name_label.configure(text=image_name)
-        self.status_label.configure(text=f"Status: Loaded ({img.shape[1]}x{img.shape[0]})")
+        video_name = os.path.basename(path)
+        self.video_name_label.configure(text=video_name)
+        self.seek_slider.configure(to=max(1, self.total_frames - 1))
+        self.update_time_label()
+        self.status_label.configure(text=f"Status: Loaded ({self.total_frames} frames)")
+        self.play_btn.configure(text="▶ Play")
         
-        print(f"[INFO] loaded image: {path}")
+        print(f"[INFO] loaded video: {path} ({self.total_frames} frames @ {self.video_fps:.1f} fps)")
+    
+    def toggle_playback(self):
+        if not self.is_video_loaded:
+            return
+        self.is_playing = not self.is_playing
+        self.play_btn.configure(text="⏸ Pause" if self.is_playing else "▶ Play")
+    
+    def stop_video(self):
+        self.is_playing = False
+        self.current_frame_idx = 0
+        if self.cap is not None:
+            self.cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+        self.seek_var.set(0)
+        self.play_btn.configure(text="▶ Play")
+        self.update_time_label()
+    
+    def step_frame(self, delta):
+        if not self.is_video_loaded:
+            return
+        self.is_playing = False
+        self.play_btn.configure(text="▶ Play")
+        new_idx = max(0, min(self.total_frames - 1, self.current_frame_idx + delta))
+        self.current_frame_idx = new_idx
+        self.cap.set(cv2.CAP_PROP_POS_FRAMES, new_idx)
+        self.seek_var.set(new_idx)
+        self.update_time_label()
+    
+    def on_seek(self, value):
+        if not self.is_video_loaded:
+            return
+        new_idx = int(float(value))
+        if abs(new_idx - self.current_frame_idx) > 1:
+            self.current_frame_idx = new_idx
+            self.cap.set(cv2.CAP_PROP_POS_FRAMES, new_idx)
+            self.update_time_label()
+    
+    def update_time_label(self):
+        if not self.is_video_loaded:
+            self.time_label.configure(text="00:00 / 00:00")
+            return
+        current_sec = self.current_frame_idx / self.video_fps
+        total_sec = self.total_frames / self.video_fps
+        cur_min, cur_sec = divmod(int(current_sec), 60)
+        tot_min, tot_sec = divmod(int(total_sec), 60)
+        self.time_label.configure(text=f"{cur_min:02d}:{cur_sec:02d} / {tot_min:02d}:{tot_sec:02d}")
 
     def draw_text_with_bg(self, img, text, pos, font_face, font_scale, text_color, bg_color, thickness):
         (text_w, text_h), baseline = cv2.getTextSize(text, font_face, font_scale, thickness)
@@ -238,18 +333,20 @@ class TuroArnisImageGUI:
         COLOR_DEFAULT = (255, 0, 0); COLOR_CORRECT = (0, 255, 0); COLOR_ERROR = (0, 0, 255)
         COLOR_PROMPT = (0, 255, 255); COLOR_WHITE = (255, 255, 255); COLOR_BLACK = (0, 0, 0)
 
+        last_frame_time = time.time()
+        
         while self.is_running:
-            #no image loaded - show placeholder
-            if not self.is_image_loaded or self.static_image_original is None:
+            #no video loaded - show placeholder
+            if not self.is_video_loaded or self.cap is None:
                 canvas_width = self.video_canvas.winfo_width()
                 canvas_height = self.video_canvas.winfo_height()
                 if canvas_width > 1 and canvas_height > 1:
                     placeholder = np.zeros((canvas_height, canvas_width, 3), dtype=np.uint8)
                     placeholder[:] = (40, 40, 40)
-                    cv2.putText(placeholder, "Load an image file to begin", 
+                    cv2.putText(placeholder, "Load a video file to begin", 
                         (canvas_width//2 - 180, canvas_height//2), 
                         cv2.FONT_HERSHEY_SIMPLEX, 0.8, (150, 150, 150), 2)
-                    cv2.putText(placeholder, "Press Ctrl+O or click 'Open Image'", 
+                    cv2.putText(placeholder, "Press Ctrl+O or click 'Open Video'", 
                         (canvas_width//2 - 200, canvas_height//2 + 40), 
                         cv2.FONT_HERSHEY_SIMPLEX, 0.6, (100, 100, 100), 1)
                     if self.queue.full():
@@ -259,7 +356,40 @@ class TuroArnisImageGUI:
                 time.sleep(0.1)
                 continue
             
-            frame = self.static_image_original.copy()
+            #respect playback speed
+            try:
+                speed = float(self.speed_var.get())
+            except:
+                speed = 1.0
+            frame_delay = 1.0 / (self.video_fps * speed)
+            
+            if self.is_playing:
+                elapsed = time.time() - last_frame_time
+                if elapsed < frame_delay:
+                    time.sleep(0.001)
+                    continue
+                last_frame_time = time.time()
+            
+            #read frame
+            ret, frame = self.cap.read()
+            
+            if not ret:
+                #end of video
+                if self.loop_var.get():
+                    self.current_frame_idx = 0
+                    self.cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+                    continue
+                else:
+                    self.is_playing = False
+                    self.play_btn.configure(text="▶ Play")
+                    time.sleep(0.05)
+                    continue
+            
+            if self.is_playing:
+                self.current_frame_idx = int(self.cap.get(cv2.CAP_PROP_POS_FRAMES))
+                self.seek_var.set(self.current_frame_idx)
+                self.update_time_label()
+            
             frame = cv2.flip(frame, 1)
             processing_frame = cv2.resize(frame, (640, 480))
             
@@ -402,7 +532,10 @@ class TuroArnisImageGUI:
             self.queue.put(final_frame)
             
             self.frame_counter += 1
-            time.sleep(0.1)
+            
+            #when paused, sleep more to reduce cpu usage
+            if not self.is_playing:
+                time.sleep(0.05)
 
     def process_queue(self):
         try:
@@ -429,17 +562,19 @@ class TuroArnisImageGUI:
         self.is_running = False
         time.sleep(0.5)
         self.analyzer.close()
+        if self.cap is not None:
+            self.cap.release()
         self.window.destroy()
     
     def reset_feedback(self):
         self.target_form = None
         self.selected_form.set("Choose Arnis Form")
-        self.status_label.configure(text="Status: Load an image")
+        self.status_label.configure(text="Status: Load a video")
 
 if __name__ == "__main__":
     try:
         from ctypes import windll
-        windll.shell32.SetCurrentProcessExplicitAppUserModelID('TuroArnis.ImageTest.1.0')
+        windll.shell32.SetCurrentProcessExplicitAppUserModelID('TuroArnis.VideoTest.1.0')
     except:
         pass
     
@@ -453,4 +588,4 @@ if __name__ == "__main__":
     except Exception as e:
         print(f"[WARNING] Could not set icon: {e}")
     
-    app = TuroArnisImageGUI(root, "TuroArnis - Arnis Form Correction (Image Test)")
+    app = TuroArnisVideoGUI(root, "TuroArnis - Arnis Form Correction (Video Test)")

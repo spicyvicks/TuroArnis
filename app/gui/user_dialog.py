@@ -139,7 +139,7 @@ class UserManagementDialog:
             hover_color="#229954",
             corner_radius=10,
             font=("Inter", 14),
-            text_color="black"
+            text_color="white"
         ).pack(side="left")
         
         # Action buttons
@@ -155,7 +155,7 @@ class UserManagementDialog:
             corner_radius=10,
             font=("Inter", 14),
             width=150,
-            text_color="black"
+            text_color="white"
         ).pack(side="left", padx=5)
         
         ctk.CTkButton(
@@ -167,7 +167,7 @@ class UserManagementDialog:
             corner_radius=10,
             font=("Inter", 14),
             width=150,
-            text_color="black"
+            text_color="white"
         ).pack(side="left", padx=5)
         
         ctk.CTkButton(
@@ -179,7 +179,7 @@ class UserManagementDialog:
             corner_radius=10,
             font=("Inter", 14),
             width=200,
-            text_color="black"
+            text_color="white"
         ).pack(side="left", padx=5)
         
         ctk.CTkButton(
@@ -191,7 +191,7 @@ class UserManagementDialog:
             corner_radius=10,
             font=("Inter", 14),
             width=100,
-            text_color="black"
+            text_color="white"
         ).pack(side="right", padx=5)
     
     def refresh_user_list(self):

@@ -29,11 +29,7 @@ from app.computer_vision.feedback_analyzer import FeedbackAnalyzer
 from app.database.db_manager import DatabaseManager
 from app.utils.resource_path import get_resource_path, get_app_data_path
 
-#============================================
-#debug mode - set to true to skip splash screen and auto-select user
-#============================================
-DEBUG_MODE = True  #change to false for production
-#============================================
+DEBUG_MODE = False  
 
 class TuroArnisGUI:
     def __init__(self, window, window_title):
@@ -138,13 +134,20 @@ class TuroArnisGUI:
         
         self.show_user_selection()
         
-        if self.current_user and not DEBUG_MODE:
-            self.splash_frame.pack(fill="both", expand=True)
-            self.window.update()
-        
         if not self.current_user:
-            self.window.destroy()
+            try:
+                self.window.destroy()
+            except:
+                pass
             return
+        
+        if not DEBUG_MODE:
+            try:
+                if self.splash_frame.winfo_exists():
+                    self.splash_frame.pack(fill="both", expand=True)
+                    self.window.update()
+            except:
+                pass
 
         #frame processing config
         self.frame_counter = 0
@@ -199,13 +202,16 @@ class TuroArnisGUI:
         
         self.cap = cv2.VideoCapture(0)
         
+        #safely destroy splash frame
+        try:
+            self.splash_progress.stop()
+            if self.splash_frame.winfo_exists():
+                self.splash_frame.destroy()
+        except:
+            pass
+        
         if not self.cap.isOpened():
-            self.splash_progress.stop()
-            self.splash_frame.destroy()
             self.toast.show("Camera not detected.", "error", duration=5000)
-        else:
-            self.splash_progress.stop()
-            self.splash_frame.destroy()
         
         #gui setup
         self.queue = queue.Queue(maxsize=1)

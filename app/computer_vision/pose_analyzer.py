@@ -74,7 +74,10 @@ class PoseAnalyzer:
         )
 
         try:
-            models_dir = get_resource_path('ml/models')
+            #try app/models first, then fall back to ml/models
+            models_dir = get_resource_path('app/models')
+            if not os.path.exists(models_dir):
+                models_dir = get_resource_path('ml/models')
             active_model_file = os.path.join(models_dir, 'active_model.json')
             
             print(f"[debug] checking active_model.json at: {active_model_file}")
@@ -94,17 +97,18 @@ class PoseAnalyzer:
                 version_name = active_config['version']
                 
                 #convert to resource paths if not absolute or doesn't exist
+                #use models_dir to support both app/models and ml/models locations
                 if not os.path.isabs(model_path) or not os.path.exists(model_path):
-                    model_path = get_resource_path(os.path.join('ml/models', version_name, os.path.basename(model_path)))
+                    model_path = os.path.join(models_dir, version_name, os.path.basename(model_path))
                 if not os.path.isabs(encoder_path) or not os.path.exists(encoder_path):
-                    encoder_path = get_resource_path(os.path.join('ml/models', version_name, os.path.basename(encoder_path)))
+                    encoder_path = os.path.join(models_dir, version_name, os.path.basename(encoder_path))
                 if scaler_path and (not os.path.isabs(scaler_path) or not os.path.exists(scaler_path)):
-                    scaler_path = get_resource_path(os.path.join('ml/models', version_name, os.path.basename(scaler_path)))
+                    scaler_path = os.path.join(models_dir, version_name, os.path.basename(scaler_path))
                 
                 print(f"[info] using model version: {version_name}")
                 
                 #check if this is an ensemble model first (before checking model.keras)
-                version_path = get_resource_path(os.path.join('ml/models', version_name))
+                version_path = os.path.join(models_dir, version_name)
                 metadata_path = os.path.join(version_path, 'metadata.json')
                 ensemble_config_path = os.path.join(version_path, 'ensemble_config.json')
                 
@@ -130,22 +134,19 @@ class PoseAnalyzer:
                         
                         print(f"[info] loading ensemble with models: {ensemble_config['model_versions']}")
                         
-                        #add training module to path
-                        training_path = get_resource_path('ml/training')
-                        if training_path not in sys.path:
-                            sys.path.insert(0, training_path)
-                        
+                        #import ensemble classifier from app utils
                         try:
-                            from ensemble_model import EnsembleClassifier
+                            from app.utils.ensemble_model import EnsembleClassifier
                         except ImportError as e:
                             print(f"[error] could not import EnsembleClassifier: {e}")
                             raise
                         
-                        #load ensemble
+                        #load ensemble with models_dir pointing to app/models
                         self.pose_classifier_model = EnsembleClassifier(
                             model_versions=ensemble_config['model_versions'],
                             voting=ensemble_config['voting'],
                             weights=ensemble_config['weights'],
+                            models_dir=models_dir,
                             verbose=False
                         )
                         self.label_encoder = joblib.load(encoder_path)

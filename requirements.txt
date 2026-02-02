@@ -1,29 +1,8 @@
-# Core Computer Vision & ML
 opencv-python>=4.8.0
-tensorflow==2.15.0
-mediapipe==0.10.9
-numpy>=1.24.0
-
-# Deep Learning & YOLO
+mediapipe>=0.10.0
+tensorflow>=2.13.0
 ultralytics>=8.0.0
-
-# Data Processing & Analysis
-pandas>=2.0.0
-scikit-learn>=1.3.0
-joblib>=1.3.0
-
-# GUI & Visualization
 customtkinter>=5.2.0
 Pillow>=10.0.0
-matplotlib>=3.7.0
-seaborn>=0.12.0
-
-# Data Augmentation
-albumentations>=1.3.0
-imgaug>=0.4.0
-
-# Progress Bars
-tqdm>=4.66.0
-
-# Packaging
-pyinstaller>=5.13.0
+joblib>=1.3.0
+numpy>=1.24.0

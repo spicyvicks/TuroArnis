@@ -79,7 +79,16 @@ def extract_raw_features(image, stick_detector):
     
     stick_keypoints = np.array([stick_grip, stick_tip])
     
-def compute_global_features_from_kpts(kpts, stick_keypoints):
+    # Compute global features
+    global_features = compute_global_features_from_kpts(kpts, stick_keypoints)
+    
+    return {
+        'pose_keypoints': kpts,
+        'stick_keypoints': stick_keypoints,
+        'global_features': global_features
+    }
+
+
     """
     Compute geometric features from normalized keypoints.
     
@@ -149,20 +158,6 @@ def compute_global_features_from_kpts(kpts, stick_keypoints):
     features['stick_length'] = calculate_distance(stick_grip, stick_tip)
     
     return features
-
-
-def extract_raw_features(image, stick_detector):
-    """
-    Extract raw features from a single image.
-    ...
-    """
-    # ... [MediaPipe and YOLO logic] ...
-    # (Leaving this for batch/standalone processing)
-    # The return should now call our helper
-    # (Actually I'll just keep it as is for now for compatibility, 
-    # but I'll update pose_analyzer to call the new helper)
-    # [Rest of function logic remains same as per my previous view]
-    pass
 
 
 def gaussian_similarity(value, mean, std):

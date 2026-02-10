@@ -1,18 +1,29 @@
 # Core dependencies
 opencv-python>=4.8.0
 mediapipe==0.10.14
-ultralytics>=8.0.0
+ultralytics==8.3.25
 customtkinter>=5.2.0
 Pillow>=10.0.0
 joblib>=1.3.0
-numpy>=1.24.0
+numpy==1.26.4
+scipy==1.17.0
 
-# PyTorch (CPU version for deployment)
-torch>=2.1.0
-torchvision>=0.16.0
+# PyTorch (CPU version for deployment) - Python 3.11 compatible
+--index-url https://download.pytorch.org/whl/cpu
+torch==2.1.0+cpu
+torchvision==0.16.0+cpu
 
-# PyTorch Geometric for GCN models
-torch-geometric>=2.4.0
+# Switch back to PyPI for other packages
+--extra-index-url https://pypi.org/simple
 
-# Legacy TensorFlow (for backward compatibility)
-tensorflow>=2.13.0
+# PyTorch Geometric dependencies (for PyTorch 2.1.0)
+--find-links https://data.pyg.org/whl/torch-2.1.0+cpu.html
+torch-scatter==2.1.2+pt21cpu
+torch-sparse==0.6.18+pt21cpu
+torch-geometric==2.4.0
+
+# Legacy TensorFlow (Using 2.15+ for Python 3.11 compatibility)
+# tensorflow>=2.15.0  (Optional, keeping it commented if not strictly needed for GCN)
+# PyQt6 for packaging if needed
+PyQt6==6.8.0
+pyinstaller==6.12.0

@@ -178,7 +178,7 @@ class TuroArnisGUI:
         self.window.update()
         time.sleep(0.3)
         
-        stick_model_relative = 'runs/pose/arnis_stick_detector/weights/best.pt'
+        stick_model_relative = 'app/models/weights/best.pt'
         stick_model_path = get_resource_path(stick_model_relative)
         
         self.splash_status.configure(text="Loading AI models...")
@@ -282,6 +282,22 @@ class TuroArnisGUI:
             font=("Inter", 14)
         )
         self.form_button.pack(fill="x", pady=5, padx=10)
+
+        # Viewpoint Selection (New for GCN)
+        ctk.CTkLabel(session_frame, text="Camera Viewpoint", font=("Inter", 12, "bold"), text_color="#7f8c8d").pack(anchor="w", pady=(5, 2), padx=10)
+        self.selected_viewpoint = ctk.StringVar(value="front")
+        self.viewpoint_menu = ctk.CTkOptionMenu(
+            session_frame,
+            variable=self.selected_viewpoint,
+            values=["front", "left", "right"],
+            command=self.on_viewpoint_selected,
+            fg_color="#34495e",
+            button_color="#2c3e50",
+            button_hover_color="#1a252f",
+            corner_radius=10,
+            font=("Inter", 14)
+        )
+        self.viewpoint_menu.pack(fill="x", pady=5, padx=10)
         
         session_btn_frame = ctk.CTkFrame(session_frame, fg_color="transparent")
         session_btn_frame.pack(fill="x", pady=5, padx=10)
@@ -629,6 +645,16 @@ class TuroArnisGUI:
     def on_action_selected(self, pretty_name):
         self.target_form = self.practice_stances[pretty_name]
         self.selected_form.set(pretty_name)
+        self.activity_label.configure(text=f"▶ Practicing: {pretty_name}", text_color="#3498db")
+
+        if self.current_user and not self.current_session_id:
+            self.start_session()
+
+    def on_viewpoint_selected(self, viewpoint):
+        """Callback when user changes camera viewpoint"""
+        if hasattr(self, 'analyzer'):
+            self.analyzer.set_viewpoint(viewpoint)
+            self.activity_label.configure(text=f"👁 Viewpoint switched to: {viewpoint.title()}", text_color="#3498db")
 
         
         self.activity_label.configure(text=f"▶ Practicing: {pretty_name}", text_color="#3498db")

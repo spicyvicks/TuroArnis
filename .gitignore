@@ -1,1 +1,4 @@
-app/models/v020_ang4_rf/model_rf.joblib
+app/models/
+venv/Scripts
+venv/Lib
+venv/Share

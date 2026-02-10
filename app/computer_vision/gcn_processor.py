@@ -9,9 +9,9 @@ from ultralytics import YOLO
 # Add project root to path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
-from app.models.gcn.model_architecture import HybridGCN
-from app.models.gcn.feature_extraction import extract_raw_features, compute_global_features_from_kpts, extract_node_features
-from app.utils.resource_path import get_resource_path
+from models.gcn.model_architecture import HybridGCN
+from models.gcn.feature_extraction import extract_raw_features, compute_global_features_from_kpts, extract_node_features
+from utils.resource_path import get_resource_path
 
 class GCNProcessor:
     """

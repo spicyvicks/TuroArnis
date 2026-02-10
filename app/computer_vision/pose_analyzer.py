@@ -10,13 +10,13 @@ from ultralytics import YOLO
 
 #import resource path helper for pyinstaller compatibility
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from app.utils.resource_path import get_resource_path
-from app.utils.device_manager import configure_device, get_yolo_device
+from utils.resource_path import get_resource_path
+from utils.device_manager import configure_device, get_yolo_device
 
 # GCN integration imports
-from app.computer_vision.gcn_inference import get_gcn_engine
-from app.models.gcn.feature_extraction import compute_global_features_from_kpts
-from app.models.gcn.model_architecture import CLASS_NAMES
+from computer_vision.gcn_inference import get_gcn_engine
+from models.gcn.feature_extraction import compute_global_features_from_kpts
+from models.gcn.model_architecture import CLASS_NAMES
 
 class PoseAnalyzer:
     def __init__(self, detection_interval=3, stick_model_path=None, debug_stick=False):
@@ -307,7 +307,8 @@ class PoseAnalyzer:
                 print(f"[DEBUG-STICK] Running stick detector on frame...")
             
             #run stick detection
-            results = self.stick_detector(frame, verbose=False, conf=0.5)
+            # Lowered confidence threshold to catch fast moving sticks
+            results = self.stick_detector(frame, verbose=False, conf=0.25)
             
             if debug:
                 print(f"[DEBUG-STICK] Results returned: {len(results)} detections")
@@ -335,8 +336,35 @@ class PoseAnalyzer:
                     print("[DEBUG-STICK] EXITING: No bounding boxes found")
                 return None, None
             
+            # Find best stick (closest to person if person_bbox provided, otherwise highest conf)
+            best_stick_idx = 0
+            if person_bbox:
+                px1, py1, px2, py2 = person_bbox
+                p_area = (px2 - px1) * (py2 - py1)
+                best_iou = -1.0
+                
+                # Check top 3 detections if available
+                count = min(3, len(result.boxes))
+                for i in range(count):
+                    box = result.boxes[i]
+                    bx1, by1, bx2, by2 = map(int, box.xyxy[0].tolist())
+                    
+                    # Calculate intersection
+                    ix1 = max(px1, bx1); iy1 = max(py1, by1)
+                    ix2 = min(px2, bx2); iy2 = min(py2, by2)
+                    inter_area = max(0, ix2 - ix1) * max(0, iy2 - iy1)
+                    
+                    # We utilize a modified IoU where we care about intersection with person
+                    # Sticks are often held 'out', so simple overlap is sufficient
+                    if inter_area > 0:
+                        # Prioritize sticks that actually touch the person
+                        if i == 0: best_iou = 0.1 # Baseline preference for highest conf
+                        if inter_area > best_iou:
+                            best_iou = inter_area
+                            best_stick_idx = i
+            
             #get stick bounding box
-            stick_box = result.boxes[0]
+            stick_box = result.boxes[best_stick_idx]
             stick_bbox = tuple(map(int, stick_box.xyxy[0].tolist()))
             confidence = stick_box.conf.item()
             
@@ -351,7 +379,7 @@ class PoseAnalyzer:
                     print(f"[DEBUG-STICK] Keypoints object exists, length: {len(result.keypoints)}")
                     print(f"[DEBUG-STICK] Keypoints type: {type(result.keypoints)}")
                 
-                kpts = result.keypoints[0].data[0]  #first detection's keypoints
+                kpts = result.keypoints[best_stick_idx].data[0] # Use best index
                 
                 if debug:
                     print(f"[DEBUG-STICK] Keypoints data shape: {kpts.shape if hasattr(kpts, 'shape') else 'N/A'}")
@@ -362,8 +390,9 @@ class PoseAnalyzer:
                 grip_conf = kpts[0][2].item()
                 tip_conf = kpts[1][2].item()
                 
-                #confidence filtering
-                if grip_conf < self.min_keypoint_confidence or tip_conf < self.min_keypoint_confidence:
+                #confidence filtering - lowered to 0.3
+                min_kpt_conf = 0.3
+                if grip_conf < min_kpt_conf or tip_conf < min_kpt_conf:
                     if debug:
                         print(f"[DEBUG-STICK] low confidence - grip: {grip_conf:.2f}, tip: {tip_conf:.2f}")
                     return None, None
@@ -472,6 +501,10 @@ class PoseAnalyzer:
                 
                 live_angles = self._calculate_all_angles_3d(pose_results.pose_world_landmarks)
                 
+                # Fallback to 2D angles if 3D failed (ensures we always have feedback data)
+                if not live_angles and hasattr(pose_results, 'pose_landmarks') and pose_results.pose_landmarks:
+                    live_angles = self._calculate_all_angles_2d_dict(pose_results.pose_landmarks.landmark)
+
                 predicted_class, confidence = "N/A", 0.0
                 
                 #optimization: skip ml inference if requested (use cached from last frame)
@@ -660,6 +693,30 @@ class PoseAnalyzer:
                 'right_knee': self._calculate_angle_3d(lm_data['right_hip'], lm_data['right_knee'], lm_data['right_ankle']),
             }
         except Exception: return None
+
+    def _calculate_all_angles_2d_dict(self, landmarks):
+        if not landmarks: return None
+        
+        # Helper to get coords from list
+        def get_coords(idx):
+            if idx < len(landmarks):
+                return (landmarks[idx].x, landmarks[idx].y) # Ignore Z for 2D calc
+            return None
+
+        # Similar set of angles as 3D
+        try:
+            # MediaPipe indices: 11=L_SH, 12=R_SH, 13=L_ELB, 14=R_ELB, 15=L_WR, 16=R_WR
+            # 23=L_HIP, 24=R_HIP, 25=L_KNEE, 26=R_KNEE, 27=L_ANK, 28=R_ANK
+            return {
+                'left_elbow': self._calculate_angle_2d(get_coords(11), get_coords(13), get_coords(15)),
+                'right_elbow': self._calculate_angle_2d(get_coords(12), get_coords(14), get_coords(16)),
+                'left_shoulder': self._calculate_angle_2d(get_coords(23), get_coords(11), get_coords(13)),
+                'right_shoulder': self._calculate_angle_2d(get_coords(24), get_coords(12), get_coords(14)),
+                'left_knee': self._calculate_angle_2d(get_coords(23), get_coords(25), get_coords(27)),
+                'right_knee': self._calculate_angle_2d(get_coords(24), get_coords(26), get_coords(28)),
+            }
+        except Exception: 
+            return None
 
     def _calculate_angle_3d(self, a, b, c):
         a, b, c = np.array(a), np.array(b), np.array(c)

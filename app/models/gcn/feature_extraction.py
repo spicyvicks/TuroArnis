@@ -89,6 +89,7 @@ def extract_raw_features(image, stick_detector):
     }
 
 
+def compute_global_features_from_kpts(kpts, stick_keypoints):
     """
     Compute geometric features from normalized keypoints.
     

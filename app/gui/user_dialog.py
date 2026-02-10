@@ -6,7 +6,7 @@ from tkinter import messagebox
 
 #add parent directory to path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from app.database.db_manager import DatabaseManager
+from database.db_manager import DatabaseManager
 
 
 class UserManagementDialog:

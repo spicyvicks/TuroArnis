@@ -14,8 +14,8 @@ from typing import Optional, Tuple, List
 # Add project root to path to ensure local imports work
 sys.path.append(str(Path(__file__).parent.parent.parent))
 
-from app.models.gcn.model_architecture import HybridGCN, SKELETON_EDGES, CLASS_NAMES
-from app.models.gcn.feature_extraction import (
+from models.gcn.model_architecture import HybridGCN, SKELETON_EDGES, CLASS_NAMES
+from models.gcn.feature_extraction import (
     extract_node_features,
     compute_hybrid_features
 )

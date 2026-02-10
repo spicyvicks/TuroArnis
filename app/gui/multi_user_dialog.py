@@ -4,7 +4,7 @@ Multi-user management dialog for assigning users to detected people in frame
 import customtkinter as ctk
 import tkinter as tk
 from tkinter import messagebox
-from app.database.db_manager import DatabaseManager
+from database.db_manager import DatabaseManager
 
 
 class MultiUserDialog:
@@ -28,7 +28,7 @@ class MultiUserDialog:
         self.dialog.resizable(False, False)
         
         #set app icon for taskbar (use after() for ctktoplevel compatibility)
-        from app.utils.resource_path import get_resource_path
+        from utils.resource_path import get_resource_path
         import os
         icon_path = get_resource_path('app/assets/TA.ico')
         if os.path.exists(icon_path):

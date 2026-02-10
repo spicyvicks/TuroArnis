@@ -137,6 +137,7 @@ class KioskApp(ctk.CTk):
             print(f"[Kiosk] Warning: Could not load feature templates: {e}")
 
         # Start Loop
+        self.frame_counter = 0
         self.after(100, self.update_feed)
         self.show_splash()
     
@@ -363,7 +364,7 @@ class KioskApp(ctk.CTk):
         # Back Button
         btn_back = ctk.CTkButton(self.video_canvas, text="← BACK", font=("Inter", 24, "bold"),
                                 fg_color="transparent", border_width=2, border_color="white", text_color="white",
-                                hover_color="#ffffff33", height=60, width=150, corner_radius=30,
+                                hover_color="#ffffff", height=60, width=150, corner_radius=30,
                                 command=self.show_user_count)
         self.add_widget(150, self.screen_height - 100, btn_back)
 
@@ -614,7 +615,8 @@ class KioskApp(ctk.CTk):
                     feedback_msg += f"\nGoal: {target_pose}"
             
             self.add_text(cx, self.screen_height - 130, feedback_msg, font=("Inter", 18), fill="white")
-
+        
+        self.update_feedback_timer()
     def generate_form_feedback(self, target_class, viewpoint, live_angles, landmarks=None):
         """Generate feedback based on angle deviations from template"""
         # Template keys are like "front_crown_thrust_correct"
@@ -913,6 +915,7 @@ class KioskApp(ctk.CTk):
 
     def update_feed(self):
         if not self.running: return
+        self.frame_counter += 1
         
         VIDEO_ACTIVE_STATES = [KioskState.ZONING, KioskState.COUNTDOWN, KioskState.SNAPSHOT, KioskState.FEEDBACK, KioskState.PAUSED]
         
@@ -1010,8 +1013,10 @@ class KioskApp(ctk.CTk):
                 zone_frame = frame[:, x_start:x_end].copy()
                 
                 try:
-                    # Run pose + stick detection, but skip ML inference for speed
-                    results = self.pose_analyzer.process_frame(zone_frame, skip_ml_inference=True, skip_stick_detection=False)
+                    # Run pose + stick detection
+                    # OPTIMIZATION: Only run stick detection every 5th frame to maintain FPS
+                    do_stick = (self.frame_counter % 5 == 0)
+                    results = self.pose_analyzer.process_frame(zone_frame, skip_ml_inference=True, skip_stick_detection=not do_stick)
                     
                     # Update cache for check_zones_and_countdown
                     if results and len(results) > 0:

@@ -1,8 +1,0 @@
-{
-  "version": "v023_ensemble_soft_nongs",
-  "path": "models\\v023_ensemble_soft_nongs",
-  "model_path": "models\\v023_ensemble_soft_nongs\\model.keras",
-  "encoder_path": "models\\v023_ensemble_soft_nongs\\label_encoder.joblib",
-  "scaler_path": "models\\v023_ensemble_soft_nongs\\scaler.joblib",
-  "set_at": "2026-01-28T13:26:43+08:00"
-}

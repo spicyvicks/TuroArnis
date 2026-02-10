@@ -76,12 +76,10 @@ class MainWindow(QMainWindow):
         self.mp_drawing = mp.solutions.drawing_utils
         self.target_form = None
 
-        try:
-            self.model = joblib.load('arnis_random_forest_classifier.joblib')
-            self.class_names = joblib.load('arnis_class_names.joblib')
-            print("[INFO] Model and class names loaded successfully.")
-        except FileNotFoundError:
-            print("[ERROR] Model or class names file not found.")
+        # Legacy model loading removed
+        self.model = None
+        self.class_names = []
+        print("[INFO] Legacy model support removed. Please use main_app.py for ML features.")
             
         self.cap = cv2.VideoCapture(0)
         self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)

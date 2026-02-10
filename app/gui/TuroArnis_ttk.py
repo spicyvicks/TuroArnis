@@ -60,12 +60,10 @@ class TuroArnisGUI:
         self.class_names = []
         self.target_form = None
         self.current_user = "Default User"
-        try:
-            self.model = joblib.load('arnis_random_forest_classifier.joblib')
-            self.class_names = joblib.load('arnis_class_names.joblib')
-            print("[info] model and class names loaded successfully.")
-        except FileNotFoundError:
-            print("[error] classifier model or class names file not found.")
+        # Legacy model loading removed
+        self.model = None
+        self.class_names = []
+        print("[info] Legacy model support removed. Please use main_app.py for ML features.")
 
         #--- new: simplified and robust window sizing ---
         self.cap = cv2.VideoCapture(0)

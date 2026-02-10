@@ -17,6 +17,7 @@ ctk.set_default_color_theme("blue")
 if not getattr(sys, 'frozen', False):
     current_dir = os.path.dirname(os.path.abspath(__file__))
     project_root = os.path.dirname(current_dir)
+    # Add project root (TuroArnis/) to sys.path so we can import 'app'
     if project_root not in sys.path:
         sys.path.insert(0, project_root)
 
@@ -478,7 +479,7 @@ class TuroArnisGUI:
                 pretty_class_name = predicted_class.replace('_correct', '').replace('_', ' ').title()
                 prediction_text = f"Prediction: {pretty_class_name} ({confidence:.2f})"
                 
-                #update confidence progress bar
+            #update confidence progress bar
                 self.confidence_progress.set(confidence)
                 self.confidence_percent_label.configure(text=f"{int(confidence * 100)}%")
                 
@@ -497,7 +498,6 @@ class TuroArnisGUI:
                 self.confidence_progress.set(0)
                 self.confidence_percent_label.configure(text="0%", text_color="#95a5a6")
                 
-
             
             if self.last_known_results:
                 result = self.last_known_results[0]
@@ -517,7 +517,11 @@ class TuroArnisGUI:
                         current_state = 'correct'
                     else:
                         current_state = 'incorrect'
-                    
+
+                    # Draw visual correction arrows
+                    if result.get('landmarks_absolute'):
+                         self.analyzer.draw_visual_cues(processing_frame, feedback, result['landmarks_absolute'])
+
                     #state tracking
                     if self.current_session_id:
                         if current_state != self.last_pose_state:
@@ -541,8 +545,6 @@ class TuroArnisGUI:
                 if result['stick_endpoints']:
                     pt1, pt2 = result['stick_endpoints']
                     cv2.line(processing_frame, pt1, pt2, COLOR_PROMPT, 4)
-
-
 
                 if result.get('landmarks_absolute'):
                     landmarks_abs = result['landmarks_absolute']
@@ -572,7 +574,9 @@ class TuroArnisGUI:
 
                 if self.target_form:
                     #use feedback analyzer to get detailed feedback
-                    feedback = self.feedback_analyzer.analyze(result, self.target_form)
+                    if 'feedback' not in locals(): # In case we skipped the block above (unlikely but safe)
+                        feedback = self.feedback_analyzer.analyze(result, self.target_form)
+
                     prioritized_messages = self.feedback_analyzer.get_prioritized_messages(feedback, max_messages=3)
                     
                     #opencv feedback rendering - compact size
@@ -616,6 +620,7 @@ class TuroArnisGUI:
                                 cv2.putText(processing_frame, display_msg, (content_x, msg_y), 
                                     cv2.FONT_HERSHEY_SIMPLEX, 0.38, (255, 255, 255), 1, cv2.LINE_AA)
                                 msg_y += 22
+            
             
             canvas_width = self.video_canvas.winfo_width(); canvas_height = self.video_canvas.winfo_height()
             final_frame = self.resize_and_pad(processing_frame, size=(canvas_width, canvas_height))

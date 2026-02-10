@@ -1,0 +1,41 @@
+# Feedback Mechanism Analysis
+
+## Current State Analysis
+The current feedback system in TuroArnis relies on a hybrid approach using ML-based pose classification and rule-based geometric analysis.
+
+### Strengths
+- **Hybrid Validation**: Combines GCN/ML classification with explicit geometric checks (angles), providing a double-check on correctness.
+- **Detailed Metrics**: precise calculation of joint angles and stick orientation.
+- **State Stabilization**: [main_app.py](file:///c:/Users/HP/Documents/GitHub/TuroArnis/app/main_app.py) implements a debouncing mechanism to prevent flickering feedback.
+- **Prioritization**: [FeedbackAnalyzer](file:///c:/Users/HP/Documents/GitHub/TuroArnis/app/computer_vision/feedback_analyzer.py#9-345) smartly prioritizes critical errors over minor suggestions.
+
+### Weaknesses
+- **Cognitive Load**: Feedback is primarily text-based, requiring the user to read small text while performing physical movements.
+- **Static Rigidity**: Hardcoded angle thresholds in [feedback_analyzer.py](file:///c:/Users/HP/Documents/GitHub/TuroArnis/app/computer_vision/feedback_analyzer.py) do not account for user flexibility or different styles.
+- **Lack of Directionality**: Text says "Extend elbow", but visual cues (arrows) would be more intuitive.
+- **No Audio**: Users must keep eyes on the screen, which is bad form in martial arts practice.
+
+## Proposed Improvements
+
+### 1. Visual Correction Cues (Augmented Reality)
+Instead of just text, overlay dynamic visual guides on the camera feed:
+- **Directional Arrows**: If an arm is too low, draw a green arrow pointing up at the wrist/elbow.
+- **Ghost Skeletons**: Overlay a semi-transparent "gold standard" skeleton over the user's feed for direct comparison.
+- **Color-Coded Joints**: Highlight specific joints in red if they are out of alignment.
+
+### 2. Audio Feedback (TTS)
+Integrate a Text-to-Speech engine to voice critical corrections:
+- "Extend your right arm."
+- "Lower your hips."
+- "Great form, hold it!"
+This allows the user to focus on their body, not the screen.
+
+### 3. Dynamic Difficulty / Calibration
+Add a "Strictness" setting to the GUI:
+- **Beginner**: Wider angle tolerances (+/- 20 degrees).
+- **Master**: Strict tolerances (+/- 5 degrees) + hold duration requirements.
+
+### 4. Stability "Hold" Challenge
+Gamify the practice:
+- When a pose is correct, start a visual countdown (e.g., 3 seconds).
+- Only count the rep as "Complete" if the user holds the correct pose for the duration.

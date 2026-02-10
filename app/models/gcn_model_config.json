@@ -3,17 +3,17 @@
     "viewpoint": "front",
     "models": {
         "front": {
-            "path": "deployment_package/models/hybrid_gcn_v2_front.pth",
+            "path": "app/models/hybrid_gcn_v2_front.pth",
             "accuracy": 0.85,
             "description": "Front viewpoint specialist"
         },
         "left": {
-            "path": "deployment_package/models/hybrid_gcn_v2_left.pth",
+            "path": "app/models/hybrid_gcn_v2_left.pth",
             "accuracy": 0.82,
             "description": "Left side viewpoint specialist"
         },
         "right": {
-            "path": "deployment_package/models/hybrid_gcn_v2_right.pth",
+            "path": "app/models/hybrid_gcn_v2_right.pth",
             "accuracy": 0.83,
             "description": "Right side viewpoint specialist"
         }

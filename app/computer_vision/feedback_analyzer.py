@@ -92,25 +92,22 @@ class FeedbackAnalyzer:
             },
         }
     
+    
     def analyze(self, result: Dict, target_form: str, confidence_threshold: float = 0.60) -> Dict:
         """
-        Analyze pose result and generate feedback
+        Analyze pose result and generate feedback with structured corrections
         
-        Args:
-            result: Pose analysis result dictionary
-            target_form: Target form to compare against
-            confidence_threshold: Minimum confidence for correct form
-            
         Returns:
             Dictionary with feedback analysis:
             {
                 'is_correct': bool,
                 'confidence': float,
                 'errors': List[str],
+                'corrections': List[Dict],  # [{'joint': str, 'action': str, 'value': float, 'message': str}]
                 'warnings': List[str],
                 'suggestions': List[str],
                 'error_count': int,
-                'severity': str ('ok', 'minor', 'major', 'critical')
+                'severity': str
             }
         """
         predicted_class = result.get('predicted_class', '').strip()
@@ -120,6 +117,7 @@ class FeedbackAnalyzer:
             'is_correct': False,
             'confidence': confidence,
             'errors': [],
+            'corrections': [],
             'warnings': [],
             'suggestions': [],
             'error_count': 0,
@@ -134,16 +132,19 @@ class FeedbackAnalyzer:
         
         #analyze errors
         errors = []
+        corrections = []
         warnings = []
         suggestions = []
         
         #1. grip angle analysis
-        grip_errors = self._analyze_grip_angle(result, target_form)
+        grip_errors, grip_corrections = self._analyze_grip_angle(result, target_form)
         errors.extend(grip_errors)
+        corrections.extend(grip_corrections)
         
         #2. joint angle analysis
-        joint_errors = self._analyze_joint_angles(result, target_form)
+        joint_errors, joint_corrections = self._analyze_joint_angles(result, target_form)
         errors.extend(joint_errors)
+        corrections.extend(joint_corrections)
         
         #3. posture analysis
         posture_errors = self._analyze_posture(result)
@@ -172,6 +173,7 @@ class FeedbackAnalyzer:
         
         feedback.update({
             'errors': errors,
+            'corrections': corrections,
             'warnings': warnings,
             'suggestions': suggestions,
             'error_count': error_count,
@@ -180,13 +182,14 @@ class FeedbackAnalyzer:
         
         return feedback
     
-    def _analyze_grip_angle(self, result: Dict, target_form: str) -> List[str]:
-        """Analyze grip angle and return error messages"""
+    def _analyze_grip_angle(self, result: Dict, target_form: str) -> Tuple[List[str], List[Dict]]:
+        """Analyze grip angle and return error messages and corrections"""
         errors = []
+        corrections = []
         grip_angle = result.get('grip_angle')
         
         if grip_angle is None:
-            return errors
+            return errors, corrections
         
         #determine target range based on form type
         if 'thrust' in target_form:
@@ -198,29 +201,38 @@ class FeedbackAnalyzer:
         
         if grip_angle < target_min:
             diff = target_min - grip_angle
-            if diff > 20:
-                errors.append(f"Grip: Extend stick significantly ({diff:.0f}° too narrow)")
-            else:
-                errors.append(f"Grip: Extend stick slightly ({diff:.0f}° too narrow)")
+            msg = f"Grip: Extend stick ({diff:.0f}° too narrow)"
+            errors.append(msg)
+            corrections.append({
+                'joint': 'wrist', # Generalizing to wrist/hand
+                'action': 'extend_grip',
+                'value': diff,
+                'message': msg
+            })
         elif grip_angle > target_max:
             diff = grip_angle - target_max
-            if diff > 20:
-                errors.append(f"Grip: Retract stick significantly ({diff:.0f}° too wide)")
-            else:
-                errors.append(f"Grip: Retract stick slightly ({diff:.0f}° too wide)")
+            msg = f"Grip: Retract stick ({diff:.0f}° too wide)"
+            errors.append(msg)
+            corrections.append({
+                'joint': 'wrist',
+                'action': 'retract_grip',
+                'value': diff,
+                'message': msg
+            })
         
-        return errors
+        return errors, corrections
     
-    def _analyze_joint_angles(self, result: Dict, target_form: str) -> List[str]:
+    def _analyze_joint_angles(self, result: Dict, target_form: str) -> Tuple[List[str], List[Dict]]:
         """Analyze joint angles against target form requirements"""
         errors = []
+        corrections = []
         
         if target_form not in self.joint_angle_targets:
-            return errors
+            return errors, corrections
         
         live_angles = result.get('live_angles')
         if not live_angles:
-            return errors
+            return errors, corrections
         
         form_targets = self.joint_angle_targets[target_form]
         
@@ -232,19 +244,31 @@ class FeedbackAnalyzer:
             
             if current_angle < target_min:
                 diff = target_min - current_angle
-                if importance == 'high':
-                    errors.append(f"{joint_name.replace('_', ' ').title()}: Extend more ({diff:.0f}° below target)")
-                elif diff > 15:  #only report medium importance if significant
-                    errors.append(f"{joint_name.replace('_', ' ').title()}: Slightly extend ({diff:.0f}° below)")
+                msg = f"{joint_name.replace('_', ' ').title()}: Extend ({diff:.0f}°)"
+                
+                if importance == 'high' or diff > 15:
+                    errors.append(msg)
+                    corrections.append({
+                        'joint': joint_name,
+                        'action': 'extend',
+                        'value': diff,
+                        'message': msg
+                    })
             
             elif current_angle > target_max:
                 diff = current_angle - target_max
-                if importance == 'high':
-                    errors.append(f"{joint_name.replace('_', ' ').title()}: Bend more ({diff:.0f}° above target)")
-                elif diff > 15:
-                    errors.append(f"{joint_name.replace('_', ' ').title()}: Slightly bend ({diff:.0f}° above)")
+                msg = f"{joint_name.replace('_', ' ').title()}: Bend ({diff:.0f}°)"
+                
+                if importance == 'high' or diff > 15:
+                    errors.append(msg)
+                    corrections.append({
+                        'joint': joint_name,
+                        'action': 'flex', # "bend"
+                        'value': diff,
+                        'message': msg
+                    })
         
-        return errors
+        return errors, corrections
     
     def _analyze_posture(self, result: Dict) -> List[str]:
         """Analyze overall posture and body alignment"""

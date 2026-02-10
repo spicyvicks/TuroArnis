@@ -2,7 +2,7 @@ import os
 import sys
 import cv2
 import numpy as np
-import joblib
+
 import mediapipe as mp
 # TensorFlow and Keras will be lazy-loaded in legacy fallback
 
@@ -89,193 +89,12 @@ class PoseAnalyzer:
             self.is_ensemble = False
             print("[info] GCN specialist models loaded successfully")
         except Exception as e:
-            print(f"[warning] Could not load GCN models, falling back to legacy: {e}")
+            print(f"[ERROR] Could not load GCN models: {e}")
             self.is_gcn = False
             self.gcn_engine = None
-            
-            # Legacy model loading (TensorFlow/sklearn)
-            try:
-                #try app/models first, then fall back to ml/models
-                models_dir = get_resource_path('app/models')
-                if not os.path.exists(models_dir):
-                    models_dir = get_resource_path('ml/models')
-                active_model_file = os.path.join(models_dir, 'active_model.json')
-                
-                print(f"[debug] checking active_model.json at: {active_model_file}")
-                print(f"[debug] file exists: {os.path.exists(active_model_file)}")
-                
-                #try to load from active_model.json (new versioned system)
-                if os.path.exists(active_model_file):
-                    import json
-                    with open(active_model_file, 'r') as f:
-                        active_config = json.load(f)
-                    
-                    #support both relative and absolute paths (for backwards compatibility)
-                    #if path is absolute and exists, use it; otherwise treat as relative
-                    model_path = active_config['model_path']
-                    encoder_path = active_config['encoder_path']
-                    scaler_path = active_config.get('scaler_path')
-                    version_name = active_config['version']
-                    
-                    #convert to resource paths if not absolute or doesn't exist
-                    #use models_dir to support both app/models and ml/models locations
-                    if not os.path.isabs(model_path) or not os.path.exists(model_path):
-                        model_path = os.path.join(models_dir, version_name, os.path.basename(model_path))
-                    if not os.path.isabs(encoder_path) or not os.path.exists(encoder_path):
-                        encoder_path = os.path.join(models_dir, version_name, os.path.basename(encoder_path))
-                    if scaler_path and (not os.path.isabs(scaler_path) or not os.path.exists(scaler_path)):
-                        scaler_path = os.path.join(models_dir, version_name, os.path.basename(scaler_path))
-                    
-                    print(f"[info] using model version: {version_name}")
-                    
-                    #check if this is an ensemble model first (before checking model.keras)
-                    version_path = os.path.join(models_dir, version_name)
-                    metadata_path = os.path.join(version_path, 'metadata.json')
-                    ensemble_config_path = os.path.join(version_path, 'ensemble_config.json')
-                    
-                    print(f"[debug] version_path: {version_path}")
-                    print(f"[debug] metadata exists: {os.path.exists(metadata_path)}")
-                    print(f"[debug] ensemble_config exists: {os.path.exists(ensemble_config_path)}")
-                    
-                    is_ensemble = False
-                    model_type = 'dnn'  #default
-                    if os.path.exists(metadata_path):
-                        with open(metadata_path, 'r') as f:
-                            metadata = json.load(f)
-                        model_type = metadata.get('model_type', 'dnn')
-                        is_ensemble = (model_type == 'ensemble')
-                        print(f"[debug] model_type from metadata: {model_type}")
-                        print(f"[debug] is_ensemble: {is_ensemble}")
-                    
-                    if is_ensemble:
-                        #load ensemble configuration
-                        if os.path.exists(ensemble_config_path):
-                            with open(ensemble_config_path, 'r') as f:
-                                ensemble_config = json.load(f)
-                            
-                            print(f"[info] loading ensemble with models: {ensemble_config['model_versions']}")
-                            
-                            #import ensemble classifier from app utils
-                            try:
-                                from app.utils.ensemble_model import EnsembleClassifier
-                            except ImportError as e:
-                                print(f"[error] could not import EnsembleClassifier: {e}")
-                                raise
-                            
-                            #load ensemble with models_dir pointing to app/models
-                            self.pose_classifier_model = EnsembleClassifier(
-                                model_versions=ensemble_config['model_versions'],
-                                voting=ensemble_config['voting'],
-                                weights=ensemble_config['weights'],
-                                models_dir=models_dir,
-                                verbose=False
-                            )
-                            self.label_encoder = joblib.load(encoder_path)
-                            
-                            if scaler_path and os.path.exists(scaler_path):
-                                self.scaler = joblib.load(scaler_path)
-                            else:
-                                self.scaler = None
-                            
-                            self.is_ensemble = True
-                            print(f"[info] ensemble model loaded: {', '.join([m.split('_')[0] for m in ensemble_config['model_versions']])}")
-                        else:
-                            print(f"[error] ensemble_config.json not found at: {ensemble_config_path}")
-                            raise FileNotFoundError("ensemble_config.json not found")
-                    else:
-                        #load regular model (dnn, rf, or xgboost)
-                        self.is_ensemble = False
-                        
-                        if model_type == 'dnn':
-                            # load keras model
-                            import tensorflow as tf
-                            if not os.path.exists(model_path):
-                                raise FileNotFoundError("model file not found")
-                            self.pose_classifier_model = tf.keras.models.load_model(model_path)
-                            if not self.pose_classifier_model.optimizer:
-                                self.pose_classifier_model.compile(optimizer='adam', loss='sparse_categorical_crossentropy', metrics=['accuracy'])
-                        else:
-                            #load rf or xgboost
-                            model_joblib = model_path.replace('.keras', '.joblib')
-                            if os.path.exists(model_joblib):
-                                self.pose_classifier_model = joblib.load(model_joblib)
-                            elif os.path.exists(model_path):
-                                #try legacy path
-                                self.pose_classifier_model = joblib.load(model_path)
-                            else:
-                                raise FileNotFoundError("model file not found")
-                        
-                        self.label_encoder = joblib.load(encoder_path)
-                        
-                        if scaler_path and os.path.exists(scaler_path):
-                            self.scaler = joblib.load(scaler_path)
-                        else:
-                            self.scaler = None
-                        
-                        print(f"[info] {model_type.upper()} pose classifier loaded")
-                else:
-                    #fallback to legacy paths
-                    model_path = get_resource_path('models/arnis_coordinates_classifier.keras')
-                    encoder_path = get_resource_path('models/label_encoder.joblib')
-                    scaler_path = get_resource_path('models/scaler.joblib')
-                    
-                    #if models/ doesn't exist, try ml/models/
-                    if not os.path.exists(model_path):
-                        print(f"[debug] models/ not found at: {model_path}")
-                        model_path = get_resource_path('ml/models/arnis_coordinates_classifier.keras')
-                        encoder_path = get_resource_path('ml/models/label_encoder.joblib')
-                        scaler_path = get_resource_path('ml/models/scaler.joblib')
-                        print(f"[debug] trying ml/models/ at: {model_path}")
-                        print(f"[debug] encoder path: {encoder_path}")
-                        print(f"[debug] model exists: {os.path.exists(model_path)}")
-                        print(f"[debug] encoder exists: {os.path.exists(encoder_path)}")
-                        print("[info] using ml/models/ directory")
-                    else:
-                        print("[info] using legacy model paths")
-                    
-                    if not os.path.exists(model_path) or not os.path.exists(encoder_path):
-                        print(f"[error] model_path exists: {os.path.exists(model_path)}")
-                        print(f"[error] encoder_path exists: {os.path.exists(encoder_path)}")
-                        print(f"[error] model_path: {model_path}")
-                        print(f"[error] encoder_path: {encoder_path}")
-                        raise FileNotFoundError("model or encoder not found")
+            # No fallback to legacy models
+            print("[CRITICAL] GCN models failed to load. Pose classification will be unavailable.")
 
-                    #load model with compile=false to handle keras 2.x/3.x compatibility
-                    print("[info] loading model (Keras 2.x/3.x compatibility mode)...")
-                    import keras
-                    self.pose_classifier_model = keras.saving.load_model(model_path, compile=False)
-                    
-                    #manually compile the model
-                    self.pose_classifier_model.compile(
-                        optimizer='adam',
-                        loss='sparse_categorical_crossentropy',
-                        metrics=['accuracy']
-                    )
-                    
-                    self.label_encoder = joblib.load(encoder_path)
-                    self.is_ensemble = False
-                    
-                    #load scaler if available
-                    if scaler_path and os.path.exists(scaler_path):
-                        self.scaler = joblib.load(scaler_path)
-                        print("[info] feature scaler loaded")
-                    else:
-                        self.scaler = None
-                        print("[warning] no scaler found")
-                    
-                    if not self.pose_classifier_model.optimizer:
-                        self.pose_classifier_model.compile(optimizer='adam', loss='sparse_categorical_crossentropy', metrics=['accuracy'])
-                    
-                    print("[info] keras pose classifier loaded")
-            except Exception as legacy_e:
-                print(f"[critical] could not load legacy model either: {legacy_e}")
-                import traceback
-                traceback.print_exc()
-                self.pose_classifier_model = None
-                self.label_encoder = None
-                self.scaler = None
-                self.is_ensemble = False
-        
         self.detection_interval = detection_interval
         self.frame_count = 0
         self.last_detections = []
@@ -546,63 +365,12 @@ class PoseAnalyzer:
                         except Exception as e:
                             print(f"[error] GCN inference failed: {e}")
                             pass
-                    elif self.pose_classifier_model and self.label_encoder and live_angles:
-                        try:
-                            world_landmarks = pose_results.pose_world_landmarks.landmark
-                            landmarks_np = np.array([[lm.x, lm.y, lm.z] for lm in world_landmarks])
-                            hip_center = (landmarks_np[23] + landmarks_np[24]) / 2.0
-                            coords = (landmarks_np - hip_center).flatten()
-                            
-                            #apply scaler if available
-                            if self.scaler is not None:
-                                coords = self.scaler.transform(coords.reshape(1, -1))[0]
-                            
-                            #check if ensemble or regular model
-                            if getattr(self, 'is_ensemble', False):
-                                #ensemble model
-                                prediction = self.pose_classifier_model.predict(coords.reshape(1, -1))[0]
-                                predicted_class = prediction
-                                confidence = 0.85  #placeholder
-                            else:
-                                #regular model (dnn, rf, xgboost)
-                                coords_input = np.expand_dims(coords, axis=0)
-                                if hasattr(self.pose_classifier_model, 'predict_proba'):
-                                    pred_proba = self.pose_classifier_model.predict_proba(coords_input)[0]
-                                    pred_index = np.argmax(pred_proba)
-                                    confidence = pred_proba[pred_index]
-                                    predicted_class = self.label_encoder.inverse_transform([pred_index])[0]
-                                else:
-                                    pred_proba = self.pose_classifier_model.predict(coords_input, verbose=0)[0]
-                                    pred_index = np.argmax(pred_proba)
-                                    confidence = pred_proba[pred_index]
-                                    predicted_class = self.label_encoder.inverse_transform([pred_index])[0]
-                            
-                            self._cached_prediction = (predicted_class, confidence)
-                        except Exception:
-                            pass
+                    # Legacy inference removed
+                    pass
                 else:
                     #use cached prediction from previous frame
                     if hasattr(self, '_cached_prediction'):
                         predicted_class, confidence = self._cached_prediction
-                    else:
-                        #first frame, no cache yet - run inference anyway
-                        if self.pose_classifier_model and self.label_encoder and live_angles:
-                            try:
-                                world_landmarks = pose_results.pose_world_landmarks.landmark
-                                landmarks_np = np.array([[lm.x, lm.y, lm.z] for lm in world_landmarks])
-                                hip_center = (landmarks_np[23] + landmarks_np[24]) / 2.0
-                                coords = (landmarks_np - hip_center).flatten()
-                                
-                                if self.scaler is not None:
-                                    coords = self.scaler.transform(coords.reshape(1, -1))[0]
-                                
-                                pred_proba = self.pose_classifier_model.predict(np.expand_dims(coords, axis=0), verbose=0)[0]
-                                pred_index = np.argmax(pred_proba)
-                                confidence = pred_proba[pred_index]
-                                predicted_class = self.label_encoder.inverse_transform([pred_index])[0]
-                                self._cached_prediction = (predicted_class, confidence)
-                            except Exception:
-                                pass
                 
                 #optimization: skip stick detection if requested (use cached from last frame)
                 if not skip_stick_detection:
@@ -787,6 +555,102 @@ class PoseAnalyzer:
         if getattr(self, 'is_gcn', False) and self.gcn_engine:
             self.gcn_engine.set_viewpoint(viewpoint)
             print(f"[info] PoseAnalyzer viewpoint updated to: {viewpoint}")
+
+    def draw_visual_cues(self, frame, feedback, landmarks):
+        """
+        Draw visual cues (arrows) based on feedback corrections.
+        
+        Args:
+            frame: The image frame to draw on.
+            feedback: The feedback dictionary from FeedbackAnalyzer.
+            landmarks: List of (x, y, z) absolute coordinates.
+        """
+        if not feedback or 'corrections' not in feedback:
+            return
+
+        for correction in feedback['corrections']:
+            joint_name = correction['joint']
+            action = correction['action']
+            
+            # Get associated keypoints for the joint
+            points = self._get_joint_keypoints(joint_name, landmarks)
+            if not points:
+                continue
+                
+            p_start, p_vertex, p_end = points
+            
+            # Determine arrow parameters
+            start_point = (int(p_end[0]), int(p_end[1]))
+            
+            # Simple heuristic for direction
+            # For extension: Arrow points away from the vertex (along the limb vector)
+            # For flexion: Arrow points towards the vertex (along the limb vector reversed)
+            
+            # Vector v = p_end - p_vertex
+            vx = p_end[0] - p_vertex[0]
+            vy = p_end[1] - p_vertex[1]
+            mag = np.hypot(vx, vy)
+            if mag < 1e-6: continue
+            
+            # Normalize
+            vx, vy = vx / mag, vy / mag
+            
+            arrow_len = 40
+            color = (0, 255, 0) # Green for extension/correction
+            
+            if action in ['extend', 'extend_grip']:
+                # Point outward
+                end_point = (int(start_point[0] + vx * arrow_len), int(start_point[1] + vy * arrow_len))
+            elif action in ['flex', 'retract_grip']:
+                # Point inward
+                end_point = (int(start_point[0] - vx * arrow_len), int(start_point[1] - vy * arrow_len))
+                color = (0, 165, 255) # Orange for flexion
+            else:
+                continue
+                
+            cv2.arrowedLine(frame, start_point, end_point, color, 3, tipLength=0.3)
+            # Draw a small circle at the start to anchor the arrow
+            # cv2.circle(frame, start_point, 3, color, -1)
+
+    def _get_joint_keypoints(self, joint_name, landmarks):
+        """Returns (start, vertex, end) points for a joint angle."""
+        try:
+            mp_lm = self.mp_pose.PoseLandmark
+            lm_idx = {
+                'left_elbow': (mp_lm.LEFT_SHOULDER, mp_lm.LEFT_ELBOW, mp_lm.LEFT_WRIST),
+                'right_elbow': (mp_lm.RIGHT_SHOULDER, mp_lm.RIGHT_ELBOW, mp_lm.RIGHT_WRIST),
+                'left_shoulder': (mp_lm.LEFT_HIP, mp_lm.LEFT_SHOULDER, mp_lm.LEFT_ELBOW),
+                'right_shoulder': (mp_lm.RIGHT_HIP, mp_lm.RIGHT_SHOULDER, mp_lm.RIGHT_ELBOW),
+                'left_knee': (mp_lm.LEFT_HIP, mp_lm.LEFT_KNEE, mp_lm.LEFT_ANKLE),
+                'right_knee': (mp_lm.RIGHT_HIP, mp_lm.RIGHT_KNEE, mp_lm.RIGHT_ANKLE),
+                'wrist': (mp_lm.RIGHT_ELBOW, mp_lm.RIGHT_WRIST, mp_lm.RIGHT_INDEX) # simplified for grip
+            }
+            
+            # For grip/wrist, we might need a workaround if it's not a standard angle
+            if joint_name == 'wrist':
+               # Just return None for now or map to a generic limb
+               # Or use the specific logic if we tracked the stick. 
+               # Since 'wrist' was passed for grip corrections, let's use the hand.
+               # If specific side isn't known, might be tricky. 
+               # FeedbackAnalyzer generalized it to 'wrist'. 
+               # Let's check which hand is holding the stick if possible, or defaulting to right for now.
+               indices = lm_idx['right_elbow'] # Use right arm for generic 'wrist' corrections if stick is assumed right
+               pass
+            
+            if joint_name not in lm_idx:
+                return None
+                
+            idx_start, idx_vertex, idx_end = lm_idx[joint_name]
+            
+            p_start = landmarks[idx_start]
+            p_vertex = landmarks[idx_vertex]
+            p_end = landmarks[idx_end]
+            
+            # Check visibility or bounds (assuming absolute coords are valid if passed)
+            return p_start, p_vertex, p_end
+            
+        except IndexError:
+            return None
 
     def close(self):
         self.pose.close()

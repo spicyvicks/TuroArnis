@@ -10,13 +10,13 @@ from ultralytics import YOLO
 
 #import resource path helper for pyinstaller compatibility
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from utils.resource_path import get_resource_path
-from utils.device_manager import configure_device, get_yolo_device
+from app.utils.resource_path import get_resource_path
+from app.utils.device_manager import configure_device, get_yolo_device
 
 # GCN integration imports
-from computer_vision.gcn_inference import get_gcn_engine
-from models.gcn.feature_extraction import compute_global_features_from_kpts
-from models.gcn.model_architecture import CLASS_NAMES
+from app.computer_vision.gcn_inference import get_gcn_engine
+from app.models.gcn.feature_extraction import compute_global_features_from_kpts
+from app.models.gcn.model_architecture import CLASS_NAMES
 
 class PoseAnalyzer:
     def __init__(self, detection_interval=3, stick_model_path=None, debug_stick=False):

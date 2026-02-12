@@ -23,7 +23,7 @@ torch-sparse==0.6.18+pt21cpu
 torch-geometric==2.4.0
 
 # Legacy TensorFlow (Using 2.15+ for Python 3.11 compatibility)
-# tensorflow>=2.15.0  (Optional, keeping it commented if not strictly needed for GCN)
+
 # PyQt6 for packaging if needed
 PyQt6==6.8.0
 pyinstaller==6.12.0

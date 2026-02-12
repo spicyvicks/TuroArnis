@@ -93,7 +93,7 @@ class FeedbackAnalyzer:
         }
     
     
-    def analyze(self, result: Dict, target_form: str, confidence_threshold: float = 0.60) -> Dict:
+    def analyze(self, result: Dict, target_form: str, confidence_threshold: float = 0.50) -> Dict:
         """
         Analyze pose result and generate feedback with structured corrections
         
@@ -331,11 +331,11 @@ class FeedbackAnalyzer:
             predicted_display = predicted_class.replace('_correct', '').replace('_', ' ').title()
             target_display = target_form.replace('_correct', '').replace('_', ' ').title()
             
-            if confidence > 0.60:
+            if confidence > 0.50:
                 suggestions.append(f"Detected: {predicted_display} - Switch to {target_display}")
             else:
                 suggestions.append(f"Adjust position to match {target_display}")
-        elif confidence < 0.60:
+        elif confidence < 0.50:
             suggestions.append(f"Close to correct - refine position (confidence: {confidence:.0%})")
         
         return suggestions

@@ -3,40 +3,15 @@ import sys
 
 def get_device():
     """
-    detect and configure device (GPU/CPU) for tensorflow and pytorch
-    returns device info dict with tf and torch configurations
+    detect and configure device (GPU/CPU) for pytorch
+    returns device info dict with torch configurations
     """
     device_info = {
         'has_gpu': False,
         'device_name': 'CPU',
-        'tf_device': '/CPU:0',
         'torch_device': 'cpu',
         'details': []
     }
-    
-    #check tensorflow gpu availability
-    try:
-        import tensorflow as tf
-        gpus = tf.config.list_physical_devices('GPU')
-        
-        if gpus:
-            try:
-                #enable memory growth to prevent tensorflow from allocating all gpu memory
-                for gpu in gpus:
-                    tf.config.experimental.set_memory_growth(gpu, True)
-                
-                device_info['has_gpu'] = True
-                device_info['device_name'] = f'GPU ({gpus[0].name})'
-                device_info['tf_device'] = '/GPU:0'
-                device_info['details'].append(f'tensorflow: {len(gpus)} GPU(s) available')
-                device_info['details'].append(f'tensorflow GPU: {gpus[0].name}')
-            except RuntimeError as e:
-                device_info['details'].append(f'tensorflow GPU config error: {e}')
-                device_info['tf_device'] = '/CPU:0'
-        else:
-            device_info['details'].append('tensorflow: no GPU detected, using CPU')
-    except Exception as e:
-        device_info['details'].append(f'tensorflow check failed: {e}')
     
     #check pytorch (used by ultralytics yolo) gpu availability
     try:
@@ -70,7 +45,6 @@ def configure_device(verbose=True):
         print(f"[DEVICE] device configuration")
         print(f"{'='*60}")
         print(f"[DEVICE] using: {device_info['device_name']}")
-        print(f"[DEVICE] tensorflow device: {device_info['tf_device']}")
         print(f"[DEVICE] pytorch device: {device_info['torch_device']}")
         
         if device_info['details']:
@@ -81,18 +55,6 @@ def configure_device(verbose=True):
         print(f"{'='*60}\n")
     
     return device_info
-
-
-def set_tensorflow_device(device='/GPU:0'):
-    """
-    context manager to run tensorflow operations on specific device
-    usage:
-        with set_tensorflow_device('/GPU:0'):
-            # your tensorflow code here
-            model.predict(...)
-    """
-    import tensorflow as tf
-    return tf.device(device)
 
 
 def get_yolo_device(device_info=None):

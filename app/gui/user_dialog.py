@@ -6,7 +6,7 @@ from tkinter import messagebox
 
 #add parent directory to path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from database.db_manager import DatabaseManager
+from app.database.db_manager import DatabaseManager
 
 
 class UserManagementDialog:
@@ -20,7 +20,7 @@ class UserManagementDialog:
         self.dialog.title("User Management")
         
         #set app icon for taskbar (use after() to ensure window is ready)
-        from utils.resource_path import get_resource_path
+        from app.utils.resource_path import get_resource_path
         icon_path = get_resource_path('app/assets/TA.ico')
         if os.path.exists(icon_path):
             #delay icon setting for ctktoplevel compatibility

@@ -67,7 +67,17 @@ deployment_package/
 pip install -r requirements.txt
 ```
 
+
 > **Note**: The `requirements.txt` uses locked versions compatible with PyTorch 2.10.0 CPU. If you encounter issues, install PyTorch first:
+
+### 3. Building from Source
+
+To build the executable deployment package:
+```bash
+python scripts/build_app.py
+```
+This will create a `dist/TuroArnis` directory with the executable.
+
 > ```bash
 > pip install torch==2.10.0+cpu torchvision==0.25.0+cpu --index-url https://download.pytorch.org/whl/cpu
 > pip install -r requirements.txt
@@ -240,4 +250,12 @@ For questions about implementation, refer to `docs/implementation_plan.md` or th
 
 **Package Version**: 1.0  
 **Generated**: 2026-02-10  
-**Compatible with**: PyTorch 2.10.0 CPU, Python 3.11
+
+### 3. Building from Source
+
+To build the executable deployment package:
+```bash
+python scripts/build_app.py
+```
+This will create a `dist/TuroArnis` directory with the executable.
+

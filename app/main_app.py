@@ -14,7 +14,21 @@ import mediapipe as mp
 ctk.set_appearance_mode("light")
 ctk.set_default_color_theme("blue")
 
-if not getattr(sys, 'frozen', False):
+if getattr(sys, 'frozen', False):
+    # Frozen state (PyInstaller)
+    # Add the internal directory to sys.path to allow 'from app.gui' imports
+    base_path = sys._MEIPASS
+    if base_path not in sys.path:
+        sys.path.insert(0, base_path)
+    # Also add 'app' directory to path to allow imports like 'from utils...' if code relies on 'app' being root
+    app_path = os.path.join(base_path, 'app')
+    if os.path.exists(app_path) and app_path not in sys.path:
+        sys.path.insert(0, app_path)
+    
+    # Also valid for onedir mode where _internal might be the root for packages
+    # Ensure current directory semantics
+else:
+    # Dev state
     current_dir = os.path.dirname(os.path.abspath(__file__))
     project_root = os.path.dirname(current_dir)
     # Add project root (TuroArnis/) to sys.path so we can import 'app'
@@ -484,7 +498,7 @@ class TuroArnisGUI:
                 self.confidence_percent_label.configure(text=f"{int(confidence * 100)}%")
                 
                 #color code based on confidence
-                if confidence > 0.60:
+                if confidence > 0.50:
                     self.confidence_progress.configure(progress_color="#27ae60")
                     self.confidence_percent_label.configure(text_color="#27ae60")
                 elif confidence > 0.40:

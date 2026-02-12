@@ -9,7 +9,7 @@ class ResultsWindow(ctk.CTkToplevel):
         self.title("Performance Results & Statistics")
         
         #set app icon for taskbar (use after() for ctktoplevel compatibility)
-        from utils.resource_path import get_resource_path
+        from app.utils.resource_path import get_resource_path
         import os
         icon_path = get_resource_path('app/assets/TA.ico')
         if os.path.exists(icon_path):

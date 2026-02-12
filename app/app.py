@@ -11,17 +11,30 @@ import os
 import json
 
 # Add project root to path
-current_dir = os.path.dirname(os.path.abspath(__file__))
-project_root = os.path.dirname(current_dir)
-if project_root not in sys.path:
-    sys.path.insert(0, project_root)
+# Add project root to path
+# In PyInstaller, the app is running from a temp dir, so we need to ensure local imports work
+if getattr(sys, 'frozen', False):
+    # Running as compiled exe
+    base_path = sys._MEIPASS
+    if base_path not in sys.path:
+        sys.path.insert(0, base_path)
+    # Also add the app directory specifically if needed for direct imports
+    app_path = os.path.join(base_path, 'app')
+    if app_path not in sys.path:
+        sys.path.insert(0, app_path)
+else:
+    # Running as script
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    project_root = os.path.dirname(current_dir)
+    if project_root not in sys.path:
+        sys.path.insert(0, project_root)
 
 # Import App Components
-from database.db_manager import DatabaseManager
-from gui.results_window import ResultsWindow
-from gui.user_dialog import UserManagementDialog
-from computer_vision.pose_analyzer import PoseAnalyzer
-from utils.resource_path import get_resource_path
+from app.database.db_manager import DatabaseManager
+from app.gui.results_window import ResultsWindow
+from app.gui.user_dialog import UserManagementDialog
+from app.computer_vision.pose_analyzer import PoseAnalyzer
+from app.utils.resource_path import get_resource_path
 
 # Fix for CTk DPI Scaling
 try:
@@ -554,7 +567,7 @@ class KioskApp(ctk.CTk):
             }
             
             expected_class = class_name_mapping.get(target_pose)
-            is_correct = (expected_class is not None) and (predicted_class == expected_class) and (confidence > 0.6)
+            is_correct = (expected_class is not None) and (predicted_class == expected_class) and (confidence > 0.5)
             
             color = COLOR_SUCCESS if is_correct else "#f1c40f"
             if predicted_class == 'N/A' or predicted_class.lower() == 'no technique detected' or confidence == 0:
@@ -1122,5 +1135,14 @@ class KioskApp(ctk.CTk):
         self.after(30, self.update_feed)
 
 if __name__ == "__main__":
-    app = KioskApp()
-    app.mainloop()
+    try:
+        app = KioskApp()
+        app.mainloop()
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        print("\n" + "="*60)
+        print("CRITICAL ERROR: The application crashed.")
+        print(f"Error: {e}")
+        print("="*60 + "\n")
+        input("Press Enter to exit...")

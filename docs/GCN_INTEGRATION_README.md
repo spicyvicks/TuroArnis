@@ -53,38 +53,55 @@ app/models/
 
 ## How It Works
 
-### 1. Initialization
-```python
-# In app.py
-self.pose_analyzer = PoseAnalyzer(
-    detection_interval=3,
-    stick_model_path='deployment_package/weights/best.pt',
-    debug_stick=False
-)
-# PoseAnalyzer automatically loads GCN models on init
-```
+## Technical Workflow
 
-### 2. Frame Analysis
-For each user zone:
-1. Extract zone from camera frame
-2. Set appropriate viewpoint model (front/left/right)
-3. Run pose detection (MediaPipe + YOLO)
-4. Extract features:
-   - Node features: [35 nodes, 6 features] (x, y, z, visibility, distance, angle)
-   - Global features: 30 geometric measurements (angles, heights, distances)
-   - Hybrid features: 30 similarity scores vs. reference templates
-5. Run GCN inference
-6. Return predicted class + confidence
+### 1. Video Processing Pipeline
+The system processes video frames in a multi-stage pipeline:
+1. **Frame Acquisition**: Captures 720p video from the webcam.
+2. **Person Tracking (YOLO ByteTrack)**: 
+   - Detects persons in the frame using YOLOv8n.
+   - Assigns stable IDs using ByteTrack algorithm.
+   - Extracts bounding box for each person (up to 3 simultaneous users).
+3. **Pose & Stick Detection**:
+   - For each tracked person, crops the image to their bounding box.
+   - **Body**: MediaPipe Pose extracts 33 landmarks (x, y, z, visibility).
+   - **Stick**: Custom YOLO model detects Arnis sticks (grip and tip points).
+   - **Fusion**: Combines body and stick keypoints into a unified 35-point skeleton.
 
-### 3. Feedback Display
-```python
-# Results include:
-{
-    'predicted_class': 'left_temple_block_correct',
-    'confidence': 0.87,
-    'stick_detected': True
-}
-```
+### 2. Feature Extraction
+The raw keypoints are converted into GCN-compatible features:
+- **Node Features** (35 nodes x 6 dims):
+  - 3D Position $(x, y, z)$ (normalized)
+  - Visibility score
+  - Distance directly to hip center (spatial encoding)
+  - Angle relative to hip center (orientational encoding)
+- **Global Geometric Features**:
+  - Calculates joint angles (elbows, shoulders, knees).
+  - Measures relative heights and distances.
+  - Computes stick orientation and alignment with body parts.
+- **Hybrid Features**:
+  - Computes Gaussian similarity scores between the current pose's geometric features and "Gold Standard" templates for the target class.
+  - This provides the GCN with expert knowledge about how close the pose is to the ideal form.
+
+### 3. GCN Classification Logic
+The Hybrid GCN V2 model performs classification:
+1. **Input**:
+   - Graph structure (35 nodes connected by skeleton edges).
+   - Node features processed by GCN layers (spatial relationships).
+   - Hybrid features processed by MLP layers (global context).
+2. **Fusion**:
+   - The spatial graph features are pooled globally.
+   - Concatenated with the processed hybrid features.
+3. **Prediction**:
+   - A final fully connected layer outputs probabilities for 13 classes.
+   - The system selects the class with the highest confidence.
+   - If confidence < Threshold, returns "Uncertain" or low-confidence flag.
+
+### 4. Feedback Generation
+The classification result is used to generate user feedback:
+- **Correctness Check**: Compares predicted class with the user's selected "Target Form".
+- **Visual Cues**: If incorrect, draws arrows on limbs that need adjustment (e.g., "Straighten Arm").
+- **Text Guidance**: Displays instructions like "Extend your arm" or "Bend your knees".
 
 ## Viewpoint Models
 

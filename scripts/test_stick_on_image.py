@@ -13,6 +13,66 @@ if project_root not in sys.path:
 from app.computer_vision.pose_analyzer import PoseAnalyzer
 from app.utils.resource_path import get_resource_path
 
+# Helper for extrapolation
+def extrapolate_stick(grip, tip, extend_grip=0.3, extend_tip=0.1):
+    grip = np.array(grip)
+    tip = np.array(tip)
+    
+    # Vector from grip to tip
+    vec = tip - grip
+    length = np.linalg.norm(vec)
+    
+    if length < 1e-6:
+        return grip, tip
+        
+    # Normalize vector
+    unit_vec = vec / length
+    
+    # Extrapolate
+    new_grip = grip - (unit_vec * (length * extend_grip))
+    new_tip = tip + (unit_vec * (length * extend_tip))
+    
+    return tuple(new_grip.astype(int)), tuple(new_tip.astype(int))
+
+# Helper for Body-Relative Scaling (Pseudo-3D)
+def body_relative_stick(grip, tip, landmarks_abs):
+    if not landmarks_abs:
+        return None
+    
+    # Landmarks: 11=L_Shoulder, 12=R_Shoulder, 23=L_Hip, 24=R_Hip
+    try:
+        l_shoulder = np.array(landmarks_abs[11][:2])
+        l_hip = np.array(landmarks_abs[23][:2])
+        r_shoulder = np.array(landmarks_abs[12][:2])
+        r_hip = np.array(landmarks_abs[24][:2])
+        
+        torso_L = np.linalg.norm(l_shoulder - l_hip)
+        torso_R = np.linalg.norm(r_shoulder - r_hip)
+        avg_torso = (torso_L + torso_R) / 2
+        
+        # Arnis stick is approx 28 inches. Torso is approx 18-20 inches. Ratio ~1.5
+        target_stick_len = avg_torso * 2.0 
+        
+        grip = np.array(grip)
+        tip = np.array(tip)
+        vec = tip - grip
+        current_len = np.linalg.norm(vec)
+        
+        if current_len < 1e-6: return None
+        
+        unit_vec = vec / current_len
+        
+        handle_len = target_stick_len * 0.2
+        blade_len = target_stick_len * 0.8
+        
+        new_grip = grip - (unit_vec * handle_len)
+        new_tip = grip + (unit_vec * blade_len)
+        
+        return tuple(new_grip.astype(int)), tuple(new_tip.astype(int))
+        
+    except IndexError:
+        return None
+
 def main():
     parser = argparse.ArgumentParser(description="Test stick detection on a single image.")
     # Make image_path optional
@@ -27,7 +87,8 @@ def main():
         potential_defaults = [
             "1 (1).png",
             "test_image.jpg",
-            "image.png"
+            "image.png",
+            "Copy of crown_thrust_tip is above head_left foot forward right foot back.jpg"
         ]
         for p in potential_defaults:
             if os.path.exists(p):
@@ -83,7 +144,8 @@ def main():
 
         print("Running inference...")
         
-        results = analyzer.process_frame(frame, skip_ml_inference=True, skip_stick_detection=False)
+        # Enable ML inference to get Landmarks (needed for torso measurement)
+        results = analyzer.process_frame(frame, skip_ml_inference=False, skip_stick_detection=False)
         
         if not results:
             print("No person detected.")
@@ -96,22 +158,46 @@ def main():
                 # Check stick
                 if 'stick_endpoints' in data and data['stick_endpoints']:
                     grip, tip = data['stick_endpoints']
-                    print(f"  Stick DETECTED!")
+                    print(f"  Stick DETECTED (Raw)!")
                     print(f"  Grip: {grip}, Tip: {tip}")
-                    analyzer.draw_stick_debug(frame, (grip, tip))
+                    
+                    # Draw Raw (Red/Blue detection)
+                    cv2.line(frame, grip, tip, (0, 0, 255), 2) # Red line for raw
+                    cv2.putText(frame, "RAW", (grip[0], grip[1]-10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 1)
+                    
+                    # Calculate Extrapolated
+                    ext_grip, ext_tip = extrapolate_stick(grip, tip)
+                    print(f"  Stick EXTRAPOLATED!")
+                    print(f"  New Grip: {ext_grip}, New Tip: {ext_tip}")
+                    
+                    # Draw Extrapolated (Bright Cyan/Green)
+                    cv2.line(frame, ext_grip, ext_tip, (255, 255, 0), 4) # Cyan thick line
+                    cv2.circle(frame, ext_grip, 6, (0, 255, 0), -1) # Green new grip
+                    cv2.circle(frame, ext_tip, 6, (0, 255, 0), -1) # Green new tip
+                    cv2.putText(frame, "FULL", (ext_tip[0], ext_tip[1]-10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 0), 2)
+
+                    # 3. PSEUDO-3D / BODY SCALED (Magenta)
+                    if 'landmarks_absolute' in data:
+                        pseudo_res = body_relative_stick(grip, tip, data['landmarks_absolute'])
+                        if pseudo_res:
+                            p_grip, p_tip = pseudo_res
+                            print(f"  Stick PSEUDO-3D Generated!")
+                            # Offset more
+                            off = 50
+                            cv2.line(frame, (p_grip[0]+off, p_grip[1]), (p_tip[0]+off, p_tip[1]), (255, 0, 255), 4)
+                            cv2.circle(frame, (p_grip[0]+off, p_grip[1]), 5, (255, 0, 255), -1)
+                            cv2.putText(frame, "PSEUDO-3D", (p_tip[0]+off, p_tip[1]), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 255), 1)
+
                 else:
                     print(f"  Stick NOT detected.")
-                    # Force try to detect stick manually to see what's happening (bypass cache/logic)
                     if analyzer.stick_detector:
                         x1, y1, x2, y2 = data['bbox']
-                        print(f"  Result BBox: {x1, y1, x2, y2}")
-                        # Force detection on this bbox
                         stick_res, _ = analyzer._detect_stick_with_yolo(frame, (x1, y1, x2, y2))
                         if stick_res:
-                            print(f"  [FORCE DEBUG] Stick found on retry: {stick_res}")
-                            analyzer.draw_stick_debug(frame, stick_res)
-                        else:
-                            print(f"  [FORCE DEBUG] Stick still not found on retry.")
+                             grip, tip = stick_res
+                             ext_grip, ext_tip = extrapolate_stick(grip, tip)
+                             cv2.line(frame, ext_grip, ext_tip, (255, 255, 0), 4)
+                             print(f"  [FORCE] Stick found on retry.")
 
         # Save output
         cv2.imwrite(args.output, frame)

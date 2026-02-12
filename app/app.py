@@ -816,16 +816,32 @@ class KioskApp(ctk.CTk):
             
             landmarks_abs = zone_data['landmarks_absolute']
             
-            # Draw skeleton connections
-            connections = [
-                (11, 13), (13, 15),  # Left arm
-                (12, 14), (14, 16),  # Right arm
-                (11, 12),            # Shoulders
-                (11, 23), (12, 24),  # Torso
-                (23, 24),            # Hips
-                (23, 25), (25, 27),  # Left leg
-                (24, 26), (26, 28),  # Right leg
-            ]
+            connections = []
+            
+            # Use different connections based on keypoint format
+            if len(landmarks_abs) == 17:
+                # YOLO-Pose (17 keypoints - COCO Format)
+                # 0:Nose, 1:LEye, 2:REye, 3:LEar, 4:REar, 5:LSh, 6:RSh, 7:LElb, 8:RElb, 9:LWri, 10:RWri, 11:LHip, 12:RHip, 13:LKnee, 14:RKnee, 15:LAnk, 16:RAnk
+                connections = [
+                    (5, 7), (7, 9),      # Left arm
+                    (6, 8), (8, 10),     # Right arm
+                    (5, 6),              # Shoulders
+                    (5, 11), (6, 12),    # Torso
+                    (11, 12),            # Hips
+                    (11, 13), (13, 15),  # Left leg
+                    (12, 14), (14, 16)   # Right leg
+                ]
+            else:
+                # MediaPipe (33 keypoints)
+                connections = [
+                    (11, 13), (13, 15),  # Left arm
+                    (12, 14), (14, 16),  # Right arm
+                    (11, 12),            # Shoulders
+                    (11, 23), (12, 24),  # Torso
+                    (23, 24),            # Hips
+                    (23, 25), (25, 27),  # Left leg
+                    (24, 26), (26, 28),  # Right leg
+                ]
             
             for connection in connections:
                 if connection[0] < len(landmarks_abs) and connection[1] < len(landmarks_abs):
@@ -874,7 +890,8 @@ class KioskApp(ctk.CTk):
             
             # Analyze the zone
             try:
-                results = self.pose_analyzer.process_frame(zone_frame, skip_ml_inference=False)
+                # Use MediaPipe for accurate snapshot classification
+                results = self.pose_analyzer.process_frame(zone_frame, skip_ml_inference=False, mode='snapshot')
                 
                 if results:
                     # process_frame returns a list of person results
@@ -1029,7 +1046,8 @@ class KioskApp(ctk.CTk):
                     # Run pose + stick detection
                     # OPTIMIZATION: Only run stick detection every 5th frame to maintain FPS
                     do_stick = (self.frame_counter % 5 == 0)
-                    results = self.pose_analyzer.process_frame(zone_frame, skip_ml_inference=True, skip_stick_detection=not do_stick)
+                    # Use YOLO-Pose for fast countdown visualization
+                    results = self.pose_analyzer.process_frame(zone_frame, skip_ml_inference=True, skip_stick_detection=not do_stick, mode='countdown')
                     
                     # Update cache for check_zones_and_countdown
                     if results and len(results) > 0:

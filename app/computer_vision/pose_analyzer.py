@@ -95,6 +95,15 @@ class PoseAnalyzer:
             # No fallback to legacy models
             print("[CRITICAL] GCN models failed to load. Pose classification will be unavailable.")
 
+        # Load YOLO-Pose for fast countdown visualization
+        try:
+            print("[info] loading YOLOv8n-Pose for countdown visualization...")
+            self.yolo_pose = YOLO('yolov8n-pose.pt')
+            print("[info] YOLOv8n-Pose loaded successfully")
+        except Exception as e:
+            print(f"[warning] Could not load YOLO-Pose: {e}")
+            self.yolo_pose = None
+
         self.detection_interval = detection_interval
         self.frame_count = 0
         self.last_detections = []
@@ -241,7 +250,7 @@ class PoseAnalyzer:
                 traceback.print_exc()
             return None, None
 
-    def process_frame(self, frame, skip_ml_inference=False, skip_stick_detection=False):
+    def process_frame(self, frame, skip_ml_inference=False, skip_stick_detection=False, mode='snapshot'):
         h, w, _ = frame.shape
 
         #use yolo's built-in bytetrack tracking
@@ -296,6 +305,46 @@ class PoseAnalyzer:
             if person_crop.size == 0:
                 continue
             
+            # MODE-BASED POSE PROCESSING
+            # Countdown: Use YOLO-Pose for fast visualization (17 keypoints)
+            # Snapshot: Use MediaPipe for accurate classification (33 keypoints)
+            
+            if mode == 'countdown' and self.yolo_pose is not None:
+                # YOLO-Pose for fast countdown visualization
+                try:
+                    yolo_results = self.yolo_pose(person_crop, verbose=False)
+                    if len(yolo_results) > 0 and yolo_results[0].keypoints is not None:
+                        keypoints = yolo_results[0].keypoints.data
+                        if len(keypoints) > 0:
+                            kpts = keypoints[0].cpu().numpy()  # 17 COCO keypoints
+                            
+                            # Convert YOLO-Pose keypoints to absolute coordinates
+                            offset_x = x1_pad
+                            offset_y = y1_pad
+                            abs_landmarks = []
+                            for kpt in kpts:
+                                x, y, conf = kpt
+                                if conf > 0.5:
+                                    abs_x = int(x) + offset_x
+                                    abs_y = int(y) + offset_y
+                                    abs_x = max(0, min(abs_x, frame.shape[1] - 1))
+                                    abs_y = max(0, min(abs_y, frame.shape[0] - 1))
+                                    abs_landmarks.append((abs_x, abs_y, 0.0))  # No z-coordinate
+                                else:
+                                    abs_landmarks.append((0, 0, 0.0))  # Invalid keypoint
+                            
+                            # Store limited data for countdown (no classification)
+                            analysis_results[person_id]['landmarks_absolute'] = abs_landmarks
+                            analysis_results[person_id]['landmarks_2d'] = None  # Not needed for countdown
+                            analysis_results[person_id]['live_angles'] = None  # Skip angle calculation
+                            
+                            # Skip to stick detection
+                            continue
+                except Exception as e:
+                    print(f"[warning] YOLO-Pose failed, falling back to MediaPipe: {e}")
+                    # Fall through to MediaPipe
+            
+            # MediaPipe for snapshot or fallback
             crop_rgb = cv2.cvtColor(person_crop, cv2.COLOR_BGR2RGB)
             pose_results = self.pose.process(crop_rgb)
             
@@ -342,8 +391,105 @@ class PoseAnalyzer:
                             else:
                                 stick_res, _ = self._cached_stick_results.get(person_id, (None, None))
                                 
+                            # --- IMPLEMENTING ADAPTIVE STICK CORRECTION (METHOD 4 REFINED) ---
+                            # Logic:
+                            # 1. Direction: Pure YOLO (Grip -> Tip) for stability.
+                            # 2. Length: Adaptive based on Viewpoint (Front vs Side).
+                            #    - Front (Wide Shoulders): Use Torso Scale (avoids foreshortening).
+                            #    - Side (Narrow Shoulders): Use Forearm Scale (accurate 3D length).
+                            
                             if stick_res:
-                                grip_pt, tip_pt = stick_res
+                                stick_endpoints = stick_res # Initialize with raw detection
+                                try:
+                                    # 1. Get raw endpoints
+                                    grip_pt, tip_pt = stick_endpoints
+                                    
+                                    # 2. Get Landmark Coordinates (Absolute and World)
+                                    # We need indices: 11(L_Sh), 12(R_Sh), 13(L_Elb), 14(R_Elb), 15(L_Wr), 16(R_Wr), 23(L_Hip), 24(R_Hip)
+                                    mp_lm = self.mp_pose.PoseLandmark
+                                    
+                                    def get_abs_point(idx):
+                                        lm = landmarks_2d[idx]
+                                        return np.array([int(lm.x * crop_w) + offset_x, int(lm.y * crop_h) + offset_y])
+
+                                    l_sh = get_abs_point(mp_lm.LEFT_SHOULDER)
+                                    r_sh = get_abs_point(mp_lm.RIGHT_SHOULDER)
+                                    l_hip = get_abs_point(mp_lm.LEFT_HIP)
+                                    r_hip = get_abs_point(mp_lm.RIGHT_HIP)
+                                    
+                                    # 3. Determine Viewpoint (Front vs Side) via Shoulder Width
+                                    shoulder_width = np.linalg.norm(l_sh - r_sh)
+                                    torso_len_l = np.linalg.norm(l_sh - l_hip)
+                                    torso_len_r = np.linalg.norm(r_sh - r_hip)
+                                    avg_torso_px = (torso_len_l + torso_len_r) / 2.0
+                                    
+                                    view_ratio = shoulder_width / (avg_torso_px + 1e-6)
+                                    
+                                    stick_px = 0.0
+                                    
+                                    # 4. Calculate Stick Length based on Viewpoint
+                                    if view_ratio > 0.45:
+                                        # FRONT VIEW: Use Torso Scaling
+                                        # Physics: Stick (0.71m) is ~1.42x Torso (0.5m). Using 1.5 for visibility.
+                                        stick_px = avg_torso_px * 1.5
+                                        if self.debug_stick:
+                                            print(f"[DEBUG-PROCESS] Stick Corrected (FRONT): Ratio={view_ratio:.2f}, Px={stick_px:.0f}")
+                                    else:
+                                        # SIDE VIEW: Use Forearm Scaling
+                                        # Identify arm holding stick (closest to grip)
+                                        r_wrist = get_abs_point(mp_lm.RIGHT_WRIST)
+                                        l_wrist = get_abs_point(mp_lm.LEFT_WRIST)
+                                        grip_arr = np.array(grip_pt)
+                                        
+                                        if np.linalg.norm(grip_arr - r_wrist) < np.linalg.norm(grip_arr - l_wrist):
+                                            # Right Arm
+                                            wrist_pt_2d = r_wrist
+                                            elbow_pt_2d = get_abs_point(mp_lm.RIGHT_ELBOW)
+                                            w_idx, e_idx = mp_lm.RIGHT_WRIST, mp_lm.RIGHT_ELBOW
+                                        else:
+                                            # Left Arm
+                                            wrist_pt_2d = l_wrist
+                                            elbow_pt_2d = get_abs_point(mp_lm.LEFT_ELBOW)
+                                            w_idx, e_idx = mp_lm.LEFT_WRIST, mp_lm.LEFT_ELBOW
+                                            
+                                        # 3D Forearm Length (World Landmarks)
+                                        world_lms = pose_results.pose_world_landmarks.landmark
+                                        w_3d = np.array([world_lms[w_idx].x, world_lms[w_idx].y, world_lms[w_idx].z])
+                                        e_3d = np.array([world_lms[e_idx].x, world_lms[e_idx].y, world_lms[e_idx].z])
+                                        forearm_m = np.linalg.norm(w_3d - e_3d)
+                                        
+                                        # Scaling Ratio
+                                        stick_len_m = 0.71
+                                        len_ratio = stick_len_m / (forearm_m + 1e-6)
+                                        
+                                        # 2D Forearm Length
+                                        forearm_px = np.linalg.norm(wrist_pt_2d - elbow_pt_2d)
+                                        stick_px = forearm_px * len_ratio
+                                        
+                                        if self.debug_stick:
+                                            print(f"[DEBUG-PROCESS] Stick Corrected (SIDE): Ratio={view_ratio:.2f}, Px={stick_px:.0f}")
+
+                                    # 5. Project New Tip (Pure YOLO Direction)
+                                    grip_arr = np.array(grip_pt)
+                                    tip_arr = np.array(tip_pt)
+                                    yolo_vec = tip_arr - grip_arr
+                                    y_len = np.linalg.norm(yolo_vec)
+                                    
+                                    if y_len > 1e-6:
+                                        direction_unit = yolo_vec / y_len
+                                        new_tip = grip_arr + (direction_unit * stick_px)
+                                        corrected_tip = (int(new_tip[0]), int(new_tip[1]))
+                                        stick_endpoints = (grip_pt, corrected_tip)
+
+                                except Exception as e:
+                                    print(f"[warning] Stick correction failed, using raw: {e}")
+                                    # Fallback to raw endpoints
+                                    pass
+
+                                # Save FINAL endpoints (Corrected or Raw)
+                                analysis_results[person_id]['stick_endpoints'] = stick_endpoints
+                                
+                                grip_pt, tip_pt = stick_endpoints
                                 h_frame, w_frame = frame.shape[:2]
                                 stick_kpts_array = np.array([
                                     [grip_pt[0]/w_frame, grip_pt[1]/h_frame, 0.0, 1.0],
@@ -443,6 +589,7 @@ class PoseAnalyzer:
                 analysis_results[person_id]['confidence'] = confidence
                 analysis_results[person_id]['live_angles'] = live_angles
                 analysis_results[person_id]['landmarks'] = pose_results.pose_landmarks
+                analysis_results[person_id]['world_landmarks'] = pose_results.pose_world_landmarks
                 analysis_results[person_id]['landmarks_absolute'] = abs_landmarks
 
         return list(analysis_results.values())

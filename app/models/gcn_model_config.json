@@ -4,12 +4,12 @@
     "models": {
         "front": {
             "path": "app/models/hybrid_gcn_v2_front.pth",
-            "accuracy": 0.85,
+            "accuracy": 0.71,
             "description": "Front viewpoint specialist"
         },
         "left": {
             "path": "app/models/hybrid_gcn_v2_left.pth",
-            "accuracy": 0.82,
+            "accuracy": 0.84,
             "description": "Left side viewpoint specialist"
         },
         "right": {

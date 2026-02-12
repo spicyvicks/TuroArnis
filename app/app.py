@@ -60,6 +60,13 @@ FONT_MAIN = ("Inter", 24)
 FONT_HEADER = ("Inter", 48, "bold")
 FONT_BOLD = ("Inter", 24, "bold")
 
+# Viewpoint-specific confidence thresholds
+CONFIDENCE_THRESHOLDS = {
+    'front': 0.50,  # Lower threshold for front view (71% accuracy)
+    'left': 0.55,   # Higher threshold for left view (84% accuracy)
+    'right': 0.55   # Higher threshold for right view (82% accuracy)
+}
+
 class KioskState:
     SPLASH = "splash"
     USER_COUNT = "user_count"
@@ -567,7 +574,12 @@ class KioskApp(ctk.CTk):
             }
             
             expected_class = class_name_mapping.get(target_pose)
-            is_correct = (expected_class is not None) and (predicted_class == expected_class) and (confidence > 0.4)
+            
+            # Get viewpoint-specific confidence threshold
+            viewpoint = config['viewpoint'].get().lower()
+            confidence_threshold = CONFIDENCE_THRESHOLDS.get(viewpoint, 0.50)
+            
+            is_correct = (expected_class is not None) and (predicted_class == expected_class) and (confidence > confidence_threshold)
             
             color = COLOR_SUCCESS if is_correct else "#f1c40f"
             if predicted_class == 'N/A' or predicted_class.lower() == 'no technique detected' or confidence == 0:
@@ -1113,7 +1125,12 @@ class KioskApp(ctk.CTk):
                             'Left Knee Block': 'left_knee_block_correct', 'Right Knee Block': 'right_knee_block_correct',
                         }
                         expected = class_name_mapping.get(target)
-                        is_correct = (expected is not None) and (predicted == expected) and (self.analysis_results[i].get('confidence', 0.0) > 0.4)
+                        
+                        # Get viewpoint-specific confidence threshold
+                        viewpoint = user_conf['viewpoint'].get().lower()
+                        confidence_threshold = CONFIDENCE_THRESHOLDS.get(viewpoint, 0.50)
+                        
+                        is_correct = (expected is not None) and (predicted == expected) and (self.analysis_results[i].get('confidence', 0.0) > confidence_threshold)
                         
                         # Draw for this specific user zone
                         single_user_result = {i: self.analysis_results[i]}

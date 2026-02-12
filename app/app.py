@@ -567,7 +567,7 @@ class KioskApp(ctk.CTk):
             }
             
             expected_class = class_name_mapping.get(target_pose)
-            is_correct = (expected_class is not None) and (predicted_class == expected_class) and (confidence > 0.5)
+            is_correct = (expected_class is not None) and (predicted_class == expected_class) and (confidence > 0.4)
             
             color = COLOR_SUCCESS if is_correct else "#f1c40f"
             if predicted_class == 'N/A' or predicted_class.lower() == 'no technique detected' or confidence == 0:
@@ -618,14 +618,13 @@ class KioskApp(ctk.CTk):
                     # If tips returned "Good form" or just "Goal: X", but we are in this block, 
                     # it means our angles match the template BUT the classifier is confused.
                     if "Good form" in tips:
-                         feedback_msg = f"Goal: {target_pose}\nHold position, detected {predicted_class.replace('_', ' ').replace('Correct', '').strip()} instead."
+                         feedback_msg = f"Goal: {target_pose}\nAdjust your form"
                     elif "Goal" in tips:
                          feedback_msg = tips # Just show goal
                     else:
                         feedback_msg = tips # Show specific tips (e.g. "Extend Arm")
                 else:
-                    feedback_msg = f"Detected: {predicted_class.replace('_', ' ').replace('Correct', '').strip()}"
-                    feedback_msg += f"\nGoal: {target_pose}"
+                    feedback_msg = f"Goal: {target_pose}\nAdjust your form"
             
             self.add_text(cx, self.screen_height - 130, feedback_msg, font=("Inter", 18), fill="white")
         
@@ -801,9 +800,9 @@ class KioskApp(ctk.CTk):
                 keypoint_fill = (0, 255, 0)
                 keypoint_border = (0, 200, 0)
             else:
-                skeleton_color = (0, 165, 255) # Orange - Wrong/Detected but not target
-                keypoint_fill = (0, 165, 255)
-                keypoint_border = (0, 140, 255)
+                skeleton_color = (0, 0, 255) # Red - Wrong/Detected but not target
+                keypoint_fill = (0, 0, 255)
+                keypoint_border = (0, 0, 180)
         else:
             skeleton_color = (0, 0, 255)  # Red - Waiting (Zoning/Countdown)
             keypoint_fill = (0, 0, 255)   
@@ -1114,7 +1113,7 @@ class KioskApp(ctk.CTk):
                             'Left Knee Block': 'left_knee_block_correct', 'Right Knee Block': 'right_knee_block_correct',
                         }
                         expected = class_name_mapping.get(target)
-                        is_correct = (expected is not None) and (predicted == expected) and (self.analysis_results[i].get('confidence', 0.0) > 0.6)
+                        is_correct = (expected is not None) and (predicted == expected) and (self.analysis_results[i].get('confidence', 0.0) > 0.4)
                         
                         # Draw for this specific user zone
                         single_user_result = {i: self.analysis_results[i]}

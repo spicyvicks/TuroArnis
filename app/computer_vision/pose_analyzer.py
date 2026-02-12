@@ -516,7 +516,6 @@ class PoseAnalyzer:
                             predicted_class, confidence, _ = self.gcn_engine.predict(
                                 pose_kpts_array, stick_kpts_array, g_feat
                             )
-                            print(f"[DEBUG-GCN] Predicted: {predicted_class}, Conf: {confidence:.2f}")
                             self._cached_prediction = (predicted_class, confidence)
                         except Exception as e:
                             print(f"[error] GCN inference failed: {e}")

@@ -847,6 +847,11 @@ class KioskApp(ctk.CTk):
                 if connection[0] < len(landmarks_abs) and connection[1] < len(landmarks_abs):
                     pt1 = landmarks_abs[connection[0]]
                     pt2 = landmarks_abs[connection[1]]
+                    
+                    # Skip if any point is at (0,0) - undetected in YOLO-Pose
+                    if (pt1[0] <= 1 and pt1[1] <= 1) or (pt2[0] <= 1 and pt2[1] <= 1):
+                        continue
+                        
                     # landmarks_abs contains (x, y, z) tuples
                     cv2.line(frame, (pt1[0], pt1[1]), 
                             (pt2[0], pt2[1]), skeleton_color, 2)
@@ -854,6 +859,11 @@ class KioskApp(ctk.CTk):
             # Draw keypoints
             for idx, landmark in enumerate(landmarks_abs):
                 x, y = landmark[0], landmark[1]
+                
+                # Skip if point is at (0,0)
+                if x <= 1 and y <= 1:
+                    continue
+                    
                 cv2.circle(frame, (x, y), 5, keypoint_fill, -1)
                 cv2.circle(frame, (x, y), 6, keypoint_border, 2)
             

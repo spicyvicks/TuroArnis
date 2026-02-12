@@ -333,12 +333,21 @@ class PoseAnalyzer:
                                 else:
                                     abs_landmarks.append((0, 0, 0.0))  # Invalid keypoint
                             
+                            
                             # Store limited data for countdown (no classification)
                             analysis_results[person_id]['landmarks_absolute'] = abs_landmarks
                             analysis_results[person_id]['landmarks_2d'] = None  # Not needed for countdown
                             analysis_results[person_id]['live_angles'] = None  # Skip angle calculation
                             
-                            # Skip to stick detection
+                            # Run stick detection for countdown mode
+                            if not skip_stick_detection:
+                                stick_endpoints, stick_bbox = self._detect_stick_with_yolo(frame, (x1, y1, x2, y2), debug=self.debug_stick)
+                                if stick_endpoints:
+                                    analysis_results[person_id]['stick_endpoints'] = stick_endpoints
+                                    grip_pt, tip_pt = stick_endpoints
+                                    analysis_results[person_id]['stick_keypoints'] = {'grip': grip_pt, 'tip': tip_pt}
+                            
+                            # Skip MediaPipe processing (YOLO-Pose already provided landmarks)
                             continue
                 except Exception as e:
                     print(f"[warning] YOLO-Pose failed, falling back to MediaPipe: {e}")
@@ -507,6 +516,7 @@ class PoseAnalyzer:
                             predicted_class, confidence, _ = self.gcn_engine.predict(
                                 pose_kpts_array, stick_kpts_array, g_feat
                             )
+                            print(f"[DEBUG-GCN] Predicted: {predicted_class}, Conf: {confidence:.2f}")
                             self._cached_prediction = (predicted_class, confidence)
                         except Exception as e:
                             print(f"[error] GCN inference failed: {e}")

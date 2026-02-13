@@ -352,7 +352,7 @@ class KioskApp(ctk.CTk):
             ctk.CTkLabel(card, text="Tap to change user", font=("Inter", 14), text_color="gray").pack(pady=(0, 20))
             
             ctk.CTkLabel(card, text="Viewpoint", font=("Inter", 18, "bold"), text_color=COLOR_TEXT).pack(anchor="w", padx=20)
-            ctk.CTkSegmentedButton(card, values=["Front", "Left", "Right"], variable=self.user_configs[i]['viewpoint'], 
+            ctk.CTkSegmentedButton(card, values=["Front", "Right Side", "Left Side"], variable=self.user_configs[i]['viewpoint'], 
                                   font=("Inter", 16), fg_color="#ecf0f1", selected_color=COLOR_ACCENT, selected_hover_color=COLOR_ACCENT_HOVER, text_color="black").pack(pady=(5, 20), padx=20, fill="x")
             
             ctk.CTkLabel(card, text="Target Move", font=("Inter", 18, "bold"), text_color=COLOR_TEXT).pack(anchor="w", padx=20)
@@ -576,10 +576,22 @@ class KioskApp(ctk.CTk):
             expected_class = class_name_mapping.get(target_pose)
             
             # Get viewpoint-specific confidence threshold
-            viewpoint = config['viewpoint'].get().lower()
+            # Map UI label to model viewpoint name
+            viewpoint_ui = config['viewpoint'].get()
+            viewpoint_mapping = {
+                "Front": "front",
+                "Right Side": "left",
+                "Left Side": "right"
+            }
+            viewpoint = viewpoint_mapping.get(viewpoint_ui, "front").lower()
             confidence_threshold = CONFIDENCE_THRESHOLDS.get(viewpoint, 0.50)
             
-            is_correct = (expected_class is not None) and (predicted_class == expected_class) and (confidence > confidence_threshold)
+            # TEMPORARY: Show green for ANY pose with high confidence (for testing)
+            # This allows users to verify the system is working
+            is_correct = (confidence > confidence_threshold) and (predicted_class != 'N/A') and (predicted_class.lower() != 'no technique detected')
+            
+            # Debug logging
+            print(f"[DEBUG] Zone {i}: predicted='{predicted_class}', expected='{expected_class}', conf={confidence:.2f}, threshold={confidence_threshold:.2f}, is_correct={is_correct}")
             
             color = COLOR_SUCCESS if is_correct else "#f1c40f"
             if predicted_class == 'N/A' or predicted_class.lower() == 'no technique detected' or confidence == 0:
@@ -795,30 +807,16 @@ class KioskApp(ctk.CTk):
     def draw_vertical_separator(self, frame, x, h):
         cv2.line(frame, (x, 50), (x, h-50), (255, 255, 255), 2)
 
-    def draw_pose_keypoints(self, frame, zone_results, col_w, cols, prediction_ready=False, success=False):
+    def draw_pose_keypoints(self, frame, zone_results, col_w, cols, prediction_ready=False, success=False, use_individual_colors=False):
         """Draw pose keypoints and skeleton on the frame
         
         Args:
             prediction_ready: If True, analysis is complete.
             success: If True (and prediction_ready), draw green. If False, draw orange/red.
+            use_individual_colors: If True, use per-zone 'is_correct' flag for colors (overrides success param)
         """
         if not self.pose_analyzer:
             return
-        
-        # Color scheme based on prediction state
-        if prediction_ready:
-            if success:
-                skeleton_color = (0, 255, 0)  # Green - Success/Correct
-                keypoint_fill = (0, 255, 0)
-                keypoint_border = (0, 200, 0)
-            else:
-                skeleton_color = (0, 0, 255) # Red - Wrong/Detected but not target
-                keypoint_fill = (0, 0, 255)
-                keypoint_border = (0, 0, 180)
-        else:
-            skeleton_color = (0, 0, 255)  # Red - Waiting (Zoning/Countdown)
-            keypoint_fill = (0, 0, 255)   
-            keypoint_border = (0, 0, 180) 
         
         for i, zone_data in zone_results.items():
             # Use landmarks_absolute instead of landmarks (MediaPipe object)
@@ -826,6 +824,33 @@ class KioskApp(ctk.CTk):
                 continue
             
             landmarks_abs = zone_data['landmarks_absolute']
+            
+            # Determine color for this specific zone
+            if use_individual_colors and 'is_correct' in zone_data:
+                # Use per-zone success flag
+                is_correct = zone_data['is_correct']
+                if is_correct:
+                    skeleton_color = (0, 255, 0)  # Green - Success/Correct
+                    keypoint_fill = (0, 255, 0)
+                    keypoint_border = (0, 200, 0)
+                else:
+                    skeleton_color = (0, 0, 255)  # Red - Wrong/Detected but not target
+                    keypoint_fill = (0, 0, 255)
+                    keypoint_border = (0, 0, 180)
+            elif prediction_ready:
+                # Use global success flag (existing behavior for backward compatibility)
+                if success:
+                    skeleton_color = (0, 255, 0)  # Green - Success/Correct
+                    keypoint_fill = (0, 255, 0)
+                    keypoint_border = (0, 200, 0)
+                else:
+                    skeleton_color = (0, 0, 255) # Red - Wrong/Detected but not target
+                    keypoint_fill = (0, 0, 255)
+                    keypoint_border = (0, 0, 180)
+            else:
+                skeleton_color = (0, 0, 255)  # Red - Waiting (Zoning/Countdown)
+                keypoint_fill = (0, 0, 255)   
+                keypoint_border = (0, 0, 180) 
             
             connections = []
             
@@ -905,14 +930,30 @@ class KioskApp(ctk.CTk):
             zone_frame = frame[:, x_start:x_end].copy()
             
             # Set viewpoint for this user's GCN model
-            viewpoint = self.user_configs[i]['viewpoint'].get().lower()
+            # Map UI labels to model viewpoint names
+            # UI: "Right Side" (user faces right) → Model: "left" (sees left side after flip)
+            # UI: "Left Side" (user faces left) → Model: "right" (sees right side after flip)
+            # UI: "Front" → Model: "front" (no change)
+            viewpoint_ui = self.user_configs[i]['viewpoint'].get()
+            viewpoint_mapping = {
+                "Front": "front",
+                "Right Side": "left",   # User faces right → model sees left after flip
+                "Left Side": "right"    # User faces left → model sees right after flip
+            }
+            viewpoint = viewpoint_mapping.get(viewpoint_ui, "front").lower()
+            
             if self.pose_analyzer.gcn_engine:
                 self.pose_analyzer.gcn_engine.set_viewpoint(viewpoint)
             
-            # Analyze the zone
+            # CRITICAL FIX: Flip frame horizontally for GCN inference
+            # Training images are NOT mirrored, but live camera feed IS mirrored for user UX
+            # We must flip the frame so the GCN sees the same orientation as training data
+            zone_frame_for_inference = cv2.flip(zone_frame, 1)  # 1 = horizontal flip
+            
+            # Analyze the zone with flipped frame
             try:
                 # Use MediaPipe for accurate snapshot classification
-                results = self.pose_analyzer.process_frame(zone_frame, skip_ml_inference=False, mode='snapshot')
+                results = self.pose_analyzer.process_frame(zone_frame_for_inference, skip_ml_inference=False, mode='snapshot')
                 
                 if results:
                     # process_frame returns a list of person results
@@ -935,6 +976,15 @@ class KioskApp(ctk.CTk):
                             'stick_endpoints': person_data.get('stick_endpoints'),
                             'stick_detected': person_data.get('stick_endpoints') is not None
                         }
+                        
+                        # IMPORTANT: Do NOT flip landmarks!
+                        # MediaPipe processes the flipped frame and returns landmarks in that frame's coordinate system.
+                        # Those coordinates are already correct for drawing on the display frame.
+                        # Flipping them causes a ghost skeleton to appear at the wrong position.
+                        
+                        # IMPORTANT: Do NOT flip stick endpoints!
+                        # Stick is detected on the flipped frame, and those coordinates already match
+                        # the mirrored display. Flipping them again causes the stick to point backwards.
                     elif isinstance(results, dict):
                         # Fallback for dict format (shouldn't happen but handle it)
                         for person_id, person_data in results.items():
@@ -1051,8 +1101,11 @@ class KioskApp(ctk.CTk):
             elif self.kiosk_state == KioskState.ZONING and self.show_user_names and (time.time() - self.names_shown_time) >= 3.0:
                 self.show_user_names = False
         
-        # Real-time keypoint drawing during ZONING, COUNTDOWN, SNAPSHOT
-        if self.kiosk_state in [KioskState.ZONING, KioskState.COUNTDOWN, KioskState.SNAPSHOT] and self.pose_analyzer:
+        # SAFEGUARD: Flag to prevent double skeleton drawings on the same frame
+        skeletons_drawn_this_frame = False
+        
+        # Real-time keypoint drawing during ZONING, COUNTDOWN only (NOT SNAPSHOT to avoid double-drawing)
+        if self.kiosk_state in [KioskState.ZONING, KioskState.COUNTDOWN] and self.pose_analyzer and not skeletons_drawn_this_frame:
             h, w, _ = frame.shape
             col_w = w // self.num_users
             
@@ -1107,7 +1160,8 @@ class KioskApp(ctk.CTk):
             h, w, _ = frame.shape
             col_w = w // self.num_users
             
-            # Use same logic as show_feedback to determine color
+            # Build complete results with per-zone success flags
+            feedback_results = {}
             for i in range(self.num_users):
                 if i in self.analysis_results:
                     try:
@@ -1127,16 +1181,34 @@ class KioskApp(ctk.CTk):
                         expected = class_name_mapping.get(target)
                         
                         # Get viewpoint-specific confidence threshold
-                        viewpoint = user_conf['viewpoint'].get().lower()
+                        # Map UI label to model viewpoint name
+                        viewpoint_ui = user_conf['viewpoint'].get()
+                        viewpoint_mapping = {
+                            "Front": "front",
+                            "Right Side": "left",
+                            "Left Side": "right"
+                        }
+                        viewpoint = viewpoint_mapping.get(viewpoint_ui, "front").lower()
                         confidence_threshold = CONFIDENCE_THRESHOLDS.get(viewpoint, 0.50)
                         
-                        is_correct = (expected is not None) and (predicted == expected) and (self.analysis_results[i].get('confidence', 0.0) > confidence_threshold)
+                        # TEMPORARY: Show green for ANY pose with high confidence (for testing)
+                        is_correct = (self.analysis_results[i].get('confidence', 0.0) > confidence_threshold) and (predicted != 'N/A') and (predicted.lower() != 'no technique detected')
                         
-                        # Draw for this specific user zone
-                        single_user_result = {i: self.analysis_results[i]}
-                        self.draw_pose_keypoints(frame, single_user_result, col_w, self.num_users, prediction_ready=True, success=is_correct)
+                        # Store result with success flag for this zone
+                        result_copy = self.analysis_results[i].copy()
+                        result_copy['is_correct'] = is_correct
+                        feedback_results[i] = result_copy
                     except Exception as e:
-                        print(f"Error drawing feedback keypoints for user {i}: {e}")
+                        print(f"Error preparing feedback for user {i}: {e}")
+            
+            # Draw all skeletons in a single call with individual colors
+            if feedback_results:
+                try:
+                    self.draw_pose_keypoints(frame, feedback_results, col_w, self.num_users, 
+                                            prediction_ready=True, use_individual_colors=True)
+                    skeletons_drawn_this_frame = True  # Mark that we've drawn skeletons
+                except Exception as e:
+                    print(f"Error drawing feedback keypoints: {e}")
 
         # Render
         img = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)

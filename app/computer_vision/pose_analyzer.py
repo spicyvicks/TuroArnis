@@ -386,7 +386,10 @@ class PoseAnalyzer:
                 
                 #optimization: skip ml inference if requested (use cached from last frame)
                 if not skip_ml_inference:
+                    print(f"[DEBUG-GCN] skip_ml_inference=False, checking GCN...")
+                    print(f"[DEBUG-GCN] is_gcn={getattr(self, 'is_gcn', False)}, gcn_engine exists={self.gcn_engine is not None}")
                     if getattr(self, 'is_gcn', False) and self.gcn_engine:
+                        print(f"[DEBUG-GCN] ✓ Entering GCN inference block...")
                         try:
                             # 1. Prepare keypoints for GCN (normalized coordinates)
                             landmarks_2d = pose_results.pose_landmarks.landmark

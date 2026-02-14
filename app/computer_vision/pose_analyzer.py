@@ -396,9 +396,34 @@ class PoseAnalyzer:
                             pose_kpts_array = np.array([[lm.x, lm.y, lm.z, lm.visibility] for lm in landmarks_2d])
                             
                             # 2. Get stick keypoints if detected
-                            # We'll run stick detection first if it hasn't been run yet for this frame
                             if not skip_stick_detection:
                                 stick_res, _ = self._detect_stick_with_yolo(frame, (x1, y1, x2, y2))
+                                
+                                # Validate stick result against wrists
+                                if stick_res and landmarks_2d:
+                                    grip_pt, _ = stick_res
+                                    
+                                    # Get wrist coordinates
+                                    mp_lm = self.mp_pose.PoseLandmark
+                                    l_wrist = landmarks_2d[mp_lm.LEFT_WRIST]
+                                    r_wrist = landmarks_2d[mp_lm.RIGHT_WRIST]
+                                    
+                                    lx = int(l_wrist.x * crop_w) + offset_x
+                                    ly = int(l_wrist.y * crop_h) + offset_y
+                                    rx = int(r_wrist.x * crop_w) + offset_x
+                                    ry = int(r_wrist.y * crop_h) + offset_y
+                                    
+                                    # Check distances
+                                    l_dist = np.hypot(grip_pt[0] - lx, grip_pt[1] - ly)
+                                    r_dist = np.hypot(grip_pt[0] - rx, grip_pt[1] - ry)
+                                    
+                                    # Threshold: 25% of frame width is generous but excludes disparate objects
+                                    valid_thresh = frame.shape[1] * 0.25
+                                    
+                                    if min(l_dist, r_dist) > valid_thresh:
+                                        print(f"[DEBUG-STICK] Discarding stick - too far from wrists. Grip: {grip_pt}, Wrists: {(lx, ly)}, {(rx, ry)}")
+                                        stick_res = None
+                                
                                 self._cached_stick_results[person_id] = (stick_res, _)
                             else:
                                 stick_res, _ = self._cached_stick_results.get(person_id, (None, None))
@@ -440,6 +465,49 @@ class PoseAnalyzer:
                                     stick_px = 0.0
                                     
                                     # 4. Calculate Stick Length based on Viewpoint
+                                    # Setup Arm Vector for Direction Check
+                                    arm_vec_2d = None
+                                    
+                                    # Identify arm holding stick (closest to grip)
+                                    r_wrist = get_abs_point(mp_lm.RIGHT_WRIST)
+                                    l_wrist = get_abs_point(mp_lm.LEFT_WRIST)
+                                    grip_arr = np.array(grip_pt)
+                                    
+                                    dist_r = np.linalg.norm(grip_arr - r_wrist)
+                                    dist_r = np.linalg.norm(grip_arr - r_wrist)
+                                    dist_l = np.linalg.norm(grip_arr - l_wrist)
+                                    
+                                    # SWAP FIX: Ensure Grip is closer to wrist than Tip
+                                    tip_arr = np.array(tip_pt)
+                                    dist_tip_r = np.linalg.norm(tip_arr - r_wrist)
+                                    dist_tip_l = np.linalg.norm(tip_arr - l_wrist)
+                                    
+                                    min_grip_dist = min(dist_r, dist_l)
+                                    min_tip_dist = min(dist_tip_r, dist_tip_l)
+                                    
+                                    if min_tip_dist < min_grip_dist:
+                                        if self.debug_stick:
+                                            print(f"[DEBUG-PROCESS] Swapping Grip/Tip: Tip ({min_tip_dist:.1f}) closer than Grip ({min_grip_dist:.1f})")
+                                        # Swap endpoints
+                                        grip_pt, tip_pt = tip_pt, grip_pt
+                                        grip_arr = np.array(grip_pt)
+                                        # Recalculate distances for arm choice
+                                        dist_r = np.linalg.norm(grip_arr - r_wrist)
+                                        dist_l = np.linalg.norm(grip_arr - l_wrist)
+                                    
+                                    if dist_r < dist_l:
+                                        # Right Arm
+                                        wrist_pt_2d = r_wrist
+                                        elbow_pt_2d = get_abs_point(mp_lm.RIGHT_ELBOW)
+                                        w_idx, e_idx = mp_lm.RIGHT_WRIST, mp_lm.RIGHT_ELBOW
+                                    else:
+                                        # Left Arm
+                                        wrist_pt_2d = l_wrist
+                                        elbow_pt_2d = get_abs_point(mp_lm.LEFT_ELBOW)
+                                        w_idx, e_idx = mp_lm.LEFT_WRIST, mp_lm.LEFT_ELBOW
+                                        
+                                    arm_vec_2d = wrist_pt_2d - elbow_pt_2d
+                                    
                                     if view_ratio > 0.45:
                                         # FRONT VIEW: Use Torso Scaling
                                         # Physics: Stick (0.71m) is ~1.42x Torso (0.5m). Using 1.5 for visibility.
@@ -448,22 +516,6 @@ class PoseAnalyzer:
                                             print(f"[DEBUG-PROCESS] Stick Corrected (FRONT): Ratio={view_ratio:.2f}, Px={stick_px:.0f}")
                                     else:
                                         # SIDE VIEW: Use Forearm Scaling
-                                        # Identify arm holding stick (closest to grip)
-                                        r_wrist = get_abs_point(mp_lm.RIGHT_WRIST)
-                                        l_wrist = get_abs_point(mp_lm.LEFT_WRIST)
-                                        grip_arr = np.array(grip_pt)
-                                        
-                                        if np.linalg.norm(grip_arr - r_wrist) < np.linalg.norm(grip_arr - l_wrist):
-                                            # Right Arm
-                                            wrist_pt_2d = r_wrist
-                                            elbow_pt_2d = get_abs_point(mp_lm.RIGHT_ELBOW)
-                                            w_idx, e_idx = mp_lm.RIGHT_WRIST, mp_lm.RIGHT_ELBOW
-                                        else:
-                                            # Left Arm
-                                            wrist_pt_2d = l_wrist
-                                            elbow_pt_2d = get_abs_point(mp_lm.LEFT_ELBOW)
-                                            w_idx, e_idx = mp_lm.LEFT_WRIST, mp_lm.LEFT_ELBOW
-                                            
                                         # 3D Forearm Length (World Landmarks)
                                         world_lms = pose_results.pose_world_landmarks.landmark
                                         w_3d = np.array([world_lms[w_idx].x, world_lms[w_idx].y, world_lms[w_idx].z])
@@ -480,6 +532,14 @@ class PoseAnalyzer:
                                         
                                         if self.debug_stick:
                                             print(f"[DEBUG-PROCESS] Stick Corrected (SIDE): Ratio={view_ratio:.2f}, Px={stick_px:.0f}")
+                                    
+                                    # CLAMP FIX: Prevent massive sticks due to noisy depth or bad ratios
+                                    # Cap at 2.5x torso length (generous but realistic)
+                                    max_stick_px = avg_torso_px * 2.5
+                                    if stick_px > max_stick_px:
+                                        if self.debug_stick: 
+                                            print(f"[DEBUG-PROCESS] Clamping excessive stick length: {stick_px:.1f} -> {max_stick_px:.1f}")
+                                        stick_px = max_stick_px
 
                                     # 5. Project New Tip (Pure YOLO Direction)
                                     grip_arr = np.array(grip_pt)
@@ -530,72 +590,9 @@ class PoseAnalyzer:
                     if hasattr(self, '_cached_prediction'):
                         predicted_class, confidence = self._cached_prediction
                 
-                #optimization: skip stick detection if requested (use cached from last frame)
-                if not skip_stick_detection:
-                    if self.debug_stick:
-                        print(f"[DEBUG-PROCESS] Calling stick detection for person {person_id}")
-                        print(f"[DEBUG-PROCESS] Person bbox: {(x1, y1, x2, y2)}")
-                    
-                    stick_endpoints, stick_bbox = self._detect_stick_with_yolo(frame, (x1, y1, x2, y2), debug=self.debug_stick)
-                    
-                    #cache stick detection results
-                    self._cached_stick_results[person_id] = (stick_endpoints, stick_bbox)
-                    
-                    if self.debug_stick:
-                        print(f"[DEBUG-PROCESS] Stick detection returned:")
-                        print(f"[DEBUG-PROCESS]   stick_endpoints: {stick_endpoints}")
-                        print(f"[DEBUG-PROCESS]   stick_bbox: {stick_bbox}")
-                else:
-                    #use cached stick detection from previous frame
-                    if person_id in self._cached_stick_results:
-                        stick_endpoints, stick_bbox = self._cached_stick_results[person_id]
-                        if self.debug_stick:
-                            print(f"[DEBUG-PROCESS] Using cached stick detection for person {person_id}")
-                    else:
-                        #first frame, no cache yet - run detection anyway
-                        stick_endpoints, stick_bbox = self._detect_stick_with_yolo(frame, (x1, y1, x2, y2), debug=self.debug_stick)
-                        self._cached_stick_results[person_id] = (stick_endpoints, stick_bbox)
                 
-                if stick_endpoints:
-                    if self.debug_stick:
-                        print(f"[DEBUG-PROCESS] ✓ Setting stick_endpoints for person {person_id}")
-                    analysis_results[person_id]['stick_endpoints'] = stick_endpoints
-                    
-                    grip_pt, tip_pt = stick_endpoints
-                    analysis_results[person_id]['stick_keypoints'] = {'grip': grip_pt, 'tip': tip_pt}
-
-                    r_wrist_lm = landmarks_2d[self.mp_pose.PoseLandmark.RIGHT_WRIST]
-                    l_wrist_lm = landmarks_2d[self.mp_pose.PoseLandmark.LEFT_WRIST]
-                    r_wrist_pt = np.array([int(r_wrist_lm.x * crop_w) + offset_x, int(r_wrist_lm.y * crop_h) + offset_y])
-                    l_wrist_pt = np.array([int(l_wrist_lm.x * crop_w) + offset_x, int(l_wrist_lm.y * crop_h) + offset_y])
-                    
-                    grip_array = np.array(grip_pt)
-                    r_dist = np.linalg.norm(grip_array - r_wrist_pt)
-                    l_dist = np.linalg.norm(grip_array - l_wrist_pt)
-                    
-                    if r_dist < l_dist:
-                        shoulder_lm = landmarks_2d[self.mp_pose.PoseLandmark.RIGHT_SHOULDER]
-                        wrist_pt = r_wrist_pt
-                    else:
-                        shoulder_lm = landmarks_2d[self.mp_pose.PoseLandmark.LEFT_SHOULDER]
-                        wrist_pt = l_wrist_pt
-                    
-                    shoulder_pt = (int(shoulder_lm.x * w), int(shoulder_lm.y * h))
-                    stick_vec = np.array(tip_pt) - np.array(grip_pt)
-                    arm_vec = np.array(wrist_pt) - np.array(shoulder_pt)
-                    
-                    dot = np.dot(stick_vec, arm_vec)
-                    norm_stick = np.linalg.norm(stick_vec)
-                    norm_arm = np.linalg.norm(arm_vec)
-                    
-                    if norm_stick > 0 and norm_arm > 0:
-                        cos_angle = dot / (norm_stick * norm_arm)
-                        cos_angle = np.clip(cos_angle, -1.0, 1.0)
-                        angle_deg = np.degrees(np.arccos(cos_angle))
-                        analysis_results[person_id]['grip_angle'] = angle_deg
-                else:
-                    if self.debug_stick:
-                        print(f"[DEBUG-PROCESS] ✗ No stick_endpoints detected")
+                # Stick detection already handled during GCN inference above (line 401)
+                # The corrected stick endpoints are already in analysis_results[person_id]['stick_endpoints']
                 
                 analysis_results[person_id]['predicted_class'] = predicted_class
                 analysis_results[person_id]['confidence'] = confidence

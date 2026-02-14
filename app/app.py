@@ -62,9 +62,9 @@ FONT_BOLD = ("Inter", 24, "bold")
 
 # Viewpoint-specific confidence thresholds
 CONFIDENCE_THRESHOLDS = {
-    'front': 0.50,  # Lower threshold for front view (71% accuracy)
-    'left': 0.55,   # Higher threshold for left view (84% accuracy)
-    'right': 0.55   # Higher threshold for right view (82% accuracy)
+    'front': 0.35,  
+    'left': 0.35,   
+    'right': 0.35  
 }
 
 class KioskState:
@@ -590,8 +590,8 @@ class KioskApp(ctk.CTk):
             # This allows users to verify the system is working
             is_correct = (confidence > confidence_threshold) and (predicted_class != 'N/A') and (predicted_class.lower() != 'no technique detected')
             
-            # Debug logging
-            print(f"[DEBUG] Zone {i}: predicted='{predicted_class}', expected='{expected_class}', conf={confidence:.2f}, threshold={confidence_threshold:.2f}, is_correct={is_correct}")
+            # Debug logging (Silenced for packaging)
+            # print(f"[DEBUG] Zone {i}: predicted='{predicted_class}', expected='{expected_class}', conf={confidence:.2f}, threshold={confidence_threshold:.2f}, is_correct={is_correct}")
             
             color = COLOR_SUCCESS if is_correct else "#f1c40f"
             if predicted_class == 'N/A' or predicted_class.lower() == 'no technique detected' or confidence == 0:
@@ -609,9 +609,27 @@ class KioskApp(ctk.CTk):
             
             self.add_text(cx, self.screen_height - 280, config['user']['name'], font=("Inter", 24, "bold"), fill="white")
             
-            # Show Score
+            # Show Qualitative Score instead of Percentage
+            score_text = ""
+            score_color = color
+            
             if confidence > 0:
-                self.add_text(cx, self.screen_height - 200, f"{score}%", font=("Inter", 80, "bold"), fill=color)
+                if is_correct:
+                    if confidence >= 0.40:
+                        score_text = "PERFECT!"
+                        score_color = "#2ecc71" # Emerald Green
+                    else:
+                        score_text = "GOOD!"
+                        score_color = "#bfff00" # Lime Green (Yellowish-Green)
+                else:
+                    score_text = "ADJUST"
+                    score_color = "#e74c3c" # Red
+                
+                # Debug logging silenced for packaging
+                # print(f"[FEEDBACK-DEBUG] Zone {i}: Conf={confidence:.3f}, Text='{score_text}', Color={score_color}, Correct={is_correct}")
+                
+                # Reduce font size for text (was 80 for number)
+                self.add_text(cx, self.screen_height - 200, score_text, font=("Inter", 60, "bold"), fill=score_color)
             else:
                  self.add_text(cx, self.screen_height - 200, "--", font=("Inter", 80, "bold"), fill=color)
             
@@ -827,16 +845,27 @@ class KioskApp(ctk.CTk):
             
             # Determine color for this specific zone
             if use_individual_colors and 'is_correct' in zone_data:
-                # Use per-zone success flag
-                is_correct = zone_data['is_correct']
-                if is_correct:
-                    skeleton_color = (0, 255, 0)  # Green - Success/Correct
-                    keypoint_fill = (0, 255, 0)
-                    keypoint_border = (0, 200, 0)
+                # Use per-zone status for granular color (Perfect=Green, Good=Yellow, Bad=Red)
+                status = zone_data.get('status', 'bad')
+                is_correct = zone_data.get('is_correct', False)
+                
+                if status == 'perfect':
+                     skeleton_color = (0, 255, 0)  # Green - Perfect
+                     keypoint_fill = (0, 255, 0)
+                     keypoint_border = (0, 200, 0)
+                elif status == 'good':
+                     # Lime Green / Yellowish-Green (BGR: Blue=0, Green=255, Red=191)
+                     skeleton_color = (0, 255, 191) 
+                     keypoint_fill = (0, 255, 191)
+                     keypoint_border = (0, 200, 150)
+                elif is_correct: # Fallback for boolean True without status
+                     skeleton_color = (0, 255, 0) 
+                     keypoint_fill = (0, 255, 0)
+                     keypoint_border = (0, 200, 0)
                 else:
-                    skeleton_color = (0, 0, 255)  # Red - Wrong/Detected but not target
-                    keypoint_fill = (0, 0, 255)
-                    keypoint_border = (0, 0, 180)
+                     skeleton_color = (0, 0, 255)  # Red - Bad
+                     keypoint_fill = (0, 0, 255)
+                     keypoint_border = (0, 0, 180)
             elif prediction_ready:
                 # Use global success flag (existing behavior for backward compatibility)
                 if success:
@@ -963,28 +992,45 @@ class KioskApp(ctk.CTk):
                         predicted_class = person_data.get('predicted_class', 'N/A')
                         confidence = person_data.get('confidence', 0.0)
                         
-                        # Filter out neutral_stance predictions
-                        if predicted_class.lower() == 'neutral_stance':
-                            predicted_class = 'No Technique Detected'
-                            confidence = 0.0
+                        # Removed neutral_stance filter per user request
+                        # if predicted_class.lower() == 'neutral_stance':
+                        #     predicted_class = 'No Technique Detected'
+                        #     confidence = 0.0
+                        
+                        # CRITICAL FIX: Flip landmarks and stick back to display coordinates
+                        # We flipped the frame before inference (line 951), so MediaPipe returns
+                        # landmarks in the FLIPPED frame's coordinate system.
+                        # We need to flip them BACK to match the original mirrored display frame.
+                        
+                        zone_w = zone_frame.shape[1]  # Width of the zone
+                        
+                        # Flip landmarks_absolute back to display coordinates
+                        landmarks_abs = person_data.get('landmarks_absolute')
+                        if landmarks_abs:
+                            flipped_landmarks = []
+                            for x, y, z in landmarks_abs:
+                                # Flip X coordinate: new_x = zone_width - x
+                                flipped_x = zone_w - x
+                                flipped_landmarks.append((flipped_x, y, z))
+                            landmarks_abs = flipped_landmarks
+                        
+                        # Flip stick endpoints back to display coordinates
+                        stick_endpoints = person_data.get('stick_endpoints')
+                        if stick_endpoints:
+                            grip_pt, tip_pt = stick_endpoints
+                            # Flip X coordinates
+                            flipped_grip = (zone_w - grip_pt[0], grip_pt[1])
+                            flipped_tip = (zone_w - tip_pt[0], tip_pt[1])
+                            stick_endpoints = (flipped_grip, flipped_tip)
                         
                         zone_results[i] = {
                             'predicted_class': predicted_class,
                             'confidence': confidence,
                             'landmarks': person_data.get('landmarks'),
-                            'landmarks_absolute': person_data.get('landmarks_absolute'),
-                            'stick_endpoints': person_data.get('stick_endpoints'),
-                            'stick_detected': person_data.get('stick_endpoints') is not None
+                            'landmarks_absolute': landmarks_abs,
+                            'stick_endpoints': stick_endpoints,
+                            'stick_detected': stick_endpoints is not None
                         }
-                        
-                        # IMPORTANT: Do NOT flip landmarks!
-                        # MediaPipe processes the flipped frame and returns landmarks in that frame's coordinate system.
-                        # Those coordinates are already correct for drawing on the display frame.
-                        # Flipping them causes a ghost skeleton to appear at the wrong position.
-                        
-                        # IMPORTANT: Do NOT flip stick endpoints!
-                        # Stick is detected on the flipped frame, and those coordinates already match
-                        # the mirrored display. Flipping them again causes the stick to point backwards.
                     elif isinstance(results, dict):
                         # Fallback for dict format (shouldn't happen but handle it)
                         for person_id, person_data in results.items():
@@ -996,13 +1042,33 @@ class KioskApp(ctk.CTk):
                                 predicted_class = 'No Technique Detected'
                                 confidence = 0.0
                             
+                            # CRITICAL FIX: Flip landmarks and stick back to display coordinates
+                            zone_w = zone_frame.shape[1]
+                            
+                            # Flip landmarks_absolute back to display coordinates
+                            landmarks_abs = person_data.get('landmarks_absolute')
+                            if landmarks_abs:
+                                flipped_landmarks = []
+                                for x, y, z in landmarks_abs:
+                                    flipped_x = zone_w - x
+                                    flipped_landmarks.append((flipped_x, y, z))
+                                landmarks_abs = flipped_landmarks
+                            
+                            # Flip stick endpoints back to display coordinates
+                            stick_endpoints = person_data.get('stick_endpoints')
+                            if stick_endpoints:
+                                grip_pt, tip_pt = stick_endpoints
+                                flipped_grip = (zone_w - grip_pt[0], grip_pt[1])
+                                flipped_tip = (zone_w - tip_pt[0], tip_pt[1])
+                                stick_endpoints = (flipped_grip, flipped_tip)
+                            
                             zone_results[i] = {
                                 'predicted_class': predicted_class,
                                 'confidence': confidence,
                                 'landmarks': person_data.get('landmarks'),
-                                'landmarks_absolute': person_data.get('landmarks_absolute'),
-                                'stick_endpoints': person_data.get('stick_endpoints'),
-                                'stick_detected': person_data.get('stick_endpoints') is not None
+                                'landmarks_absolute': landmarks_abs,
+                                'stick_endpoints': stick_endpoints,
+                                'stick_detected': stick_endpoints is not None
                             }
                             break  # Only use first person in zone
                     else:
@@ -1037,9 +1103,12 @@ class KioskApp(ctk.CTk):
                 ret, frame = self.cap.read()
                 if not ret: frame = np.zeros((720, 1280, 3), np.uint8)
                 else: frame = cv2.flip(frame, 1)
-                self.current_frame = frame
+                # Store CLEAN frame before any drawing operations
+                self.current_frame = frame.copy()
             else:
                  frame = np.zeros((720, 1280, 3), np.uint8)
+                 self.current_frame = frame.copy()
+
 
         # Draw Zoning
         if self.kiosk_state in [KioskState.ZONING, KioskState.COUNTDOWN, KioskState.SNAPSHOT]:
@@ -1117,11 +1186,9 @@ class KioskApp(ctk.CTk):
                 zone_frame = frame[:, x_start:x_end].copy()
                 
                 try:
-                    # Run pose + stick detection
-                    # OPTIMIZATION: Only run stick detection every 5th frame to maintain FPS
-                    do_stick = (self.frame_counter % 5 == 0)
+                    # Run pose detection ONLY (disable stick detection for speed/clarity)
                     # Use YOLO-Pose for fast countdown visualization
-                    results = self.pose_analyzer.process_frame(zone_frame, skip_ml_inference=True, skip_stick_detection=not do_stick, mode='countdown')
+                    results = self.pose_analyzer.process_frame(zone_frame, skip_ml_inference=True, skip_stick_detection=True, mode='countdown')
                     
                     # Update cache for check_zones_and_countdown
                     if results and len(results) > 0:
@@ -1189,14 +1256,33 @@ class KioskApp(ctk.CTk):
                             "Left Side": "right"
                         }
                         viewpoint = viewpoint_mapping.get(viewpoint_ui, "front").lower()
-                        confidence_threshold = CONFIDENCE_THRESHOLDS.get(viewpoint, 0.50)
                         
-                        # TEMPORARY: Show green for ANY pose with high confidence (for testing)
-                        is_correct = (self.analysis_results[i].get('confidence', 0.0) > confidence_threshold) and (predicted != 'N/A') and (predicted.lower() != 'no technique detected')
+                        # UPDATED THRESHOLDS: Lowered by 0.10 for more forgiving assessment
+                        confidence_thresholds = {
+                            "front": 0.35,  # Aggressively lowered
+                            "left": 0.35,  
+                            "right": 0.35 
+                        }
+                        confidence_threshold = confidence_thresholds.get(viewpoint, 0.35)
+                        
+                        conf = self.analysis_results[i].get('confidence', 0.0)
+                        
+                        # TEMPORARY: Show green for ANY pose with high confidence
+                        is_correct = (conf > confidence_threshold) and (predicted != 'N/A') and (predicted.lower() != 'no technique detected')
                         
                         # Store result with success flag for this zone
                         result_copy = self.analysis_results[i].copy()
                         result_copy['is_correct'] = is_correct
+                        
+                        # Determine detailed status for coloring
+                        if is_correct:
+                            if conf >= 0.40:
+                                result_copy['status'] = 'perfect' # Green
+                            else:
+                                result_copy['status'] = 'good'    # Yellow
+                        else:
+                            result_copy['status'] = 'bad'         # Red
+                        
                         feedback_results[i] = result_copy
                     except Exception as e:
                         print(f"Error preparing feedback for user {i}: {e}")

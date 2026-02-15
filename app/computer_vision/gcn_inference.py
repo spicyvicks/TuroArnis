@@ -99,7 +99,7 @@ class GCNInferenceEngine:
         Returns:
             predicted_class_name: str
             confidence: float (0-1)
-            all_probabilities: np.ndarray (13 classes)
+            all_probabilities: np.ndarray (12 classes)
         """
         # Extract node features [35, 6]
         # pose_keypoints: [33, 4] (x, y, z, visibility)
@@ -107,12 +107,12 @@ class GCNInferenceEngine:
         node_features = extract_node_features(pose_keypoints, stick_keypoints)
 
         # Compute hybrid features [30]
-        # Using neutral_stance as reference (as per plan/training setup)
+        # Use first class as reference template for consistency
         hybrid_features = compute_hybrid_features(
             global_features,
             self.templates,
             viewpoint=self.current_viewpoint,
-            class_name='neutral_stance'
+            class_name=CLASS_NAMES[0]  # 'crown_thrust_correct'
         )
 
         # Convert to tensors

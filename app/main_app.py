@@ -522,7 +522,7 @@ class TuroArnisGUI:
 
                 if self.target_form:
                     #use feedback analyzer to determine correctness
-                    feedback = self.feedback_analyzer.analyze(result, self.target_form)
+                    feedback = self.feedback_analyzer.analyze(result, self.target_form, viewpoint=self.selected_viewpoint.get())
                     is_correct = feedback['is_correct']
                     
                     if is_correct:
@@ -589,7 +589,7 @@ class TuroArnisGUI:
                 if self.target_form:
                     #use feedback analyzer to get detailed feedback
                     if 'feedback' not in locals(): # In case we skipped the block above (unlikely but safe)
-                        feedback = self.feedback_analyzer.analyze(result, self.target_form)
+                        feedback = self.feedback_analyzer.analyze(result, self.target_form, viewpoint=self.selected_viewpoint.get())
 
                     prioritized_messages = self.feedback_analyzer.get_prioritized_messages(feedback, max_messages=3)
                     

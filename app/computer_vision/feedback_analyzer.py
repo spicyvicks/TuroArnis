@@ -3,13 +3,24 @@ Feedback Analyzer - Provides detailed form correction feedback
 Analyzes pose data against target form requirements and generates actionable corrections
 """
 
+import json
+import os
 import numpy as np
 from typing import Dict, List, Optional, Tuple
 
 class FeedbackAnalyzer:
     """Analyzes pose results and generates detailed correction feedback"""
     
+    # Per-viewpoint confidence thresholds (defaults if config not found)
+    DEFAULT_CONFIDENCE_THRESHOLDS = {
+        'front': 0.60,
+        'left': 0.55,
+        'right': 0.65,
+    }
+    
     def __init__(self):
+        # Load per-viewpoint confidence thresholds from config
+        self.confidence_thresholds = self._load_confidence_thresholds()
         #grip angle targets for different forms
         self.grip_angle_ranges = {
             'default': (80, 120),
@@ -32,6 +43,25 @@ class FeedbackAnalyzer:
         self.WRIST_RIGHT = 16
         self.KNEE_LEFT = 25
         self.KNEE_RIGHT = 26
+    
+    def _load_confidence_thresholds(self) -> Dict[str, float]:
+        """Load per-viewpoint confidence thresholds from gcn_model_config.json"""
+        thresholds = dict(self.DEFAULT_CONFIDENCE_THRESHOLDS)
+        try:
+            config_path = os.path.join(os.path.dirname(__file__), '..', 'models', 'gcn_model_config.json')
+            if os.path.exists(config_path):
+                with open(config_path, 'r') as f:
+                    config = json.load(f)
+                for vp, model_info in config.get('models', {}).items():
+                    if 'confidence_threshold' in model_info:
+                        thresholds[vp] = model_info['confidence_threshold']
+        except Exception as e:
+            print(f"[FeedbackAnalyzer] Could not load config thresholds: {e}")
+        return thresholds
+    
+    def get_confidence_threshold(self, viewpoint: str = 'front') -> float:
+        """Get the confidence threshold for a specific viewpoint"""
+        return self.confidence_thresholds.get(viewpoint, 0.60)
     
     def _initialize_joint_targets(self) -> Dict:
         """Initialize joint angle targets for each form"""
@@ -93,7 +123,7 @@ class FeedbackAnalyzer:
         }
     
     
-    def analyze(self, result: Dict, target_form: str, confidence_threshold: float = 0.50) -> Dict:
+    def analyze(self, result: Dict, target_form: str, confidence_threshold: float = None, viewpoint: str = 'front') -> Dict:
         """
         Analyze pose result and generate feedback with structured corrections
         
@@ -110,6 +140,10 @@ class FeedbackAnalyzer:
                 'severity': str
             }
         """
+        # Use per-viewpoint threshold if no explicit threshold provided
+        if confidence_threshold is None:
+            confidence_threshold = self.get_confidence_threshold(viewpoint)
+        
         predicted_class = result.get('predicted_class', '').strip()
         confidence = result.get('confidence', 0.0)
         
@@ -331,11 +365,11 @@ class FeedbackAnalyzer:
             predicted_display = predicted_class.replace('_correct', '').replace('_', ' ').title()
             target_display = target_form.replace('_correct', '').replace('_', ' ').title()
             
-            if confidence > 0.50:
+            if confidence > 0.55:
                 suggestions.append(f"Detected: {predicted_display} - Switch to {target_display}")
             else:
                 suggestions.append(f"Adjust position to match {target_display}")
-        elif confidence < 0.50:
+        elif confidence < 0.55:
             suggestions.append(f"Close to correct - refine position (confidence: {confidence:.0%})")
         
         return suggestions

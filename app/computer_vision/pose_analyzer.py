@@ -19,7 +19,7 @@ from app.models.gcn.feature_extraction import compute_global_features_from_kpts
 from app.models.gcn.model_architecture import CLASS_NAMES
 
 class PoseAnalyzer:
-    def __init__(self, detection_interval=3, stick_model_path=None, debug_stick=False):
+    def __init__(self, detection_interval=3, stick_model_path=None, debug_stick=False, disable_stick_correction=False):
         print("[info] initializing computer vision components...")
         
         #configure device (gpu/cpu) for tensorflow and pytorch/yolo
@@ -35,7 +35,8 @@ class PoseAnalyzer:
         self._cached_stick_results = {}
         
         self.stick_detector = None
-        self.debug_stick = debug_stick  
+        self.debug_stick = debug_stick
+        self.disable_stick_correction = disable_stick_correction
         print(f"[DEBUG-INIT] Stick model path provided: {stick_model_path}")
         print(f"[DEBUG-INIT] Path exists: {os.path.exists(stick_model_path) if stick_model_path else 'N/A'}")
         print(f"[DEBUG-INIT] Debug stick enabled: {debug_stick}")
@@ -118,7 +119,7 @@ class PoseAnalyzer:
         boxBArea = (boxB[2] - boxB[0]) * (boxB[3] - boxB[1])
         return interArea / float(boxAArea + boxBArea - interArea)
 
-    def _detect_stick_with_yolo(self, frame, person_bbox=None, debug=False):
+    def _detect_stick_with_yolo(self, frame, person_bbox=None, debug=False, skip_smoothing=False):
         if debug:
             print(f"[DEBUG-STICK] _detect_stick_with_yolo called")
             print(f"[DEBUG-STICK] Frame shape: {frame.shape}")
@@ -225,10 +226,11 @@ class PoseAnalyzer:
                         print(f"[DEBUG-STICK] low confidence - grip: {grip_conf:.2f}, tip: {tip_conf:.2f}")
                     return None, None
                 
-                #apply smoothing
-                smoothed = self._smooth_stick_keypoints(grip_point, tip_point)
-                if smoothed:
-                    grip_point, tip_point = smoothed
+                #apply smoothing (only for video mode, not snapshot)
+                if not skip_smoothing:
+                    smoothed = self._smooth_stick_keypoints(grip_point, tip_point)
+                    if smoothed:
+                        grip_point, tip_point = smoothed
                 
                 if debug:
                     print(f"[DEBUG-STICK] grip: {grip_point} (conf: {grip_conf:.2f})")
@@ -251,34 +253,91 @@ class PoseAnalyzer:
             return None, None
 
     def process_frame(self, frame, skip_ml_inference=False, skip_stick_detection=False, mode='snapshot'):
+        """
+        Process frame with mode-based detection strategy:
+        
+        SNAPSHOT MODE (GCN Classification):
+        - Uses YOLO regular detection (.predict()) - no tracking needed
+        - Gets person bounding boxes → MediaPipe 33 keypoints → GCN classification
+        - Used for: Test images, kiosk snapshot capture
+        
+        COUNTDOWN MODE (Live Visualization):
+        - Uses YOLO-Pose with ByteTrack (.track()) - maintains stable IDs across frames
+        - Gets 17 COCO keypoints directly from YOLO-Pose
+        - Used for: Real-time countdown visualization, no classification needed
+        
+        Args:
+            frame: Input image frame
+            skip_ml_inference: If True, skip GCN classification (just get landmarks)
+            skip_stick_detection: If True, skip stick detection
+            mode: 'snapshot' (static frame, GCN) or 'countdown' (video, tracking)
+        """
         h, w, _ = frame.shape
+        
+        print(f"[DEBUG-YOLO] Processing frame: {w}x{h}, mode={mode}")
 
-        #use yolo's built-in bytetrack tracking
-        results_yolo = self.yolo_model.track(
-            frame, 
-            persist=True,  #persist tracks between frames
-            tracker="bytetrack.yaml",  #use bytetrack algorithm
-            verbose=False, 
-            classes=[0],  #person class only
-            conf=0.4,      #higher conf for more stable detections (was 0.3)
-            imgsz=480      #larger size for better accuracy (was 256)
-        )
+        # DETECTION STRATEGY BASED ON MODE
+        if mode == 'snapshot':
+            # Regular detection for static images (GCN classification)
+            print(f"[DEBUG-YOLO] Using regular detection for snapshot mode (GCN)")
+            results_yolo = self.yolo_model.predict(
+                frame,
+                verbose=False,
+                classes=[0],  # person class only
+                conf=0.3,     # detection confidence
+                imgsz=480
+            )
+        else:
+            # ByteTrack tracking for live video (countdown/visualization)
+            print(f"[DEBUG-YOLO] Using ByteTrack tracking for {mode} mode (visualization)")
+            results_yolo = self.yolo_model.track(
+                frame, 
+                persist=True,  # persist tracks between frames
+                tracker="bytetrack.yaml",  # use bytetrack algorithm
+                verbose=False, 
+                classes=[0],  # person class only
+                conf=0.4,     # higher conf for more stable detections (was 0.3)
+                imgsz=480     # larger size for better accuracy (was 256)
+            )
+        
+        print(f"[DEBUG-YOLO] YOLO results count: {len(results_yolo)}")
         
         tracked_persons = []
         for r in results_yolo:
-            if r.boxes is not None and r.boxes.id is not None:
-                for box, track_id in zip(r.boxes, r.boxes.id):
-                    if box.conf[0] >= 0.3:
-                        x1, y1, x2, y2 = map(int, box.xyxy[0])
-                        tracker_id = int(track_id)
-                        
-                        #map to stable ids
-                        if tracker_id not in self.id_mapping:
-                            self.id_mapping[tracker_id] = self.next_stable_id
-                            self.next_stable_id += 1
-                        stable_id = self.id_mapping[tracker_id]
-                        
-                        tracked_persons.append([x1, y1, x2, y2, stable_id])
+            if r.boxes is not None:
+                print(f"[DEBUG-YOLO] Boxes found: {len(r.boxes)}")
+                
+                # For snapshot mode, use simple indexing (no tracking IDs)
+                if mode == 'snapshot':
+                    for idx, box in enumerate(r.boxes):
+                        if box.conf[0] >= 0.3:
+                            x1, y1, x2, y2 = map(int, box.xyxy[0])
+                            print(f"[DEBUG-YOLO] Person {idx} detected: bbox=({x1},{y1},{x2},{y2}), conf={box.conf[0]:.2f}")
+                            # Use simple index as ID for snapshot mode
+                            tracked_persons.append([x1, y1, x2, y2, idx])
+                else:
+                    # For tracking modes, use track IDs
+                    if r.boxes.id is not None:
+                        print(f"[DEBUG-YOLO] IDs found: {len(r.boxes.id)}")
+                        for box, track_id in zip(r.boxes, r.boxes.id):
+                            if box.conf[0] >= 0.3:
+                                x1, y1, x2, y2 = map(int, box.xyxy[0])
+                                tracker_id = int(track_id)
+                                print(f"[DEBUG-YOLO] Person detected: bbox=({x1},{y1},{x2},{y2}), conf={box.conf[0]:.2f}, track_id={tracker_id}")
+                                
+                                # Map to stable ids
+                                if tracker_id not in self.id_mapping:
+                                    self.id_mapping[tracker_id] = self.next_stable_id
+                                    self.next_stable_id += 1
+                                stable_id = self.id_mapping[tracker_id]
+                                
+                                tracked_persons.append([x1, y1, x2, y2, stable_id])
+                    else:
+                        print(f"[DEBUG-YOLO] No IDs in this result (tracking not initialized)")
+            else:
+                print(f"[DEBUG-YOLO] No boxes in this result")
+        
+        print(f"[DEBUG-YOLO] Total tracked persons: {len(tracked_persons)}")
         
         tracked_persons = np.array(tracked_persons) if tracked_persons else np.empty((0, 5))
         
@@ -357,7 +416,10 @@ class PoseAnalyzer:
             crop_rgb = cv2.cvtColor(person_crop, cv2.COLOR_BGR2RGB)
             pose_results = self.pose.process(crop_rgb)
             
+            print(f"[DEBUG-MediaPipe] Person {person_id}: pose_results={pose_results is not None}, has_landmarks={pose_results.pose_landmarks is not None if pose_results else False}")
+            
             if pose_results.pose_landmarks:
+                print(f"[DEBUG-MediaPipe] Person {person_id}: ✓ Landmarks detected (33 keypoints)")
                 landmarks_2d = pose_results.pose_landmarks.landmark
                 
                 offset_x = x1_pad
@@ -397,7 +459,8 @@ class PoseAnalyzer:
                             
                             # 2. Get stick keypoints if detected
                             if not skip_stick_detection:
-                                stick_res, _ = self._detect_stick_with_yolo(frame, (x1, y1, x2, y2))
+                                is_snapshot = (mode == 'snapshot')
+                                stick_res, _ = self._detect_stick_with_yolo(frame, (x1, y1, x2, y2), skip_smoothing=is_snapshot)
                                 
                                 # Validate stick result against wrists
                                 if stick_res and landmarks_2d:
@@ -436,132 +499,174 @@ class PoseAnalyzer:
                             #    - Side (Narrow Shoulders): Use Forearm Scale (accurate 3D length).
                             
                             if stick_res:
-                                stick_endpoints = stick_res # Initialize with raw detection
-                                try:
-                                    # 1. Get raw endpoints
-                                    grip_pt, tip_pt = stick_endpoints
-                                    
-                                    # 2. Get Landmark Coordinates (Absolute and World)
-                                    # We need indices: 11(L_Sh), 12(R_Sh), 13(L_Elb), 14(R_Elb), 15(L_Wr), 16(R_Wr), 23(L_Hip), 24(R_Hip)
-                                    mp_lm = self.mp_pose.PoseLandmark
-                                    
-                                    def get_abs_point(idx):
-                                        lm = landmarks_2d[idx]
-                                        return np.array([int(lm.x * crop_w) + offset_x, int(lm.y * crop_h) + offset_y])
+                                # Option to use raw YOLO detection without correction
+                                if self.disable_stick_correction:
+                                    if self.debug_stick:
+                                        print(f"[DEBUG-PROCESS] Using RAW YOLO stick detection (correction disabled)")
+                                    stick_endpoints = stick_res
+                                    analysis_results[person_id]['stick_endpoints'] = stick_endpoints
+                                else:
+                                    stick_endpoints = stick_res # Initialize with raw detection
+                                    try:
+                                        # 1. Get raw endpoints
+                                        grip_pt, tip_pt = stick_endpoints
+                                        
+                                        # 2. Get Landmark Coordinates (Absolute and World)
+                                        mp_lm = self.mp_pose.PoseLandmark
+                                        
+                                        def get_abs_point(idx):
+                                            lm = landmarks_2d[idx]
+                                            return np.array([int(lm.x * crop_w) + offset_x, int(lm.y * crop_h) + offset_y])
 
-                                    l_sh = get_abs_point(mp_lm.LEFT_SHOULDER)
-                                    r_sh = get_abs_point(mp_lm.RIGHT_SHOULDER)
-                                    l_hip = get_abs_point(mp_lm.LEFT_HIP)
-                                    r_hip = get_abs_point(mp_lm.RIGHT_HIP)
-                                    
-                                    # 3. Determine Viewpoint (Front vs Side) via Shoulder Width
-                                    shoulder_width = np.linalg.norm(l_sh - r_sh)
-                                    torso_len_l = np.linalg.norm(l_sh - l_hip)
-                                    torso_len_r = np.linalg.norm(r_sh - r_hip)
-                                    avg_torso_px = (torso_len_l + torso_len_r) / 2.0
-                                    
-                                    view_ratio = shoulder_width / (avg_torso_px + 1e-6)
-                                    
-                                    stick_px = 0.0
-                                    
-                                    # 4. Calculate Stick Length based on Viewpoint
-                                    # Setup Arm Vector for Direction Check
-                                    arm_vec_2d = None
-                                    
-                                    # Identify arm holding stick (closest to grip)
-                                    r_wrist = get_abs_point(mp_lm.RIGHT_WRIST)
-                                    l_wrist = get_abs_point(mp_lm.LEFT_WRIST)
-                                    grip_arr = np.array(grip_pt)
-                                    
-                                    dist_r = np.linalg.norm(grip_arr - r_wrist)
-                                    dist_r = np.linalg.norm(grip_arr - r_wrist)
-                                    dist_l = np.linalg.norm(grip_arr - l_wrist)
-                                    
-                                    # SWAP FIX: Ensure Grip is closer to wrist than Tip
-                                    tip_arr = np.array(tip_pt)
-                                    dist_tip_r = np.linalg.norm(tip_arr - r_wrist)
-                                    dist_tip_l = np.linalg.norm(tip_arr - l_wrist)
-                                    
-                                    min_grip_dist = min(dist_r, dist_l)
-                                    min_tip_dist = min(dist_tip_r, dist_tip_l)
-                                    
-                                    if min_tip_dist < min_grip_dist:
-                                        if self.debug_stick:
-                                            print(f"[DEBUG-PROCESS] Swapping Grip/Tip: Tip ({min_tip_dist:.1f}) closer than Grip ({min_grip_dist:.1f})")
-                                        # Swap endpoints
-                                        grip_pt, tip_pt = tip_pt, grip_pt
+                                        l_sh = get_abs_point(mp_lm.LEFT_SHOULDER)
+                                        r_sh = get_abs_point(mp_lm.RIGHT_SHOULDER)
+                                        l_hip = get_abs_point(mp_lm.LEFT_HIP)
+                                        r_hip = get_abs_point(mp_lm.RIGHT_HIP)
+                                        
+                                        # 3. Determine Viewpoint for Stick Scaling
+                                        use_gcn_viewpoint = False
+                                        if hasattr(self, 'gcn_engine') and self.gcn_engine is not None:
+                                            gcn_vp = self.gcn_engine.current_viewpoint
+                                            is_front_view = (gcn_vp == 'front')
+                                            use_gcn_viewpoint = True
+                                            if self.debug_stick:
+                                                print(f"[DEBUG-PROCESS] Using GCN viewpoint: {gcn_vp} → {'FRONT' if is_front_view else 'SIDE'} stick scaling")
+                                        else:
+                                            shoulder_width = np.linalg.norm(l_sh - r_sh)
+                                            torso_len_l = np.linalg.norm(l_sh - l_hip)
+                                            torso_len_r = np.linalg.norm(r_sh - r_hip)
+                                            avg_torso_px = (torso_len_l + torso_len_r) / 2.0
+                                            view_ratio = shoulder_width / (avg_torso_px + 1e-6)
+                                            is_front_view = (view_ratio > 0.45)
+                                            if self.debug_stick:
+                                                print(f"[DEBUG-PROCESS] Auto-detected viewpoint: ratio={view_ratio:.2f} → {'FRONT' if is_front_view else 'SIDE'}")
+                                        
+                                        # Calculate torso length for scaling
+                                        torso_len_l = np.linalg.norm(l_sh - l_hip)
+                                        torso_len_r = np.linalg.norm(r_sh - r_hip)
+                                        avg_torso_px = (torso_len_l + torso_len_r) / 2.0
+                                        
+                                        # 4. Calculate Stick Length based on Viewpoint
+                                        r_wrist = get_abs_point(mp_lm.RIGHT_WRIST)
+                                        l_wrist = get_abs_point(mp_lm.LEFT_WRIST)
                                         grip_arr = np.array(grip_pt)
-                                        # Recalculate distances for arm choice
+                                        
                                         dist_r = np.linalg.norm(grip_arr - r_wrist)
                                         dist_l = np.linalg.norm(grip_arr - l_wrist)
-                                    
-                                    if dist_r < dist_l:
-                                        # Right Arm
-                                        wrist_pt_2d = r_wrist
-                                        elbow_pt_2d = get_abs_point(mp_lm.RIGHT_ELBOW)
-                                        w_idx, e_idx = mp_lm.RIGHT_WRIST, mp_lm.RIGHT_ELBOW
-                                    else:
-                                        # Left Arm
-                                        wrist_pt_2d = l_wrist
-                                        elbow_pt_2d = get_abs_point(mp_lm.LEFT_ELBOW)
-                                        w_idx, e_idx = mp_lm.LEFT_WRIST, mp_lm.LEFT_ELBOW
                                         
-                                    arm_vec_2d = wrist_pt_2d - elbow_pt_2d
-                                    
-                                    if view_ratio > 0.45:
-                                        # FRONT VIEW: Use Torso Scaling
-                                        # Physics: Stick (0.71m) is ~1.42x Torso (0.5m). Using 1.5 for visibility.
-                                        stick_px = avg_torso_px * 1.5
+                                        # SWAP FIX: Ensure Grip is closer to wrist than Tip
+                                        tip_arr = np.array(tip_pt)
+                                        dist_tip_r = np.linalg.norm(tip_arr - r_wrist)
+                                        dist_tip_l = np.linalg.norm(tip_arr - l_wrist)
+                                        
+                                        min_grip_dist = min(dist_r, dist_l)
+                                        min_tip_dist = min(dist_tip_r, dist_tip_l)
+                                        
+                                        if min_tip_dist < min_grip_dist:
+                                            if self.debug_stick:
+                                                print(f"[DEBUG-PROCESS] Swapping Grip/Tip: Tip ({min_tip_dist:.1f}) closer than Grip ({min_grip_dist:.1f})")
+                                            grip_pt, tip_pt = tip_pt, grip_pt
+                                            grip_arr = np.array(grip_pt)
+                                            dist_r = np.linalg.norm(grip_arr - r_wrist)
+                                            dist_l = np.linalg.norm(grip_arr - l_wrist)
+                                        
+                                        if dist_r < dist_l:
+                                            wrist_pt_2d = r_wrist
+                                            elbow_pt_2d = get_abs_point(mp_lm.RIGHT_ELBOW)
+                                            w_idx, e_idx = mp_lm.RIGHT_WRIST, mp_lm.RIGHT_ELBOW
+                                        else:
+                                            wrist_pt_2d = l_wrist
+                                            elbow_pt_2d = get_abs_point(mp_lm.LEFT_ELBOW)
+                                            w_idx, e_idx = mp_lm.LEFT_WRIST, mp_lm.LEFT_ELBOW
+                                            
+                                        arm_vec_2d = wrist_pt_2d - elbow_pt_2d
+                                        
+                                        # ANCHOR FIX: Use wrist as grip anchor (more reliable than YOLO grip)
+                                        # YOLO grip can be noisy, especially from front view
+                                        grip_pt = (int(wrist_pt_2d[0]), int(wrist_pt_2d[1]))
+                                        grip_arr = np.array(grip_pt)
+                                        
+                                        # Get wrist-to-thumb direction (represents hand/grip orientation)
+                                        if dist_r < dist_l:
+                                            thumb_pt_2d = get_abs_point(mp_lm.RIGHT_THUMB)
+                                        else:
+                                            thumb_pt_2d = get_abs_point(mp_lm.LEFT_THUMB)
+                                        hand_vec = thumb_pt_2d - wrist_pt_2d
+                                        hand_len = np.linalg.norm(hand_vec)
+                                        
                                         if self.debug_stick:
-                                            print(f"[DEBUG-PROCESS] Stick Corrected (FRONT): Ratio={view_ratio:.2f}, Px={stick_px:.0f}")
-                                    else:
-                                        # SIDE VIEW: Use Forearm Scaling
-                                        # 3D Forearm Length (World Landmarks)
-                                        world_lms = pose_results.pose_world_landmarks.landmark
-                                        w_3d = np.array([world_lms[w_idx].x, world_lms[w_idx].y, world_lms[w_idx].z])
-                                        e_3d = np.array([world_lms[e_idx].x, world_lms[e_idx].y, world_lms[e_idx].z])
-                                        forearm_m = np.linalg.norm(w_3d - e_3d)
+                                            print(f"[DEBUG-PROCESS] Grip anchored to wrist: {grip_pt}, thumb: ({int(thumb_pt_2d[0])},{int(thumb_pt_2d[1])})")
                                         
-                                        # Scaling Ratio
-                                        stick_len_m = 0.71
-                                        len_ratio = stick_len_m / (forearm_m + 1e-6)
-                                        
-                                        # 2D Forearm Length
-                                        forearm_px = np.linalg.norm(wrist_pt_2d - elbow_pt_2d)
-                                        stick_px = forearm_px * len_ratio
-                                        
-                                        if self.debug_stick:
-                                            print(f"[DEBUG-PROCESS] Stick Corrected (SIDE): Ratio={view_ratio:.2f}, Px={stick_px:.0f}")
-                                    
-                                    # CLAMP FIX: Prevent massive sticks due to noisy depth or bad ratios
-                                    # Cap at 2.5x torso length (generous but realistic)
-                                    max_stick_px = avg_torso_px * 2.5
-                                    if stick_px > max_stick_px:
-                                        if self.debug_stick: 
-                                            print(f"[DEBUG-PROCESS] Clamping excessive stick length: {stick_px:.1f} -> {max_stick_px:.1f}")
-                                        stick_px = max_stick_px
+                                        if is_front_view:
+                                            stick_px = avg_torso_px * 1.5
+                                            
+                                            # FRONT VIEW DIRECTION: Blend YOLO direction with wrist→thumb direction
+                                            # YOLO direction is unreliable from the front (foreshortening)
+                                            # Wrist→thumb gives actual hand/grip orientation
+                                            yolo_vec = tip_arr - grip_arr
+                                            y_len = np.linalg.norm(yolo_vec)
+                                            
+                                            if y_len > 1e-6 and hand_len > 1e-6:
+                                                yolo_dir = yolo_vec / y_len
+                                                hand_dir = hand_vec / hand_len
+                                                # Blend: 40% YOLO + 60% wrist→thumb (hand orientation is more reliable in front view)
+                                                blended_dir = 0.4 * yolo_dir + 0.6 * hand_dir
+                                                blended_len = np.linalg.norm(blended_dir)
+                                                if blended_len > 1e-6:
+                                                    direction_unit = blended_dir / blended_len
+                                                else:
+                                                    direction_unit = hand_dir
+                                            elif hand_len > 1e-6:
+                                                direction_unit = hand_vec / hand_len
+                                            else:
+                                                direction_unit = yolo_vec / (y_len + 1e-6)
+                                            
+                                            new_tip = grip_arr + (direction_unit * stick_px)
+                                            corrected_tip = (int(new_tip[0]), int(new_tip[1]))
+                                            stick_endpoints = (grip_pt, corrected_tip)
+                                            
+                                            if self.debug_stick:
+                                                print(f"[DEBUG-PROCESS] Stick Corrected (FRONT): Px={stick_px:.0f}, blended direction")
+                                        else:
+                                            world_lms = pose_results.pose_world_landmarks.landmark
+                                            w_3d = np.array([world_lms[w_idx].x, world_lms[w_idx].y, world_lms[w_idx].z])
+                                            e_3d = np.array([world_lms[e_idx].x, world_lms[e_idx].y, world_lms[e_idx].z])
+                                            forearm_m = np.linalg.norm(w_3d - e_3d)
+                                            stick_len_m = 0.71
+                                            len_ratio = stick_len_m / (forearm_m + 1e-6)
+                                            forearm_px = np.linalg.norm(wrist_pt_2d - elbow_pt_2d)
+                                            stick_px = forearm_px * len_ratio
+                                            
+                                            # CLAMP FIX
+                                            max_stick_px = avg_torso_px * 2.5
+                                            if stick_px > max_stick_px:
+                                                if self.debug_stick: 
+                                                    print(f"[DEBUG-PROCESS] Clamping excessive stick length: {stick_px:.1f} -> {max_stick_px:.1f}")
+                                                stick_px = max_stick_px
+                                            
+                                            # SIDE VIEW: Use YOLO direction (reliable from side) + corrected length
+                                            yolo_vec = tip_arr - grip_arr
+                                            y_len = np.linalg.norm(yolo_vec)
+                                            
+                                            if y_len > 1e-6:
+                                                direction_unit = yolo_vec / y_len
+                                                new_tip = grip_arr + (direction_unit * stick_px)
+                                                corrected_tip = (int(new_tip[0]), int(new_tip[1]))
+                                                stick_endpoints = (grip_pt, corrected_tip)
+                                            
+                                            if self.debug_stick:
+                                                print(f"[DEBUG-PROCESS] Stick Corrected (SIDE): Px={stick_px:.0f}, YOLO direction")
 
-                                    # 5. Project New Tip (Pure YOLO Direction)
-                                    grip_arr = np.array(grip_pt)
-                                    tip_arr = np.array(tip_pt)
-                                    yolo_vec = tip_arr - grip_arr
-                                    y_len = np.linalg.norm(yolo_vec)
-                                    
-                                    if y_len > 1e-6:
-                                        direction_unit = yolo_vec / y_len
-                                        new_tip = grip_arr + (direction_unit * stick_px)
-                                        corrected_tip = (int(new_tip[0]), int(new_tip[1]))
-                                        stick_endpoints = (grip_pt, corrected_tip)
+                                    except Exception as e:
+                                        print(f"[warning] Stick correction failed, using raw: {e}")
+                                        # Fallback to raw endpoints
+                                        pass
 
-                                except Exception as e:
-                                    print(f"[warning] Stick correction failed, using raw: {e}")
-                                    # Fallback to raw endpoints
-                                    pass
-
-                                # Save FINAL endpoints (Corrected or Raw)
-                                analysis_results[person_id]['stick_endpoints'] = stick_endpoints
+                                    # Save FINAL endpoints (Corrected or Raw)
+                                    analysis_results[person_id]['stick_endpoints'] = stick_endpoints
                                 
-                                grip_pt, tip_pt = stick_endpoints
+                                # For keypoint array creation (used by both raw and corrected paths)
+                                grip_pt, tip_pt = analysis_results[person_id]['stick_endpoints']
                                 h_frame, w_frame = frame.shape[:2]
                                 stick_kpts_array = np.array([
                                     [grip_pt[0]/w_frame, grip_pt[1]/h_frame, 0.0, 1.0],

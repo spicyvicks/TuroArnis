@@ -317,7 +317,6 @@ class KioskApp(ctk.CTk):
             self.user_configs.append({
                 'user': None,
                 'viewpoint': ctk.StringVar(value="Front"),
-                'form': ctk.StringVar(value="Left Temple Block"),
                 'session_id': None
             })
         self.show_config_screen()
@@ -338,8 +337,8 @@ class KioskApp(ctk.CTk):
             cx = (i * col_w) + (col_w // 2)
             cy = self.screen_height // 2
             
-            # Card (White on light blue)
-            card = ctk.CTkFrame(self.video_canvas, fg_color="white", corner_radius=20, width=350, height=400)
+            # Card (White on light blue) - Simplified without target pose selection
+            card = ctk.CTkFrame(self.video_canvas, fg_color="white", corner_radius=20, width=350, height=320)
             card.pack_propagate(False)
             
             current_name = self.user_configs[i]['user']['name'] if self.user_configs[i]['user'] else f"Guest {i+1}"
@@ -355,24 +354,8 @@ class KioskApp(ctk.CTk):
             ctk.CTkSegmentedButton(card, values=["Front", "Right Side", "Left Side"], variable=self.user_configs[i]['viewpoint'], 
                                   font=("Inter", 16), fg_color="#ecf0f1", selected_color=COLOR_ACCENT, selected_hover_color=COLOR_ACCENT_HOVER, text_color="black").pack(pady=(5, 20), padx=20, fill="x")
             
-            ctk.CTkLabel(card, text="Target Move", font=("Inter", 18, "bold"), text_color=COLOR_TEXT).pack(anchor="w", padx=20)
-            ctk.CTkOptionMenu(card, variable=self.user_configs[i]['form'], 
-                             values=[
-                                 "Crown Thrust",
-                                 "Solar Plexus Thrust",
-                                 "Left Chest Thrust",
-                                 "Right Chest Thrust",
-                                 "Left Eye Thrust",
-                                 "Right Eye Thrust",
-                                 "Left Temple Block",
-                                 "Right Temple Block",
-                                 "Left Elbow Block",
-                                 "Right Elbow Block",
-                                 "Left Knee Block",
-                                 "Right Knee Block"
-                             ],
-                             font=("Inter", 16), height=40,
-                             fg_color=COLOR_ACCENT, button_color=COLOR_ACCENT, button_hover_color=COLOR_ACCENT_HOVER, text_color="white").pack(pady=5, padx=20, fill="x")
+            # Ready indicator - No target pose selection needed
+            ctk.CTkLabel(card, text="✓ Ready for Recognition", font=("Inter", 18, "bold"), text_color=COLOR_SUCCESS).pack(pady=(20, 0))
             
             self.add_widget(cx, cy, card)
 
@@ -416,7 +399,8 @@ class KioskApp(ctk.CTk):
                 user_id = self.db.create_user(guest_name)
                 config['user'] = self.db.get_user_by_id(user_id)
             
-            sid = self.db.start_session(user_id, target_pose=config['form'].get())
+            # Pure recognition mode - no target pose
+            sid = self.db.start_session(user_id, target_pose=None)
             config['session_id'] = sid
             
         self.kiosk_state = KioskState.ZONING
@@ -553,30 +537,8 @@ class KioskApp(ctk.CTk):
             confidence = zone_result.get('confidence', 0.0)
             stick_detected = zone_result.get('stick_detected', False)
             
-            # Convert confidence to score (0-100)
-            score = int(confidence * 100)
-            
-            # Determine if pose matches target
-            target_pose = config['form'].get()
-            class_name_mapping = {
-                'Crown Thrust': 'crown_thrust_correct',
-                'Solar Plexus Thrust': 'solar_plexus_thrust_correct',
-                'Left Chest Thrust': 'left_chest_thrust_correct',
-                'Right Chest Thrust': 'right_chest_thrust_correct',
-                'Left Eye Thrust': 'left_eye_thrust_correct',
-                'Right Eye Thrust': 'right_eye_thrust_correct',
-                'Left Temple Block': 'left_temple_block_correct',
-                'Right Temple Block': 'right_temple_block_correct',
-                'Left Elbow Block': 'left_elbow_block_correct',
-                'Right Elbow Block': 'right_elbow_block_correct',
-                'Left Knee Block': 'left_knee_block_correct',
-                'Right Knee Block': 'right_knee_block_correct',
-            }
-            
-            expected_class = class_name_mapping.get(target_pose)
-            
+            # Pure recognition mode - confidence-based scoring only
             # Get viewpoint-specific confidence threshold
-            # Direct mapping: models are now mirror-invariant
             viewpoint_ui = config['viewpoint'].get()
             viewpoint_mapping = {
                 "Front": "front",
@@ -584,91 +546,59 @@ class KioskApp(ctk.CTk):
                 "Left Side": "left"
             }
             viewpoint = viewpoint_mapping.get(viewpoint_ui, "front").lower()
-            confidence_threshold = CONFIDENCE_THRESHOLDS.get(viewpoint, 0.50)
+            confidence_threshold = CONFIDENCE_THRESHOLDS.get(viewpoint, 0.35)
             
-            # TEMPORARY: Show green for ANY pose with high confidence (for testing)
-            # This allows users to verify the system is working
-            is_correct = (confidence > confidence_threshold) and (predicted_class != 'N/A') and (predicted_class.lower() != 'no technique detected')
+            # Determine quality based purely on confidence (no target comparison)
+            high_confidence = (confidence >= 0.40)
+            good_confidence = (confidence >= 0.30)
+            pose_detected = (predicted_class != 'N/A' and predicted_class.lower() != 'no technique detected' and confidence > 0)
             
-            # Debug logging (Silenced for packaging)
-            # print(f"[DEBUG] Zone {i}: predicted='{predicted_class}', expected='{expected_class}', conf={confidence:.2f}, threshold={confidence_threshold:.2f}, is_correct={is_correct}")
+            # Color coding based on confidence
+            if not pose_detected:
+                color = "#e74c3c"  # Red - No detection
+                score_text = "NOT DETECTED"
+            elif high_confidence:
+                color = "#2ecc71"  # Green - Excellent
+                score_text = "EXCELLENT!"
+            elif good_confidence:
+                color = "#bfff00"  # Lime - Good
+                score_text = "GOOD"
+            else:
+                color = "#f39c12"  # Orange - Fair
+                score_text = "FAIR"
             
-            color = COLOR_SUCCESS if is_correct else "#f1c40f"
-            if predicted_class == 'N/A' or predicted_class.lower() == 'no technique detected' or confidence == 0:
-                 color = "#e74c3c" # Red for failed detection
-            
+            # Save performance with high_confidence flag
             if config['session_id']:
                 self.db.save_performance(
                     session_id=config['session_id'],
                     user_id=config['user']['id'],
                     pose_detected=predicted_class,
                     confidence=confidence,
-                    is_correct=is_correct,
+                    is_correct=high_confidence,  # Repurposed as high_confidence indicator
                     stick_detected=stick_detected
                 )
             
+            # Display user name
             self.add_text(cx, self.screen_height - 280, config['user']['name'], font=("Inter", 24, "bold"), fill="white")
             
-            # Show Qualitative Score instead of Percentage
-            score_text = ""
-            score_color = color
+            # Display detected pose name (if recognized)
+            if pose_detected:
+                # Convert technical name to display name
+                display_name = predicted_class.replace('_correct', '').replace('_', ' ').title()
+                self.add_text(cx, self.screen_height - 230, display_name, font=("Inter", 20), fill="white")
             
-            if confidence > 0:
-                if is_correct:
-                    if confidence >= 0.40:
-                        score_text = "PERFECT!"
-                        score_color = "#2ecc71" # Emerald Green
-                    else:
-                        score_text = "GOOD!"
-                        score_color = "#bfff00" # Lime Green (Yellowish-Green)
-                else:
-                    score_text = "ADJUST"
-                    score_color = "#e74c3c" # Red
-                
-                # Debug logging silenced for packaging
-                # print(f"[FEEDBACK-DEBUG] Zone {i}: Conf={confidence:.3f}, Text='{score_text}', Color={score_color}, Correct={is_correct}")
-                
-                # Reduce font size for text (was 80 for number)
-                self.add_text(cx, self.screen_height - 200, score_text, font=("Inter", 60, "bold"), fill=score_color)
-            else:
-                 self.add_text(cx, self.screen_height - 200, "--", font=("Inter", 80, "bold"), fill=color)
+            # Display confidence score
+            self.add_text(cx, self.screen_height - 180, score_text, font=("Inter", 48, "bold"), fill=color)
             
-            # Extract data earlier so it's available for all branches
-            viewpoint = config['viewpoint'].get().lower()
-            live_angles = zone_result.get('live_angles')
-            landmarks = zone_result.get('landmarks')
-
-            # Show feedback message
-            if predicted_class == 'N/A' or predicted_class == 'No Technique Detected':
-                feedback_msg = "Pose not recognized"
-                # Even if not recognized, check form against target
-                if expected_class and live_angles:
-                    tips = self.generate_form_feedback(expected_class, viewpoint, live_angles, landmarks)
-                    if "Good form" not in tips and "Goal" not in tips:
-                        feedback_msg += f"\n{tips}"
-                    else:
-                         # Provide hint if no specific bad deviation found but still not recognized
-                         feedback_msg += f"\nGoal: {target_pose}"
-                elif expected_class:
-                    feedback_msg += f"\nGoal: {target_pose}"
-            elif is_correct:
-                feedback_msg = "Perfect form!"
-            else:
-                # Wrong technique detected - give deviation feedback
-                if live_angles and expected_class:
-                    tips = self.generate_form_feedback(expected_class, viewpoint, live_angles, landmarks)
-                    # If tips returned "Good form" or just "Goal: X", but we are in this block, 
-                    # it means our angles match the template BUT the classifier is confused.
-                    if "Good form" in tips:
-                         feedback_msg = f"Goal: {target_pose}\nAdjust your form"
-                    elif "Goal" in tips:
-                         feedback_msg = tips # Just show goal
-                    else:
-                        feedback_msg = tips # Show specific tips (e.g. "Extend Arm")
-                else:
-                    feedback_msg = f"Goal: {target_pose}\nAdjust your form"
+            # Display percentage (optional)
+            if pose_detected:
+                percentage = f"{int(confidence * 100)}%"
+                self.add_text(cx, self.screen_height - 130, percentage, font=("Inter", 24), fill="white")
             
-            self.add_text(cx, self.screen_height - 130, feedback_msg, font=("Inter", 18), fill="white")
+            # Stick detection indicator
+            stick_text = "✓ Stick" if stick_detected else "✗ No stick"
+            stick_color = "#27ae60" if stick_detected else "#95a5a6"
+            self.add_text(cx, self.screen_height - 90, stick_text, font=("Inter", 16), fill=stick_color)
         
         self.update_feedback_timer()
     def generate_form_feedback(self, target_class, viewpoint, live_angles, landmarks=None):
@@ -1191,22 +1121,10 @@ class KioskApp(ctk.CTk):
                 if i in self.analysis_results:
                     try:
                         predicted = self.analysis_results[i].get('predicted_class', 'N/A')
+                        conf = self.analysis_results[i].get('confidence', 0.0)
+                        
+                        # Pure recognition mode - confidence-based coloring only
                         user_conf = self.user_configs[i]
-                        target = user_conf['form'].get() if user_conf.get('form') else ""
-                        
-                        # Convert to internal name for matching
-                        class_name_mapping = {
-                            'Crown Thrust': 'crown_thrust_correct', 'Solar Plexus Thrust': 'solar_plexus_thrust_correct',
-                            'Left Chest Thrust': 'left_chest_thrust_correct', 'Right Chest Thrust': 'right_chest_thrust_correct',
-                            'Left Eye Thrust': 'left_eye_thrust_correct', 'Right Eye Thrust': 'right_eye_thrust_correct',
-                            'Left Temple Block': 'left_temple_block_correct', 'Right Temple Block': 'right_temple_block_correct',
-                            'Left Elbow Block': 'left_elbow_block_correct', 'Right Elbow Block': 'right_elbow_block_correct',
-                            'Left Knee Block': 'left_knee_block_correct', 'Right Knee Block': 'right_knee_block_correct',
-                        }
-                        expected = class_name_mapping.get(target)
-                        
-                        # Get viewpoint-specific confidence threshold
-                        # Direct mapping: models are now mirror-invariant
                         viewpoint_ui = user_conf['viewpoint'].get()
                         viewpoint_mapping = {
                             "Front": "front",
@@ -1215,31 +1133,28 @@ class KioskApp(ctk.CTk):
                         }
                         viewpoint = viewpoint_mapping.get(viewpoint_ui, "front").lower()
                         
-                        # UPDATED THRESHOLDS: Lowered by 0.10 for more forgiving assessment
-                        confidence_thresholds = {
-                            "front": 0.35,  # Aggressively lowered
-                            "left": 0.35,  
-                            "right": 0.35 
-                        }
-                        confidence_threshold = confidence_thresholds.get(viewpoint, 0.35)
+                        confidence_threshold = CONFIDENCE_THRESHOLDS.get(viewpoint, 0.35)
                         
-                        conf = self.analysis_results[i].get('confidence', 0.0)
+                        # Determine quality based purely on confidence
+                        pose_detected = (predicted != 'N/A') and (predicted.lower() != 'no technique detected') and (conf > 0)
+                        high_confidence = (conf >= 0.40)
+                        good_confidence = (conf >= 0.30)
                         
-                        # TEMPORARY: Show green for ANY pose with high confidence
-                        is_correct = (conf > confidence_threshold) and (predicted != 'N/A') and (predicted.lower() != 'no technique detected')
-                        
-                        # Store result with success flag for this zone
+                        # Store result with confidence-based status for skeleton coloring
                         result_copy = self.analysis_results[i].copy()
-                        result_copy['is_correct'] = is_correct
                         
-                        # Determine detailed status for coloring
-                        if is_correct:
-                            if conf >= 0.40:
-                                result_copy['status'] = 'perfect' # Green
-                            else:
-                                result_copy['status'] = 'good'    # Yellow
+                        if not pose_detected:
+                            result_copy['status'] = 'bad'  # Red - No detection
+                            result_copy['is_correct'] = False
+                        elif high_confidence:
+                            result_copy['status'] = 'perfect'  # Green - Excellent
+                            result_copy['is_correct'] = True
+                        elif good_confidence:
+                            result_copy['status'] = 'good'  # Lime - Good
+                            result_copy['is_correct'] = True
                         else:
-                            result_copy['status'] = 'bad'         # Red
+                            result_copy['status'] = 'bad'  # Red - Fair/Low confidence
+                            result_copy['is_correct'] = False
                         
                         feedback_results[i] = result_copy
                     except Exception as e:

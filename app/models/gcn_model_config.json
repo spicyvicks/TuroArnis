@@ -4,17 +4,20 @@
     "models": {
         "front": {
             "path": "app/models/hybrid_gcn_v2_front.pth",
-            "accuracy": 0.71,
+            "accuracy": 0.80,
+            "confidence_threshold": 0.60,
             "description": "Front viewpoint specialist"
         },
         "left": {
             "path": "app/models/hybrid_gcn_v2_left.pth",
-            "accuracy": 0.84,
+            "accuracy": 0.77,
+            "confidence_threshold": 0.55,
             "description": "Left side viewpoint specialist"
         },
         "right": {
             "path": "app/models/hybrid_gcn_v2_right.pth",
             "accuracy": 0.83,
+            "confidence_threshold": 0.65,
             "description": "Right side viewpoint specialist"
         }
     },
@@ -27,7 +30,6 @@
         "left_eye_thrust_correct",
         "left_knee_block_correct",
         "left_temple_block_correct",
-        "neutral_stance",
         "right_chest_thrust_correct",
         "right_elbow_block_correct",
         "right_eye_thrust_correct",

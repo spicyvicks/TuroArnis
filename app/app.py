@@ -576,12 +576,12 @@ class KioskApp(ctk.CTk):
             expected_class = class_name_mapping.get(target_pose)
             
             # Get viewpoint-specific confidence threshold
-            # Map UI label to model viewpoint name
+            # Direct mapping: models are now mirror-invariant
             viewpoint_ui = config['viewpoint'].get()
             viewpoint_mapping = {
                 "Front": "front",
-                "Right Side": "left",
-                "Left Side": "right"
+                "Right Side": "right",
+                "Left Side": "left"
             }
             viewpoint = viewpoint_mapping.get(viewpoint_ui, "front").lower()
             confidence_threshold = CONFIDENCE_THRESHOLDS.get(viewpoint, 0.50)
@@ -959,30 +959,27 @@ class KioskApp(ctk.CTk):
             zone_frame = frame[:, x_start:x_end].copy()
             
             # Set viewpoint for this user's GCN model
-            # Map UI labels to model viewpoint names
-            # UI: "Right Side" (user faces right) → Model: "left" (sees left side after flip)
-            # UI: "Left Side" (user faces left) → Model: "right" (sees right side after flip)
-            # UI: "Front" → Model: "front" (no change)
+            # Direct mapping: models are trained with mirror augmentation
+            # Models are now mirror-invariant and work with mirrored frames directly
             viewpoint_ui = self.user_configs[i]['viewpoint'].get()
             viewpoint_mapping = {
                 "Front": "front",
-                "Right Side": "left",   # User faces right → model sees left after flip
-                "Left Side": "right"    # User faces left → model sees right after flip
+                "Right Side": "right",
+                "Left Side": "left"
             }
             viewpoint = viewpoint_mapping.get(viewpoint_ui, "front").lower()
             
             if self.pose_analyzer.gcn_engine:
                 self.pose_analyzer.gcn_engine.set_viewpoint(viewpoint)
             
-            # CRITICAL FIX: Flip frame horizontally for GCN inference
-            # Training images are NOT mirrored, but live camera feed IS mirrored for user UX
-            # We must flip the frame so the GCN sees the same orientation as training data
-            zone_frame_for_inference = cv2.flip(zone_frame, 1)  # 1 = horizontal flip
+            # NEW: Models are mirror-invariant, trained with 66% flipped augmentation
+            # Send mirrored display frame directly to model without preprocessing
+            # No flip needed - models understand poses regardless of mirror orientation
             
-            # Analyze the zone with flipped frame
+            # Analyze the zone with mirrored frame directly
             try:
                 # Use MediaPipe for accurate snapshot classification
-                results = self.pose_analyzer.process_frame(zone_frame_for_inference, skip_ml_inference=False, mode='snapshot')
+                results = self.pose_analyzer.process_frame(zone_frame, skip_ml_inference=False, mode='snapshot')
                 
                 if results:
                     # process_frame returns a list of person results
@@ -997,39 +994,17 @@ class KioskApp(ctk.CTk):
                         #     predicted_class = 'No Technique Detected'
                         #     confidence = 0.0
                         
-                        # CRITICAL FIX: Flip landmarks and stick back to display coordinates
-                        # We flipped the frame before inference (line 951), so MediaPipe returns
-                        # landmarks in the FLIPPED frame's coordinate system.
-                        # We need to flip them BACK to match the original mirrored display frame.
-                        
-                        zone_w = zone_frame.shape[1]  # Width of the zone
-                        
-                        # Flip landmarks_absolute back to display coordinates
-                        landmarks_abs = person_data.get('landmarks_absolute')
-                        if landmarks_abs:
-                            flipped_landmarks = []
-                            for x, y, z in landmarks_abs:
-                                # Flip X coordinate: new_x = zone_width - x
-                                flipped_x = zone_w - x
-                                flipped_landmarks.append((flipped_x, y, z))
-                            landmarks_abs = flipped_landmarks
-                        
-                        # Flip stick endpoints back to display coordinates
-                        stick_endpoints = person_data.get('stick_endpoints')
-                        if stick_endpoints:
-                            grip_pt, tip_pt = stick_endpoints
-                            # Flip X coordinates
-                            flipped_grip = (zone_w - grip_pt[0], grip_pt[1])
-                            flipped_tip = (zone_w - tip_pt[0], tip_pt[1])
-                            stick_endpoints = (flipped_grip, flipped_tip)
+                        # NEW: No coordinate flipping needed!
+                        # Models return coordinates in mirrored space, matching the display frame
+                        # Landmarks and stick coordinates align directly with the user's view
                         
                         zone_results[i] = {
                             'predicted_class': predicted_class,
                             'confidence': confidence,
                             'landmarks': person_data.get('landmarks'),
-                            'landmarks_absolute': landmarks_abs,
-                            'stick_endpoints': stick_endpoints,
-                            'stick_detected': stick_endpoints is not None
+                            'landmarks_absolute': person_data.get('landmarks_absolute'),
+                            'stick_endpoints': person_data.get('stick_endpoints'),
+                            'stick_detected': person_data.get('stick_endpoints') is not None
                         }
                     elif isinstance(results, dict):
                         # Fallback for dict format (shouldn't happen but handle it)
@@ -1042,33 +1017,16 @@ class KioskApp(ctk.CTk):
                                 predicted_class = 'No Technique Detected'
                                 confidence = 0.0
                             
-                            # CRITICAL FIX: Flip landmarks and stick back to display coordinates
-                            zone_w = zone_frame.shape[1]
-                            
-                            # Flip landmarks_absolute back to display coordinates
-                            landmarks_abs = person_data.get('landmarks_absolute')
-                            if landmarks_abs:
-                                flipped_landmarks = []
-                                for x, y, z in landmarks_abs:
-                                    flipped_x = zone_w - x
-                                    flipped_landmarks.append((flipped_x, y, z))
-                                landmarks_abs = flipped_landmarks
-                            
-                            # Flip stick endpoints back to display coordinates
-                            stick_endpoints = person_data.get('stick_endpoints')
-                            if stick_endpoints:
-                                grip_pt, tip_pt = stick_endpoints
-                                flipped_grip = (zone_w - grip_pt[0], grip_pt[1])
-                                flipped_tip = (zone_w - tip_pt[0], tip_pt[1])
-                                stick_endpoints = (flipped_grip, flipped_tip)
+                            # NEW: No coordinate flipping needed!
+                            # Models return coordinates in mirrored space, matching the display frame
                             
                             zone_results[i] = {
                                 'predicted_class': predicted_class,
                                 'confidence': confidence,
                                 'landmarks': person_data.get('landmarks'),
-                                'landmarks_absolute': landmarks_abs,
-                                'stick_endpoints': stick_endpoints,
-                                'stick_detected': stick_endpoints is not None
+                                'landmarks_absolute': person_data.get('landmarks_absolute'),
+                                'stick_endpoints': person_data.get('stick_endpoints'),
+                                'stick_detected': person_data.get('stick_endpoints') is not None
                             }
                             break  # Only use first person in zone
                     else:
@@ -1248,12 +1206,12 @@ class KioskApp(ctk.CTk):
                         expected = class_name_mapping.get(target)
                         
                         # Get viewpoint-specific confidence threshold
-                        # Map UI label to model viewpoint name
+                        # Direct mapping: models are now mirror-invariant
                         viewpoint_ui = user_conf['viewpoint'].get()
                         viewpoint_mapping = {
                             "Front": "front",
-                            "Right Side": "left",
-                            "Left Side": "right"
+                            "Right Side": "right",
+                            "Left Side": "left"
                         }
                         viewpoint = viewpoint_mapping.get(viewpoint_ui, "front").lower()
                         

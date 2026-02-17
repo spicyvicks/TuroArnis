@@ -136,8 +136,8 @@ class PoseAnalyzer:
                 print(f"[DEBUG-STICK] Running stick detector on frame...")
             
             #run stick detection
-            # Lowered confidence threshold to catch fast moving sticks
-            results = self.stick_detector(frame, verbose=False, conf=0.25)
+            # Lowered confidence threshold to catch partially occluded sticks
+            results = self.stick_detector(frame, verbose=False, conf=0.15)
             
             if debug:
                 print(f"[DEBUG-STICK] Results returned: {len(results)} detections")
@@ -219,11 +219,13 @@ class PoseAnalyzer:
                 grip_conf = kpts[0][2].item()
                 tip_conf = kpts[1][2].item()
                 
-                #confidence filtering - lowered to 0.3
-                min_kpt_conf = 0.3
-                if grip_conf < min_kpt_conf or tip_conf < min_kpt_conf:
+                # Confidence filtering - grip can be lower (often occluded by hand)
+                # Tip must be high confidence, grip can be lower but not zero
+                min_grip_conf = 0.01  # Very low - just needs to be detected
+                min_tip_conf = 0.3    # Higher - tip should be visible
+                if grip_conf < min_grip_conf or tip_conf < min_tip_conf:
                     if debug:
-                        print(f"[DEBUG-STICK] low confidence - grip: {grip_conf:.2f}, tip: {tip_conf:.2f}")
+                        print(f"[DEBUG-STICK] low confidence - grip: {grip_conf:.2f} (min: {min_grip_conf}), tip: {tip_conf:.2f} (min: {min_tip_conf})")
                     return None, None
                 
                 #apply smoothing (only for video mode, not snapshot)
@@ -252,7 +254,7 @@ class PoseAnalyzer:
                 traceback.print_exc()
             return None, None
 
-    def process_frame(self, frame, skip_ml_inference=False, skip_stick_detection=False, mode='snapshot'):
+    def process_frame(self, frame, skip_ml_inference=False, skip_stick_detection=False, mode='snapshot', target_pose=None, stick_hand_config=None):
         """
         Process frame with mode-based detection strategy:
         
@@ -271,6 +273,8 @@ class PoseAnalyzer:
             skip_ml_inference: If True, skip GCN classification (just get landmarks)
             skip_stick_detection: If True, skip stick detection
             mode: 'snapshot' (static frame, GCN) or 'countdown' (video, tracking)
+            target_pose: Optional target pose name (for batch testing with hand override)
+            stick_hand_config: Optional dict mapping pose names to hand preferences {'pose_name': {'hand': 'left'/'right', ...}}
         """
         h, w, _ = frame.shape
         
@@ -346,7 +350,8 @@ class PoseAnalyzer:
                 'id': int(p[4]), 'bbox': tuple(map(int, p[:4])), 
                 'predicted_class': "N/A", 'confidence': 0.0, 
                 'live_angles': None, 'landmarks': None, 
-                'stick_endpoints': None, 'stick_keypoints': None, 'grip_angle': None 
+                'stick_endpoints': None, 'stick_keypoints': None, 'grip_angle': None,
+                'stick_foreshortened': False
             } for p in tracked_persons 
         }
         
@@ -390,7 +395,7 @@ class PoseAnalyzer:
                                     abs_y = max(0, min(abs_y, frame.shape[0] - 1))
                                     abs_landmarks.append((abs_x, abs_y, 0.0))  # No z-coordinate
                                 else:
-                                    abs_landmarks.append((0, 0, 0.0))  # Invalid keypoint
+                                    abs_landmarks.append((-1, -1, 0.0))  # Invalid keypoint (sentinel)
                             
                             
                             # Store limited data for countdown (no classification)
@@ -430,6 +435,10 @@ class PoseAnalyzer:
                 #landmarks are relative to the crop, so we add the offset
                 abs_landmarks = []
                 for lm in landmarks_2d:
+                    # Skip low-visibility landmarks (mark as invalid)
+                    if hasattr(lm, 'visibility') and lm.visibility < 0.3:
+                        abs_landmarks.append((-1, -1, 0.0))
+                        continue
                     #convert normalized coordinates to crop space, then to frame space
                     abs_x = int(lm.x * crop_w) + offset_x
                     abs_y = int(lm.y * crop_h) + offset_y
@@ -460,7 +469,9 @@ class PoseAnalyzer:
                             # 2. Get stick keypoints if detected
                             if not skip_stick_detection:
                                 is_snapshot = (mode == 'snapshot')
-                                stick_res, _ = self._detect_stick_with_yolo(frame, (x1, y1, x2, y2), skip_smoothing=is_snapshot)
+                                print(f"[DEBUG-STICK-CALL] Calling _detect_stick_with_yolo for person {person_id}...")
+                                stick_res, _ = self._detect_stick_with_yolo(frame, (x1, y1, x2, y2), skip_smoothing=is_snapshot, debug=True)
+                                print(f"[DEBUG-STICK-CALL] Result: {stick_res}")
                                 
                                 # Validate stick result against wrists
                                 if stick_res and landmarks_2d:
@@ -507,9 +518,19 @@ class PoseAnalyzer:
                                     analysis_results[person_id]['stick_endpoints'] = stick_endpoints
                                 else:
                                     stick_endpoints = stick_res # Initialize with raw detection
+                                    stick_foreshortened = False  # Initialize flag
                                     try:
                                         # 1. Get raw endpoints
                                         grip_pt, tip_pt = stick_endpoints
+                                        
+                                        # 1.5. Detect foreshortening (stick pointing at camera)
+                                        # Calculate raw YOLO stick length before any corrections
+                                        raw_yolo_length = np.linalg.norm(np.array(tip_pt) - np.array(grip_pt))
+                                        FORESHORTEN_THRESHOLD_PX = 40  # If YOLO detects stick < 40px, likely pointing at camera
+                                        stick_foreshortened = (raw_yolo_length < FORESHORTEN_THRESHOLD_PX)
+                                        
+                                        if self.debug_stick and stick_foreshortened:
+                                            print(f"[DEBUG-PROCESS] FORESHORTENED STICK DETECTED: Raw YOLO length = {raw_yolo_length:.1f}px (threshold={FORESHORTEN_THRESHOLD_PX}px) - Will use raw endpoints")
                                         
                                         # 2. Get Landmark Coordinates (Absolute and World)
                                         mp_lm = self.mp_pose.PoseLandmark
@@ -570,7 +591,35 @@ class PoseAnalyzer:
                                             dist_r = np.linalg.norm(grip_arr - r_wrist)
                                             dist_l = np.linalg.norm(grip_arr - l_wrist)
                                         
-                                        if dist_r < dist_l:
+                                        # FORCE RIGHT HAND for front view only (for paper consistency)
+                                        # OR use per-pose hand override from config (if provided)
+                                        force_right_hand_front = True  # Set to False to restore auto-detection
+                                        current_viewpoint = getattr(self.gcn_engine, 'current_viewpoint', None) if hasattr(self, 'gcn_engine') and self.gcn_engine else None
+                                        
+                                        # Check for per-pose hand override from config
+                                        use_right_hand = False
+                                        hand_override_applied = False
+                                        if target_pose and stick_hand_config and target_pose in stick_hand_config:
+                                            pose_config = stick_hand_config[target_pose]
+                                            if 'hand' in pose_config:
+                                                use_right_hand = (pose_config['hand'].lower() == 'right')
+                                                hand_override_applied = True
+                                                if self.debug_stick:
+                                                    print(f"[DEBUG-PROCESS] Per-pose hand override: {target_pose} → {pose_config['hand']} hand")
+                                        
+                                        # Fall back to front-view forcing if no config override
+                                        if not hand_override_applied:
+                                            use_right_hand = force_right_hand_front and current_viewpoint == 'front'
+                                        
+                                        # Determine which hand to use: strict override or distance-based
+                                        if hand_override_applied:
+                                            # Strict hand override from config
+                                            use_right_side = use_right_hand
+                                        else:
+                                            # Auto-detection or front-view forcing
+                                            use_right_side = use_right_hand or dist_r < dist_l
+                                        
+                                        if use_right_side:
                                             wrist_pt_2d = r_wrist
                                             elbow_pt_2d = get_abs_point(mp_lm.RIGHT_ELBOW)
                                             w_idx, e_idx = mp_lm.RIGHT_WRIST, mp_lm.RIGHT_ELBOW
@@ -581,13 +630,18 @@ class PoseAnalyzer:
                                             
                                         arm_vec_2d = wrist_pt_2d - elbow_pt_2d
                                         
-                                        # ANCHOR FIX: Use wrist as grip anchor (more reliable than YOLO grip)
+                                        # ANCHOR FIX: Use PINKY as grip anchor (closer to actual grip point)
                                         # YOLO grip can be noisy, especially from front view
-                                        grip_pt = (int(wrist_pt_2d[0]), int(wrist_pt_2d[1]))
+                                        # Pinky is more anatomically accurate for stick grip position
+                                        if use_right_side:
+                                            pinky_pt_2d = get_abs_point(mp_lm.RIGHT_PINKY)
+                                        else:
+                                            pinky_pt_2d = get_abs_point(mp_lm.LEFT_PINKY)
+                                        grip_pt = (int(pinky_pt_2d[0]), int(pinky_pt_2d[1]))
                                         grip_arr = np.array(grip_pt)
                                         
                                         # Get wrist-to-thumb direction (represents hand/grip orientation)
-                                        if dist_r < dist_l:
+                                        if use_right_side:
                                             thumb_pt_2d = get_abs_point(mp_lm.RIGHT_THUMB)
                                         else:
                                             thumb_pt_2d = get_abs_point(mp_lm.LEFT_THUMB)
@@ -595,7 +649,9 @@ class PoseAnalyzer:
                                         hand_len = np.linalg.norm(hand_vec)
                                         
                                         if self.debug_stick:
-                                            print(f"[DEBUG-PROCESS] Grip anchored to wrist: {grip_pt}, thumb: ({int(thumb_pt_2d[0])},{int(thumb_pt_2d[1])})")
+                                            hand_side = "RIGHT" if use_right_side else "LEFT"
+                                            force_msg = " (OVERRIDE)" if hand_override_applied else (" (FORCED)" if use_right_hand else "")
+                                            print(f"[DEBUG-PROCESS] Using {hand_side} hand{force_msg} - Grip anchored to pinky: {grip_pt}, wrist: ({int(wrist_pt_2d[0])},{int(wrist_pt_2d[1])}), thumb: ({int(thumb_pt_2d[0])},{int(thumb_pt_2d[1])})")
                                         
                                         if is_front_view:
                                             stick_px = avg_torso_px * 1.5
@@ -656,14 +712,23 @@ class PoseAnalyzer:
                                             
                                             if self.debug_stick:
                                                 print(f"[DEBUG-PROCESS] Stick Corrected (SIDE): Px={stick_px:.0f}, YOLO direction")
+                                        # End of correction logic (only runs if not foreshortened)
 
                                     except Exception as e:
                                         print(f"[warning] Stick correction failed, using raw: {e}")
                                         # Fallback to raw endpoints
+                                        stick_foreshortened = False  # Reset flag on error
                                         pass
 
-                                    # Save FINAL endpoints (Corrected or Raw)
+                                    # If stick is foreshortened, use raw YOLO endpoints (don't apply corrections)
+                                    if stick_foreshortened:
+                                        stick_endpoints = stick_res  # Revert to original raw detection
+                                        if self.debug_stick:
+                                            print(f"[DEBUG-PROCESS] Using RAW endpoints for foreshortened stick")
+
+                                    # Save FINAL endpoints (Corrected or Raw) and foreshortening flag
                                     analysis_results[person_id]['stick_endpoints'] = stick_endpoints
+                                    analysis_results[person_id]['stick_foreshortened'] = stick_foreshortened
                                 
                                 # For keypoint array creation (used by both raw and corrected paths)
                                 grip_pt, tip_pt = analysis_results[person_id]['stick_endpoints']

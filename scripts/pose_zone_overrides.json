@@ -1,0 +1,92 @@
+{
+  "_comment": "Per-pose, per-zone overrides for specific customizations",
+  "_description": "Granular control over stick detection, hand selection, and visualization for each pose×zone combination",
+  
+  "left_chest": {
+    "zone_3": {
+      "force_rating": "red",
+      "note": "Zone 3 intentional error - red rating"
+    }
+  },
+  
+  "left_elbow": {
+    "zone_2": {
+      "confidence_override": 0.35,
+      "note": "Good rating (yellow) - confidence 0.30-0.39"
+    }
+  },
+  
+  "left_eye": {
+    "zone_3": {
+      "note": "Grip should anchor to pinky (already default behavior)"
+    }
+  },
+  
+  "left_knee": {
+    "zone_2": {
+      "force_rating": "red",
+      "note": "Front view should be red"
+    }
+  },
+  
+  "left_temple": {
+    "zone_2": {
+      "confidence_override": 0.35,
+      "note": "Should be good (yellow)"
+    }
+  },
+  
+  "right_chest": {
+    "zone_1": {
+      "stick_fix_needed": true,
+      "note": "Stick detection missing - needs investigation"
+    }
+  },
+  
+  "right_elbow": {
+    "zone_1": {
+      "note": "Stick detection over the top - needs fix"
+    },
+    "zone_2": {
+      "stick_mode": "skip",
+      "stick_hand": "left",
+      "confidence_override": 0.35,
+      "note": "Skip stick or use YOLO, yellow rating, left hand"
+    }
+  },
+  
+  "right_eye": {
+    "zone_2": {
+      "stick_hand": "left",
+      "stick_mode": "force_circle",
+      "note": "Stick on left hand, circle indicator"
+    }
+  },
+  
+  "right_knee": {
+    "zone_2": {
+      "stick_hand": "left",
+      "stick_mode": "force_line",
+      "note": "Stick on left hand going downwards"
+    },
+    "zone_3": {
+      "force_rating": "red",
+      "note": "Zone 3 should be red"
+    }
+  },
+  
+  "right_temple": {
+    "zone_2": {
+      "stick_mode": "force_line",
+      "confidence_override": 0.35,
+      "note": "Stick going to the left, yellow rating"
+    }
+  },
+  
+  "solar_plexus": {
+    "zone_1": {
+      "confidence_override": 0.35,
+      "note": "Should be yellow (GOOD rating)"
+    }
+  }
+}

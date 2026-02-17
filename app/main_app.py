@@ -366,7 +366,11 @@ class TuroArnisGUI:
         self.camera_label.pack(fill="x", pady=2, padx=10)
         
         self.model_label = ctk.CTkLabel(system_frame, text="Model: Loaded", font=("Inter", 11), text_color="#27ae60", anchor="w")
-        self.model_label.pack(fill="x", padx=10, pady=(0, 10))
+        self.model_label.pack(fill="x", padx=10, pady=(0, 5))
+        
+        # Multi-user detection status
+        self.users_detected_label = ctk.CTkLabel(system_frame, text="Users detected: 0 / 3", font=("Inter", 11), text_color="#7f8c8d", anchor="w")
+        self.users_detected_label.pack(fill="x", padx=10, pady=(0, 10))
         
         self.frame_times = []
         self.last_fps_update = time.time()
@@ -458,6 +462,15 @@ class TuroArnisGUI:
         COLOR_PROMPT = (0, 255, 255); COLOR_WHITE = (255, 255, 255); COLOR_BLACK = (0, 0, 0)
         COLOR_BG_TRANSPARENT = (0, 0, 0)
 
+        # Distinct colors for up to 3 users
+        USER_COLORS = [
+            (255, 165, 0),   # User 1 — Orange
+            (0, 200, 255),   # User 2 — Cyan
+            (200, 100, 255), # User 3 — Purple
+        ]
+        USER_LABELS = ["User 1", "User 2", "User 3"]
+        MAX_USERS = 3
+
         while self.is_running:
             ret, frame = self.cap.read()
             if not ret:
@@ -482,22 +495,19 @@ class TuroArnisGUI:
                 if run_stick_detection:
                     self.last_stick_detection_frame = self.frame_counter
 
-            feedback_x = processing_frame.shape[1] - 270; feedback_y = 30
-            
-            prediction_text = "Prediction: N/A (0.00)"
-            if self.last_known_results:
-                result = self.last_known_results[0]
-                predicted_class = result['predicted_class']
-                predicted_class = re.sub(r'^\d+\.\s*', '', predicted_class)
-                confidence = result['confidence']
+            # --- Multi-user processing (up to 3 users) ---
+            num_detected = len(self.last_known_results) if self.last_known_results else 0
+            num_users = min(num_detected, MAX_USERS)
+
+            # Update confidence display for primary user (User 1)
+            if num_users > 0:
+                primary = self.last_known_results[0]
+                confidence = primary.get('confidence', 0.0)
+                predicted_class = re.sub(r'^\d+\.\s*', '', primary.get('predicted_class', 'N/A'))
                 pretty_class_name = predicted_class.replace('_correct', '').replace('_', ' ').title()
-                prediction_text = f"Prediction: {pretty_class_name} ({confidence:.2f})"
-                
-            #update confidence progress bar
+
                 self.confidence_progress.set(confidence)
                 self.confidence_percent_label.configure(text=f"{int(confidence * 100)}%")
-                
-                #color code based on confidence
                 if confidence > 0.50:
                     self.confidence_progress.configure(progress_color="#27ae60")
                     self.confidence_percent_label.configure(text_color="#27ae60")
@@ -508,20 +518,20 @@ class TuroArnisGUI:
                     self.confidence_progress.configure(progress_color="#e74c3c")
                     self.confidence_percent_label.configure(text_color="#e74c3c")
             else:
-                #reset when no results
                 self.confidence_progress.set(0)
                 self.confidence_percent_label.configure(text="0%", text_color="#95a5a6")
-                
-            
-            if self.last_known_results:
-                result = self.last_known_results[0]
+
+            # Process and draw each detected user
+            for user_idx in range(num_users):
+                result = self.last_known_results[user_idx]
                 x1, y1, x2, y2 = result['bbox']
                 person_id = result['id']
+                user_color = USER_COLORS[user_idx]
+                user_label = USER_LABELS[user_idx]
                 
-                draw_color = COLOR_ERROR; box_color = COLOR_DEFAULT; is_correct = False
+                draw_color = COLOR_ERROR; box_color = user_color; is_correct = False
 
                 if self.target_form:
-                    #use feedback analyzer to determine correctness
                     feedback = self.feedback_analyzer.analyze(result, self.target_form, viewpoint=self.selected_viewpoint.get())
                     is_correct = feedback['is_correct']
                     
@@ -532,42 +542,50 @@ class TuroArnisGUI:
                     else:
                         current_state = 'incorrect'
 
-                    # Draw visual correction arrows
                     if result.get('landmarks_absolute'):
                          self.analyzer.draw_visual_cues(processing_frame, feedback, result['landmarks_absolute'])
 
-                    #state tracking
-                    if self.current_session_id:
+                    # State tracking (primary user only for session recording)
+                    if user_idx == 0 and self.current_session_id:
                         if current_state != self.last_pose_state:
                             if self.last_pose_state is not None and self.state_frame_count >= self.MIN_STATE_FRAMES:
-                                is_correct = (self.last_pose_state == 'correct')
-                                self.save_performance(result, is_correct=is_correct)
+                                is_correct_save = (self.last_pose_state == 'correct')
+                                self.save_performance(result, is_correct=is_correct_save)
                             
                             self.last_pose_state = current_state
                             self.state_frame_count = 1
                         else:
                             self.state_frame_count += 1
-                            
-                            #timeout for stuck states
                             if self.state_frame_count >= self.MAX_STATE_DURATION and current_state == 'incorrect':
                                 self.save_performance(result, is_correct=False)
                                 self.last_pose_state = None
                                 self.state_frame_count = 0
                 
+                # Draw bounding box with user color
                 cv2.rectangle(processing_frame, (x1, y1), (x2, y2), box_color, 2)
                 
-                if result['stick_endpoints']:
+                # Draw user label above bounding box
+                predicted_class = re.sub(r'^\d+\.\s*', '', result.get('predicted_class', 'N/A'))
+                conf = result.get('confidence', 0.0)
+                pretty_name = predicted_class.replace('_correct', '').replace('_', ' ').title()
+                label_text = f"{user_label}: {pretty_name} ({conf:.0%})"
+                (tw, th), _ = cv2.getTextSize(label_text, cv2.FONT_HERSHEY_SIMPLEX, 0.45, 1)
+                label_y = max(y1 - 8, th + 4)
+                cv2.rectangle(processing_frame, (x1, label_y - th - 4), (x1 + tw + 6, label_y + 4), box_color, -1)
+                cv2.putText(processing_frame, label_text, (x1 + 3, label_y), 
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.45, COLOR_WHITE, 1, cv2.LINE_AA)
+                
+                if result.get('stick_endpoints'):
                     pt1, pt2 = result['stick_endpoints']
                     cv2.line(processing_frame, pt1, pt2, COLOR_PROMPT, 4)
 
                 if result.get('landmarks_absolute'):
                     landmarks_abs = result['landmarks_absolute']
-                    person_id = result['id']
                     
                     frame_h, frame_w = processing_frame.shape[:2]
                     
-                    landmark_color = (0, 255, 0) if is_correct else (0, 0, 255)
-                    connection_color = (0, 255, 0) if is_correct else (0, 0, 255)
+                    landmark_color = COLOR_CORRECT if is_correct else user_color
+                    connection_color = COLOR_CORRECT if is_correct else user_color
                     
                     visible_landmarks = set()
                     for idx, (lx, ly, lz) in enumerate(landmarks_abs):
@@ -587,24 +605,26 @@ class TuroArnisGUI:
                             cv2.line(processing_frame, start_pt, end_pt, connection_color, 3, lineType=cv2.LINE_AA)
 
                 if self.target_form:
-                    #use feedback analyzer to get detailed feedback
-                    if 'feedback' not in locals(): # In case we skipped the block above (unlikely but safe)
+                    if 'feedback' not in dir():
                         feedback = self.feedback_analyzer.analyze(result, self.target_form, viewpoint=self.selected_viewpoint.get())
 
                     prioritized_messages = self.feedback_analyzer.get_prioritized_messages(feedback, max_messages=3)
                     
-                    #opencv feedback rendering - compact size
-                    box_width = 220
-                    box_height = 110
-                    box_x = processing_frame.shape[1] - box_width - 10
-                    box_y = 10
+                    # Feedback panel — positioned per user to avoid overlap
+                    box_width = 160
+                    box_height = 90
+                    box_x = x1
+                    box_y = min(y2 + 5, processing_frame.shape[0] - box_height - 5)
                     
-                    #semi-transparent background
+                    # Clamp to frame bounds
+                    if box_x + box_width > processing_frame.shape[1]:
+                        box_x = processing_frame.shape[1] - box_width - 2
+                    box_x = max(2, box_x)
+                    
                     overlay = processing_frame.copy()
                     cv2.rectangle(overlay, (box_x, box_y), (box_x + box_width, box_y + box_height), (30, 30, 30), -1)
                     processing_frame = cv2.addWeighted(overlay, 0.8, processing_frame, 0.2, 0)
                     
-                    #border color based on state
                     if feedback['is_correct']:
                         border_color = (0, 200, 0)
                     elif feedback.get('severity') == 'critical':
@@ -613,27 +633,30 @@ class TuroArnisGUI:
                         border_color = (200, 150, 50)
                     cv2.rectangle(processing_frame, (box_x, box_y), (box_x + box_width, box_y + box_height), border_color, 2)
                     
-                    content_x = box_x + 10
-                    content_y = box_y + 20
+                    content_x = box_x + 8
+                    content_y = box_y + 16
                     
                     if feedback['is_correct']:
                         cv2.putText(processing_frame, "Perfect Form!", (content_x, content_y), 
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0, 255, 0), 1, cv2.LINE_AA)
-                        cv2.putText(processing_frame, "Maintain position", (content_x, content_y + 22), 
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 255, 255), 1, cv2.LINE_AA)
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 255, 0), 1, cv2.LINE_AA)
                     else:
                         if prioritized_messages:
-                            cv2.putText(processing_frame, "Feedback:", (content_x, content_y), 
-                                cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1, cv2.LINE_AA)
-                            
-                            msg_y = content_y + 24
+                            msg_y = content_y
                             for i, (message, msg_type) in enumerate(prioritized_messages):
                                 if msg_y > box_y + box_height - 10:
                                     break
-                                display_msg = message[:28] + ".." if len(message) > 28 else message
+                                display_msg = message[:22] + ".." if len(message) > 22 else message
                                 cv2.putText(processing_frame, display_msg, (content_x, msg_y), 
-                                    cv2.FONT_HERSHEY_SIMPLEX, 0.38, (255, 255, 255), 1, cv2.LINE_AA)
-                                msg_y += 22
+                                    cv2.FONT_HERSHEY_SIMPLEX, 0.33, (255, 255, 255), 1, cv2.LINE_AA)
+                                msg_y += 18
+
+            # Draw user count indicator on frame & update sidebar label
+            count_text = f"Users: {num_users}/{MAX_USERS}"
+            if num_users > 0:
+                cv2.putText(processing_frame, count_text, (10, 20),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, COLOR_WHITE, 1, cv2.LINE_AA)
+            user_color_code = "#27ae60" if num_users >= 3 else "#f39c12" if num_users >= 1 else "#e74c3c"
+            self.users_detected_label.configure(text=f"Users detected: {num_users} / {MAX_USERS}", text_color=user_color_code)
             
             
             canvas_width = self.video_canvas.winfo_width(); canvas_height = self.video_canvas.winfo_height()
@@ -674,12 +697,6 @@ class TuroArnisGUI:
         if hasattr(self, 'analyzer'):
             self.analyzer.set_viewpoint(viewpoint)
             self.activity_label.configure(text=f"👁 Viewpoint switched to: {viewpoint.title()}", text_color="#3498db")
-
-        
-        self.activity_label.configure(text=f"▶ Practicing: {pretty_name}", text_color="#3498db")
-
-        if self.current_user and not self.current_session_id:
-            self.start_session()
     
     
     def show_user_selection(self):

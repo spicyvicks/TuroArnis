@@ -8,6 +8,7 @@ import cv2
 import numpy as np
 import sys
 import os
+import json
 
 # Add project root to path
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -148,12 +149,23 @@ def test_single_image_multi_zone(image_path, viewpoints, user_names=None):
     print(f"[✓] Image loaded: {w}x{h}")
     print(f"[✓] Splitting into {num_users} zones...\n")
     
+    # Load stick visualization config
+    stick_config = None
+    stick_config_path = os.path.join(os.path.dirname(__file__), '..', 'scripts', 'stick_visualization_config.json')
+    if os.path.exists(stick_config_path):
+        try:
+            with open(stick_config_path, 'r') as f:
+                stick_config = json.load(f)
+            print(f"[✓] Loaded stick visualization config\n")
+        except Exception as e:
+            print(f"[WARN] Failed to load stick config: {e}\n")
+    
     # Analyze each zone
     print("Analyzing zones...")
     zone_results = analyze_zones(composite_frame, num_users, pose_analyzer, viewpoints)
     
     # Visualize results with zoning
-    visualize_multi_user_results(composite_frame, zone_results, num_users, user_names, viewpoints)
+    visualize_multi_user_results(composite_frame, zone_results, num_users, user_names, viewpoints, stick_config)
 
 
 def create_zoned_frame(frames, num_users):
@@ -246,10 +258,12 @@ def analyze_zones(composite_frame, num_users, pose_analyzer, viewpoints):
                 confidence = person_data.get('confidence', 0.0)
                 landmarks = person_data.get('landmarks_absolute')
                 stick_endpoints = person_data.get('stick_endpoints')
+                stick_foreshortened = person_data.get('stick_foreshortened', False)
                 
                 print(f"[Zone {i+1}] ========== DEBUG START ==========")
                 print(f"[Zone {i+1}] person_data keys: {list(person_data.keys())}")
                 print(f"[Zone {i+1}] stick_endpoints value: {stick_endpoints}")
+                print(f"[Zone {i+1}] stick_foreshortened value: {stick_foreshortened}")
                 print(f"[Zone {i+1}] stick_endpoints type: {type(stick_endpoints)}")
                 print(f"[Zone {i+1}] stick_endpoints is None: {stick_endpoints is None}")
                 print(f"[Zone {i+1}] bool(stick_endpoints): {bool(stick_endpoints)}")
@@ -306,6 +320,7 @@ def analyze_zones(composite_frame, num_users, pose_analyzer, viewpoints):
                     'rating_color': rating_color,
                     'landmarks_absolute': adjusted_landmarks,
                     'stick_endpoints': adjusted_stick,
+                    'stick_foreshortened': stick_foreshortened,
                     'stick_detected': stick_endpoints is not None,
                     'viewpoint': viewpoint
                 }
@@ -349,7 +364,7 @@ def analyze_zones(composite_frame, num_users, pose_analyzer, viewpoints):
     return zone_results
 
 
-def visualize_multi_user_results(composite_frame, zone_results, num_users, user_names, viewpoints):
+def visualize_multi_user_results(composite_frame, zone_results, num_users, user_names, viewpoints, stick_config=None):
     """Visualize multi-user results with zoning (like kiosk app feedback screen)"""
     vis_frame = composite_frame.copy()
     h, w, _ = vis_frame.shape
@@ -366,15 +381,44 @@ def visualize_multi_user_results(composite_frame, zone_results, num_users, user_
         if landmarks and len(landmarks) >= 33:
             draw_skeleton(vis_frame, landmarks, rating_color)
         
-        # Draw stick
+        # Draw stick (with per-pose visualization mode override)
         if stick_endpoints:
+            predicted_class = zone_data.get('predicted_class', 'N/A')
+            stick_foreshortened = zone_data.get('stick_foreshortened', False)
+            viewpoint = zone_data.get('viewpoint', 'front')
             grip_pt, tip_pt = stick_endpoints
-            print(f"[VIS] Zone {i+1} drawing stick: grip={grip_pt}, tip={tip_pt}")
-            cv2.line(vis_frame, grip_pt, tip_pt, (255, 255, 0), 4)
-            cv2.circle(vis_frame, grip_pt, 8, (0, 0, 255), -1)
-            cv2.circle(vis_frame, grip_pt, 10, (255, 255, 255), 2)
-            cv2.circle(vis_frame, tip_pt, 8, (255, 0, 0), -1)
-            cv2.circle(vis_frame, tip_pt, 10, (255, 255, 255), 2)
+            
+            # Check for per-pose visualization override
+            draw_mode = None
+            if stick_config and predicted_class in stick_config:
+                pose_config = stick_config[predicted_class]
+                
+                # Check for viewpoint-specific override first
+                if 'viewpoint_overrides' in pose_config and viewpoint in pose_config['viewpoint_overrides']:
+                    draw_mode = pose_config['viewpoint_overrides'][viewpoint]
+                    print(f"[VIS] Zone {i+1} viewpoint override: {predicted_class} ({viewpoint}) -> mode={draw_mode}")
+                else:
+                    draw_mode = pose_config.get('mode', None)
+                    print(f"[VIS] Zone {i+1} stick config: {predicted_class} -> mode={draw_mode}")
+            
+            # Apply visualization rule
+            if draw_mode == 'skip':
+                print(f"[VIS] Zone {i+1} SKIPPING stick drawing (mode=skip)")
+            elif draw_mode == 'force_circle' or (draw_mode is None and stick_foreshortened):
+                # Force circle OR automatic foreshortening detection
+                print(f"[VIS] Zone {i+1} drawing CIRCLE: grip={grip_pt} (mode={draw_mode}, auto_foreshortened={stick_foreshortened})")
+                cv2.circle(vis_frame, grip_pt, 20, (255, 255, 0), 3)  # Yellow circle
+                cv2.circle(vis_frame, grip_pt, 8, (0, 0, 255), -1)   # Red center
+                cv2.putText(vis_frame, "stick->camera", (grip_pt[0]-50, grip_pt[1]+35), 
+                           cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 255, 0), 1)
+            else:
+                # Normal stick line (force_line or default)
+                print(f"[VIS] Zone {i+1} drawing LINE: grip={grip_pt}, tip={tip_pt} (mode={draw_mode})")
+                cv2.line(vis_frame, grip_pt, tip_pt, (255, 255, 0), 4)
+                cv2.circle(vis_frame, grip_pt, 8, (0, 0, 255), -1)
+                cv2.circle(vis_frame, grip_pt, 10, (255, 255, 255), 2)
+                cv2.circle(vis_frame, tip_pt, 8, (255, 0, 0), -1)
+                cv2.circle(vis_frame, tip_pt, 10, (255, 255, 255), 2)
         else:
             print(f"[VIS] Zone {i+1} NO stick endpoints to draw")
     
@@ -456,20 +500,31 @@ def visualize_multi_user_results(composite_frame, zone_results, num_users, user_
     cv2.imwrite(output_path, vis_frame)
     print(f"\n[✓] Multi-user visualization saved to: {output_path}")
     
-    # Display
+    # Display (fit to screen without stretching)
     try:
+        # Screen dimensions (safe defaults for most displays)
+        screen_width = 1600
         screen_height = 900
+        
         img_height, img_width = vis_frame.shape[:2]
-        aspect_ratio = img_width / img_height
         
-        new_height = min(screen_height, img_height)
-        new_width = int(new_height * aspect_ratio)
+        # Calculate scale factors for both dimensions
+        width_scale = screen_width / img_width
+        height_scale = screen_height / img_height
         
-        display_frame = cv2.resize(vis_frame, (new_width, new_height))
+        # Use the smaller scale to ensure image fits within screen bounds (preserves aspect ratio)
+        scale = min(width_scale, height_scale)
+        
+        new_width = int(img_width * scale)
+        new_height = int(img_height * scale)
+        
+        # Use appropriate interpolation: INTER_AREA for downscaling, INTER_CUBIC for upscaling
+        interp = cv2.INTER_AREA if scale < 1.0 else cv2.INTER_CUBIC
+        display_frame = cv2.resize(vis_frame, (new_width, new_height), interpolation=interp)
         
         window_name = "Multi-User Recognition Test (Zoning Mode)"
         cv2.imshow(window_name, display_frame)
-        print(f"\nDisplay size: {new_width}x{new_height} (original: {img_width}x{img_height})")
+        print(f"\nDisplay size: {new_width}x{new_height} (original: {img_width}x{img_height}, scale: {scale:.2f}x)")
         print("\n" + "="*60)
         print("Press any key to close visualization...")
         print("="*60)
@@ -750,25 +805,31 @@ def visualize_results(frame, person_data, display_name, confidence, rating, rati
     cv2.imwrite(output_path, vis_frame)
     print(f"[✓] Visualization saved to: {output_path}")
     
-    # Display with smart resizing (fit to screen, maintain aspect ratio)
+    # Display with smart resizing (fit to screen without stretching)
     try:
-        # Get screen dimensions (approximate - works on most systems)
-        screen_height = 900  # Default, safe for most screens
+        # Screen dimensions (safe defaults for most displays)
+        screen_width = 1600
+        screen_height = 900
         
-        # Calculate resize to fit screen height
         img_height, img_width = vis_frame.shape[:2]
-        aspect_ratio = img_width / img_height
         
-        # New dimensions: height = screen height, width maintains aspect ratio
-        new_height = min(screen_height, img_height)  # Don't upscale if smaller
-        new_width = int(new_height * aspect_ratio)
+        # Calculate scale factors for both dimensions
+        width_scale = screen_width / img_width
+        height_scale = screen_height / img_height
         
-        # Resize for display
-        display_frame = cv2.resize(vis_frame, (new_width, new_height))
+        # Use the smaller scale to ensure image fits within screen bounds (preserves aspect ratio)
+        scale = min(width_scale, height_scale)
+        
+        new_width = int(img_width * scale)
+        new_height = int(img_height * scale)
+        
+        # Use appropriate interpolation: INTER_AREA for downscaling, INTER_CUBIC for upscaling
+        interp = cv2.INTER_AREA if scale < 1.0 else cv2.INTER_CUBIC
+        display_frame = cv2.resize(vis_frame, (new_width, new_height), interpolation=interp)
         
         window_name = f"Recognition Test - {rating}"
         cv2.imshow(window_name, display_frame)
-        print(f"\nDisplay size: {new_width}x{new_height} (original: {img_width}x{img_height})")
+        print(f"\nDisplay size: {new_width}x{new_height} (original: {img_width}x{img_height}, scale: {scale:.2f}x)")
         print("\n" + "="*60)
         print("Press any key to close visualization...")
         print("="*60)

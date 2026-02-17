@@ -145,6 +145,12 @@ class KioskApp(ctk.CTk):
         self.names_shown_time = 0
         self.realtime_pose_cache = {} # Cache for sharing pose data between threads/loops
         
+        # Video display rect (updated each frame for letterbox-aware positioning)
+        self.video_x_offset = 0
+        self.video_y_offset = 0
+        self.video_display_width = self.screen_width
+        self.video_display_height = self.screen_height
+        
         # Configuration for feedback
         self.feature_templates = {}
         try:
@@ -526,9 +532,17 @@ class KioskApp(ctk.CTk):
         self.clear_ui()
         self.feedback_timer = 6
         
-        col_w = self.screen_width // self.num_users
+        # Use letterbox-aware coordinates so text aligns with the actual video zones
+        vx = self.video_x_offset
+        vy = self.video_y_offset
+        vw = self.video_display_width
+        vh = self.video_display_height
+        
+        col_w = vw // self.num_users
+        video_bottom = vy + vh  # Bottom edge of the actual video area
+        
         for i in range(self.num_users):
-            cx = (i * col_w) + (col_w // 2)
+            cx = vx + (i * col_w) + (col_w // 2)
             config = self.user_configs[i]
             
             # Get GCN analysis results for this zone
@@ -549,15 +563,15 @@ class KioskApp(ctk.CTk):
             confidence_threshold = CONFIDENCE_THRESHOLDS.get(viewpoint, 0.35)
             
             # Determine quality based purely on confidence (no target comparison)
-            high_confidence = (confidence >= 0.40)
-            good_confidence = (confidence >= 0.30)
+            high_confidence = (confidence >= 0.60)
+            good_confidence = (confidence >= 0.40)
             pose_detected = (predicted_class != 'N/A' and predicted_class.lower() != 'no technique detected' and confidence > 0)
             
             # Color coding based on confidence
             if not pose_detected:
                 color = "#e74c3c"  # Red - No detection
                 score_text = "NOT DETECTED"
-            elif high_confidence:
+            elif high_confidence: 
                 color = "#2ecc71"  # Green - Excellent
                 score_text = "EXCELLENT!"
             elif good_confidence:
@@ -578,27 +592,27 @@ class KioskApp(ctk.CTk):
                     stick_detected=stick_detected
                 )
             
-            # Display user name
-            self.add_text(cx, self.screen_height - 280, config['user']['name'], font=("Inter", 24, "bold"), fill="white")
+            # Display user name (positioned relative to video bottom edge)
+            self.add_text(cx, video_bottom - 280, config['user']['name'], font=("Inter", 24, "bold"), fill="white")
             
             # Display detected pose name (if recognized)
             if pose_detected:
                 # Convert technical name to display name
                 display_name = predicted_class.replace('_correct', '').replace('_', ' ').title()
-                self.add_text(cx, self.screen_height - 230, display_name, font=("Inter", 20), fill="white")
+                self.add_text(cx, video_bottom - 230, display_name, font=("Inter", 20), fill="white")
             
             # Display confidence score
-            self.add_text(cx, self.screen_height - 180, score_text, font=("Inter", 48, "bold"), fill=color)
+            self.add_text(cx, video_bottom - 180, score_text, font=("Inter", 48, "bold"), fill=color)
             
             # Display percentage (optional)
             if pose_detected:
                 percentage = f"{int(confidence * 100)}%"
-                self.add_text(cx, self.screen_height - 130, percentage, font=("Inter", 24), fill="white")
+                self.add_text(cx, video_bottom - 130, percentage, font=("Inter", 24), fill="white")
             
             # Stick detection indicator
             stick_text = "✓ Stick" if stick_detected else "✗ No stick"
             stick_color = "#27ae60" if stick_detected else "#95a5a6"
-            self.add_text(cx, self.screen_height - 90, stick_text, font=("Inter", 16), fill=stick_color)
+            self.add_text(cx, video_bottom - 90, stick_text, font=("Inter", 16), fill=stick_color)
         
         self.update_feedback_timer()
     def generate_form_feedback(self, target_class, viewpoint, live_angles, landmarks=None):
@@ -843,7 +857,9 @@ class KioskApp(ctk.CTk):
                     pt1 = landmarks_abs[connection[0]]
                     pt2 = landmarks_abs[connection[1]]
                     
-                    # Skip if any point is at (0,0) - undetected in YOLO-Pose
+                    # Skip if any point is invalid (undetected keypoint)
+                    if pt1[0] < 0 or pt1[1] < 0 or pt2[0] < 0 or pt2[1] < 0:
+                        continue
                     if (pt1[0] <= 1 and pt1[1] <= 1) or (pt2[0] <= 1 and pt2[1] <= 1):
                         continue
                         
@@ -855,7 +871,9 @@ class KioskApp(ctk.CTk):
             for idx, landmark in enumerate(landmarks_abs):
                 x, y = landmark[0], landmark[1]
                 
-                # Skip if point is at (0,0)
+                # Skip if point is invalid (sentinel -1 or at origin)
+                if x < 0 or y < 0:
+                    continue
                 if x <= 1 and y <= 1:
                     continue
                     
@@ -1137,11 +1155,25 @@ class KioskApp(ctk.CTk):
                         
                         # Determine quality based purely on confidence
                         pose_detected = (predicted != 'N/A') and (predicted.lower() != 'no technique detected') and (conf > 0)
-                        high_confidence = (conf >= 0.40)
-                        good_confidence = (conf >= 0.30)
+                        high_confidence = (conf >= 0.60)
+                        good_confidence = (conf >= 0.40)
                         
                         # Store result with confidence-based status for skeleton coloring
                         result_copy = self.analysis_results[i].copy()
+                        
+                        # Adjust landmarks from zone-local to full-frame coordinates
+                        x_start = i * col_w
+                        if 'landmarks_absolute' in result_copy and result_copy['landmarks_absolute']:
+                            result_copy['landmarks_absolute'] = [
+                                (x + x_start, y, z) for x, y, z in result_copy['landmarks_absolute']
+                            ]
+                        # Adjust stick endpoints from zone-local to full-frame coordinates
+                        if 'stick_endpoints' in result_copy and result_copy['stick_endpoints']:
+                            grip_pt, tip_pt = result_copy['stick_endpoints']
+                            result_copy['stick_endpoints'] = (
+                                (grip_pt[0] + x_start, grip_pt[1]),
+                                (tip_pt[0] + x_start, tip_pt[1])
+                            )
                         
                         if not pose_detected:
                             result_copy['status'] = 'bad'  # Red - No detection
@@ -1189,6 +1221,12 @@ class KioskApp(ctk.CTk):
         x_offset = (self.screen_width - new_width) // 2
         y_offset = (self.screen_height - new_height) // 2
         final_img.paste(img, (x_offset, y_offset))
+        
+        # Store display rect so feedback text can align with the actual video area
+        self.video_x_offset = x_offset
+        self.video_y_offset = y_offset
+        self.video_display_width = new_width
+        self.video_display_height = new_height
         
         if self.kiosk_state == KioskState.PAUSED:
             overlay = Image.new("RGBA", final_img.size, (0, 0, 0, 0))

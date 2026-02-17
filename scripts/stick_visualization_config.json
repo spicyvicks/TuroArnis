@@ -1,0 +1,79 @@
+{
+  "_comment": "Stick visualization configuration for front view poses",
+  "_description": "Control how stick is drawn for each pose. 'force_circle' = circle indicator, 'force_line' = draw stick, 'skip' = no drawing",
+  
+  "crown_thrust_correct": {
+    "mode": "force_line",
+    "hand": "right",
+    "note": "Stick going upwards"
+  },
+  
+  "left_chest_thrust_correct": {
+    "mode": "skip",
+    "hand": "right",
+    "note": "Skip stick drawing"
+  },
+  
+  "left_eye_thrust_correct": {
+    "mode": "force_circle",
+    "hand": "right",
+    "note": "Circle - pointing at camera"
+  },
+  
+  "right_chest_thrust_correct": {
+    "mode": "force_circle",
+    "hand": "right",
+    "note": "Circle - pointing at camera"
+  },
+  
+  "right_eye_thrust_correct": {
+    "mode": "force_circle",
+    "hand": "left",
+    "note": "Circle - pointing at camera, LEFT HAND"
+  },
+  
+  "solar_plexus_thrust_correct": {
+    "mode": "force_line",
+    "hand": "right",
+    "note": "Stick going upwards slightly"
+  },
+  
+  "left_elbow_block_correct": {
+    "mode": "force_line",
+    "hand": "right",
+    "note": "Short line at angle"
+  },
+  
+  "left_knee_block_correct": {
+    "mode": "force_line",
+    "hand": "right",
+    "note": "Stick going downwards"
+  },
+  
+  "left_temple_block_correct": {
+    "mode": "force_line",
+    "hand": "right",
+    "note": "Stick going to the right"
+  },
+  
+  "right_elbow_block_correct": {
+    "mode": "skip",
+    "hand": "left",
+    "note": "Skip stick OR use YOLO, LEFT HAND"
+  },
+  
+  "right_knee_block_correct": {
+    "mode": "force_line",
+    "hand": "left",
+    "viewpoint_overrides": {
+      "front": "skip"
+    },
+    "note": "Show stick on left/right, skip on front (zone 2)"
+  },
+  
+  "right_temple_block_correct": {
+    "mode": "force_line",
+    "hand": "left",
+    "note": "Stick going to the left, LEFT HAND"
+  }
+}

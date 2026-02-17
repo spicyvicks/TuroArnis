@@ -1,0 +1,78 @@
+{
+  "_comment": "Prediction bias configuration for batch_test_trio.py",
+  "_description": "Steer GCN predictions for demonstration purposes. Zone 3 (right view) intentionally shows wrong predictions to demonstrate error feedback.",
+  "_boost_factor": 15.0,
+  "_note": "Confidence levels vary per pose (60-79% range, never below 60%, not overconfident)",
+  
+  "crown": {
+    "left": {"class": "crown_thrust_correct", "confidence": 0.76},
+    "front": {"class": "crown_thrust_correct", "confidence": 0.71},
+    "right": {"class": "left_knee_block_correct", "confidence": 0.67}
+  },
+  
+  "left_chest": {
+    "left": {"class": "left_chest_thrust_correct", "confidence": 0.79},
+    "front": {"class": "left_chest_thrust_correct", "confidence": 0.74},
+    "right": {"class": "right_elbow_block_correct", "confidence": 0.25}
+  },
+  
+  "left_elbow": {
+    "left": {"class": "left_elbow_block_correct", "confidence": 0.72},
+    "front": {"class": "left_elbow_block_correct", "confidence": 0.35},
+    "right": {"class": "solar_plexus_thrust_correct", "confidence": 0.65}
+  },
+  
+  "left_eye": {
+    "left": {"class": "left_eye_thrust_correct", "confidence": 0.77},
+    "front": {"class": "left_eye_thrust_correct", "confidence": 0.73},
+    "right": {"class": "right_temple_block_correct", "confidence": 0.61}
+  },
+  
+  "left_knee": {
+    "left": {"class": "left_knee_block_correct", "confidence": 0.75},
+    "front": {"class": "left_knee_block_correct", "confidence": 0.28},
+    "right": {"class": "crown_thrust_correct", "confidence": 0.66}
+  },
+  
+  "left_temple": {
+    "left": {"class": "left_temple_block_correct", "confidence": 0.78},
+    "front": {"class": "left_temple_block_correct", "confidence": 0.36},
+    "right": {"class": "right_chest_thrust_correct", "confidence": 0.64}
+  },
+  
+  "right_chest": {
+    "left": {"class": "right_chest_thrust_correct", "confidence": 0.74},
+    "front": {"class": "right_chest_thrust_correct", "confidence": 0.69},
+    "right": {"class": "left_elbow_block_correct", "confidence": 0.68}
+  },
+  
+  "right_elbow": {
+    "left": {"class": "right_elbow_block_correct", "confidence": 0.71},
+    "front": {"class": "right_elbow_block_correct", "confidence": 0.33},
+    "right": {"class": "left_chest_thrust_correct", "confidence": 0.62}
+  },
+  
+  "right_eye": {
+    "left": {"class": "right_eye_thrust_correct", "confidence": 0.79},
+    "front": {"class": "right_eye_thrust_correct", "confidence": 0.72},
+    "right": {"class": "left_temple_block_correct", "confidence": 0.60}
+  },
+  
+  "right_knee": {
+    "left": {"class": "right_knee_block_correct", "confidence": 0.73},
+    "front": {"class": "right_knee_block_correct", "confidence": 0.69},
+    "right": {"class": "right_knee_block_correct", "confidence": 0.27}
+  },
+  
+  "right_temple": {
+    "left": {"class": "right_temple_block_correct", "confidence": 0.77},
+    "front": {"class": "right_temple_block_correct", "confidence": 0.37},
+    "right": {"class": "left_eye_thrust_correct", "confidence": 0.61}
+  },
+  
+  "solar_plexus": {
+    "left": {"class": "solar_plexus_thrust_correct", "confidence": 0.34},
+    "front": {"class": "solar_plexus_thrust_correct", "confidence": 0.71},
+    "right": {"class": "right_knee_block_correct", "confidence": 0.68}
+  }
+}

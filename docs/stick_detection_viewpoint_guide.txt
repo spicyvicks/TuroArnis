@@ -25,14 +25,23 @@ YOLO sometimes confuses which keypoint is grip vs tip. Before processing:
   - If tip is actually closer to wrist → swap the keypoints
   - Example: If tip is 45px from wrist and grip is 180px → swap them
 
+STEP 2.5: FORESHORTENING DETECTION
+Problem: When the stick points directly at the camera (especially in thrust poses), it appears severely foreshortened (as a dot or very short line). YOLO may detect it as < 40px long.
+
+Solution:
+  - Calculate raw YOLO stick length: distance between grip and tip keypoints
+  - If length < 40px → flag as "foreshortened" (stick pointing at camera)
+  - Visualization: Draw a yellow circle indicator at grip point with "stick→camera" label
+  - Why: This is more honest than drawing incorrect stick orientation; GCN still works (uses features, not visualized stick)
+
 STEP 3A: FRONT VIEW CORRECTION
 Problem: When camera faces the practitioner, the stick appears foreshortened (compressed in depth). YOLO's detected tip is unreliable because the 71cm stick may only appear 60-80px long in the image.
 
 Solutions Applied:
   1. GRIP ANCHOR:
      - Discard YOLO's grip location
-     - Anchor grip to the MediaPipe WRIST landmark (RIGHT_WRIST or LEFT_WRIST, whichever is closer)
-     - Why: MediaPipe's wrist tracking is more stable than YOLO's grip detection
+     - Anchor grip to the MediaPipe PINKY landmark (RIGHT_PINKY or LEFT_PINKY, whichever hand is active)
+     - Why: Pinky is anatomically closer to the actual grip point than wrist; MediaPipe's landmark tracking is more stable than YOLO's grip detection
   
   2. LENGTH CALCULATION:
      - Calculate stick_length_px = 1.5 × avg_torso_length_px
@@ -55,7 +64,7 @@ Problem: From side angles, YOLO detects direction accurately, but length can be 
 
 Solutions Applied:
   1. GRIP ANCHOR:
-     - Same as front view: anchor to MediaPipe WRIST landmark
+     - Same as front view: anchor to MediaPipe PINKY landmark (RIGHT_PINKY or LEFT_PINKY, whichever hand is active)
   
   2. LENGTH CALCULATION (3D WORLD-BASED):
      - Get 3D world coordinates from MediaPipe:

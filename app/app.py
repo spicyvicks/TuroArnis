@@ -60,12 +60,8 @@ FONT_MAIN = ("Inter", 24)
 FONT_HEADER = ("Inter", 48, "bold")
 FONT_BOLD = ("Inter", 24, "bold")
 
-# Viewpoint-specific confidence thresholds
-CONFIDENCE_THRESHOLDS = {
-    'front': 0.35,  
-    'left': 0.35,   
-    'right': 0.35  
-}
+# Confidence thresholds are defined per-viewpoint in app/models/gcn_model_config.json
+# (single source of truth — do not duplicate here)
 
 class KioskState:
     SPLASH = "splash"
@@ -552,7 +548,7 @@ class KioskApp(ctk.CTk):
             stick_detected = zone_result.get('stick_detected', False)
             
             # Pure recognition mode - confidence-based scoring only
-            # Get viewpoint-specific confidence threshold
+            # Get viewpoint-specific confidence threshold from gcn_model_config.json (single source of truth)
             viewpoint_ui = config['viewpoint'].get()
             viewpoint_mapping = {
                 "Front": "front",
@@ -560,11 +556,13 @@ class KioskApp(ctk.CTk):
                 "Left Side": "left"
             }
             viewpoint = viewpoint_mapping.get(viewpoint_ui, "front").lower()
-            confidence_threshold = CONFIDENCE_THRESHOLDS.get(viewpoint, 0.35)
-            
-            # Determine quality based purely on confidence (no target comparison)
-            high_confidence = (confidence >= 0.60)
-            good_confidence = (confidence >= 0.40)
+            gcn_config = self.pose_analyzer.gcn_engine.config if (self.pose_analyzer and self.pose_analyzer.gcn_engine) else {}
+            threshold = gcn_config.get('models', {}).get(viewpoint, {}).get('confidence_threshold', 0.55)
+
+            # Scoring bands relative to per-viewpoint threshold
+            # gcn_inference.py already filters below threshold, so confidence > 0 means >= threshold
+            high_confidence = (confidence >= threshold + 0.15)  # Excellent band
+            good_confidence  = (confidence >= threshold)         # Good band (minimum)
             pose_detected = (predicted_class != 'N/A' and predicted_class.lower() != 'no technique detected' and confidence > 0)
             
             # Color coding based on confidence

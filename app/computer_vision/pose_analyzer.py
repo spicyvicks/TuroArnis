@@ -576,26 +576,30 @@ class PoseAnalyzer:
                                         dist_l = np.linalg.norm(grip_arr - l_wrist)
                                         
                                         # SWAP FIX: Ensure Grip is closer to wrist than Tip
+                                        # Only apply for front view — in side view, one hand is occluded so
+                                        # MediaPipe wrist distances are unreliable and may cause incorrect swaps.
+                                        # Side views trust YOLO's grip/tip assignment directly.
                                         tip_arr = np.array(tip_pt)
-                                        dist_tip_r = np.linalg.norm(tip_arr - r_wrist)
-                                        dist_tip_l = np.linalg.norm(tip_arr - l_wrist)
+                                        if is_front_view:
+                                            dist_tip_r = np.linalg.norm(tip_arr - r_wrist)
+                                            dist_tip_l = np.linalg.norm(tip_arr - l_wrist)
+                                            min_grip_dist = min(dist_r, dist_l)
+                                            min_tip_dist = min(dist_tip_r, dist_tip_l)
+                                            if min_tip_dist < min_grip_dist:
+                                                if self.debug_stick:
+                                                    print(f"[DEBUG-PROCESS] Swapping Grip/Tip: Tip ({min_tip_dist:.1f}) closer than Grip ({min_grip_dist:.1f})")
+                                                grip_pt, tip_pt = tip_pt, grip_pt
+                                                grip_arr = np.array(grip_pt)
+                                                tip_arr = np.array(tip_pt)
+                                                dist_r = np.linalg.norm(grip_arr - r_wrist)
+                                                dist_l = np.linalg.norm(grip_arr - l_wrist)
                                         
-                                        min_grip_dist = min(dist_r, dist_l)
-                                        min_tip_dist = min(dist_tip_r, dist_tip_l)
-                                        
-                                        if min_tip_dist < min_grip_dist:
-                                            if self.debug_stick:
-                                                print(f"[DEBUG-PROCESS] Swapping Grip/Tip: Tip ({min_tip_dist:.1f}) closer than Grip ({min_grip_dist:.1f})")
-                                            grip_pt, tip_pt = tip_pt, grip_pt
-                                            grip_arr = np.array(grip_pt)
-                                            dist_r = np.linalg.norm(grip_arr - r_wrist)
-                                            dist_l = np.linalg.norm(grip_arr - l_wrist)
-                                        
-                                        # FORCE RIGHT HAND for front view only (for paper consistency)
-                                        # OR use per-pose hand override from config (if provided)
-                                        force_right_hand_front = True  # Set to False to restore auto-detection
+                                        # Camera mirrors the viewer:
+                                        # - Front view: viewer's right hand appears on LEFT of frame → use LEFT pinky
+                                        # - Left view:  viewer faces left, stick hand (right) appears on LEFT of frame → use LEFT pinky
+                                        # Per-pose hand override from config still takes priority.
                                         current_viewpoint = getattr(self.gcn_engine, 'current_viewpoint', None) if hasattr(self, 'gcn_engine') and self.gcn_engine else None
-                                        
+
                                         # Check for per-pose hand override from config
                                         use_right_hand = False
                                         hand_override_applied = False
@@ -606,18 +610,14 @@ class PoseAnalyzer:
                                                 hand_override_applied = True
                                                 if self.debug_stick:
                                                     print(f"[DEBUG-PROCESS] Per-pose hand override: {target_pose} → {pose_config['hand']} hand")
-                                        
-                                        # Fall back to front-view forcing if no config override
-                                        if not hand_override_applied:
-                                            use_right_hand = force_right_hand_front and current_viewpoint == 'front'
-                                        
-                                        # Determine which hand to use: strict override or distance-based
+
+                                        # Default: force RIGHT side for front and left viewpoints
+                                        # MediaPipe landmarks are subject-relative (not camera-relative)
+                                        # Person's RIGHT hand = stick hand in both front and left views
                                         if hand_override_applied:
-                                            # Strict hand override from config
                                             use_right_side = use_right_hand
                                         else:
-                                            # Auto-detection or front-view forcing
-                                            use_right_side = use_right_hand or dist_r < dist_l
+                                            use_right_side = True
                                         
                                         if use_right_side:
                                             wrist_pt_2d = r_wrist
@@ -627,91 +627,83 @@ class PoseAnalyzer:
                                             wrist_pt_2d = l_wrist
                                             elbow_pt_2d = get_abs_point(mp_lm.LEFT_ELBOW)
                                             w_idx, e_idx = mp_lm.LEFT_WRIST, mp_lm.LEFT_ELBOW
-                                            
+
                                         arm_vec_2d = wrist_pt_2d - elbow_pt_2d
-                                        
-                                        # ANCHOR FIX: Use PINKY as grip anchor (closer to actual grip point)
-                                        # YOLO grip can be noisy, especially from front view
-                                        # Pinky is more anatomically accurate for stick grip position
-                                        if use_right_side:
-                                            pinky_pt_2d = get_abs_point(mp_lm.RIGHT_PINKY)
-                                        else:
-                                            pinky_pt_2d = get_abs_point(mp_lm.LEFT_PINKY)
-                                        grip_pt = (int(pinky_pt_2d[0]), int(pinky_pt_2d[1]))
-                                        grip_arr = np.array(grip_pt)
-                                        
-                                        # Get wrist-to-thumb direction (represents hand/grip orientation)
-                                        if use_right_side:
-                                            thumb_pt_2d = get_abs_point(mp_lm.RIGHT_THUMB)
-                                        else:
-                                            thumb_pt_2d = get_abs_point(mp_lm.LEFT_THUMB)
-                                        hand_vec = thumb_pt_2d - wrist_pt_2d
-                                        hand_len = np.linalg.norm(hand_vec)
-                                        
-                                        if self.debug_stick:
-                                            hand_side = "RIGHT" if use_right_side else "LEFT"
-                                            force_msg = " (OVERRIDE)" if hand_override_applied else (" (FORCED)" if use_right_hand else "")
-                                            print(f"[DEBUG-PROCESS] Using {hand_side} hand{force_msg} - Grip anchored to pinky: {grip_pt}, wrist: ({int(wrist_pt_2d[0])},{int(wrist_pt_2d[1])}), thumb: ({int(thumb_pt_2d[0])},{int(thumb_pt_2d[1])})")
-                                        
+
+                                        # NOTE: grip_pt/grip_arr are set per-viewpoint below:
+                                        # - Front view: MediaPipe RIGHT pinky (reliable when facing camera)
+                                        # - Side views: raw YOLO grip (MediaPipe hand L/R unreliable when occluded)
+
                                         if is_front_view:
-                                            stick_px = avg_torso_px * 1.5
-                                            
-                                            # FRONT VIEW DIRECTION: Blend YOLO direction with wrist→thumb direction
-                                            # YOLO direction is unreliable from the front (foreshortening)
-                                            # Wrist→thumb gives actual hand/grip orientation
+                                            # FRONT VIEW ANCHOR: MediaPipe RIGHT pinky (reliable from front)
+                                            pinky_pt_2d = get_abs_point(mp_lm.RIGHT_PINKY)
+                                            grip_pt = (int(pinky_pt_2d[0]), int(pinky_pt_2d[1]))
+                                            grip_arr = np.array(grip_pt)
+                                            if self.debug_stick:
+                                                print(f"[DEBUG-PROCESS] FRONT anchor: RIGHT pinky @ {grip_pt}")
+
+                                            # FRONT VIEW LENGTH: Leg-based (knee→ankle 3D ratio)
+                                            world_lms = pose_results.pose_world_landmarks.landmark
+                                            lk_3d = np.array([world_lms[mp_lm.LEFT_KNEE].x,  world_lms[mp_lm.LEFT_KNEE].y,  world_lms[mp_lm.LEFT_KNEE].z])
+                                            la_3d = np.array([world_lms[mp_lm.LEFT_ANKLE].x, world_lms[mp_lm.LEFT_ANKLE].y, world_lms[mp_lm.LEFT_ANKLE].z])
+                                            rk_3d = np.array([world_lms[mp_lm.RIGHT_KNEE].x,  world_lms[mp_lm.RIGHT_KNEE].y,  world_lms[mp_lm.RIGHT_KNEE].z])
+                                            ra_3d = np.array([world_lms[mp_lm.RIGHT_ANKLE].x, world_lms[mp_lm.RIGHT_ANKLE].y, world_lms[mp_lm.RIGHT_ANKLE].z])
+                                            shin_m = (np.linalg.norm(lk_3d - la_3d) + np.linalg.norm(rk_3d - ra_3d)) / 2.0
+                                            lk_px = get_abs_point(mp_lm.LEFT_KNEE);  la_px = get_abs_point(mp_lm.LEFT_ANKLE)
+                                            rk_px = get_abs_point(mp_lm.RIGHT_KNEE); ra_px = get_abs_point(mp_lm.RIGHT_ANKLE)
+                                            shin_px = (np.linalg.norm(lk_px - la_px) + np.linalg.norm(rk_px - ra_px)) / 2.0
+                                            stick_len_m = 0.71
+                                            stick_px = shin_px * (stick_len_m / (shin_m + 1e-6))
+                                            stick_px = min(stick_px, avg_torso_px * 2.5)
+
+                                            # FRONT VIEW DIRECTION: Pure YOLO (grip→tip)
                                             yolo_vec = tip_arr - grip_arr
                                             y_len = np.linalg.norm(yolo_vec)
-                                            
-                                            if y_len > 1e-6 and hand_len > 1e-6:
-                                                yolo_dir = yolo_vec / y_len
-                                                hand_dir = hand_vec / hand_len
-                                                # Blend: 40% YOLO + 60% wrist→thumb (hand orientation is more reliable in front view)
-                                                blended_dir = 0.4 * yolo_dir + 0.6 * hand_dir
-                                                blended_len = np.linalg.norm(blended_dir)
-                                                if blended_len > 1e-6:
-                                                    direction_unit = blended_dir / blended_len
-                                                else:
-                                                    direction_unit = hand_dir
-                                            elif hand_len > 1e-6:
-                                                direction_unit = hand_vec / hand_len
-                                            else:
-                                                direction_unit = yolo_vec / (y_len + 1e-6)
-                                            
+                                            direction_unit = yolo_vec / y_len if y_len > 1e-6 else np.array([1.0, 0.0])
+
                                             new_tip = grip_arr + (direction_unit * stick_px)
                                             corrected_tip = (int(new_tip[0]), int(new_tip[1]))
                                             stick_endpoints = (grip_pt, corrected_tip)
-                                            
+
                                             if self.debug_stick:
-                                                print(f"[DEBUG-PROCESS] Stick Corrected (FRONT): Px={stick_px:.0f}, blended direction")
+                                                print(f"[DEBUG-PROCESS] Stick Corrected (FRONT): Px={stick_px:.0f}, shin-based length, pure YOLO direction")
                                         else:
+                                            # SIDE VIEW ANCHOR: Raw YOLO grip point
+                                            # MediaPipe left/right is unreliable in side view (one hand occluded)
+                                            # YOLO directly detects the actual grip position on the stick
+                                            grip_arr = np.array(grip_pt)  # already set from YOLO detection above
+                                            if self.debug_stick:
+                                                print(f"[DEBUG-PROCESS] SIDE anchor: raw YOLO grip @ {grip_pt}")
+
+                                            # SIDE VIEW LENGTH: Leg-based (knee→ankle 3D ratio)
                                             world_lms = pose_results.pose_world_landmarks.landmark
-                                            w_3d = np.array([world_lms[w_idx].x, world_lms[w_idx].y, world_lms[w_idx].z])
-                                            e_3d = np.array([world_lms[e_idx].x, world_lms[e_idx].y, world_lms[e_idx].z])
-                                            forearm_m = np.linalg.norm(w_3d - e_3d)
+                                            lk_3d = np.array([world_lms[mp_lm.LEFT_KNEE].x,  world_lms[mp_lm.LEFT_KNEE].y,  world_lms[mp_lm.LEFT_KNEE].z])
+                                            la_3d = np.array([world_lms[mp_lm.LEFT_ANKLE].x, world_lms[mp_lm.LEFT_ANKLE].y, world_lms[mp_lm.LEFT_ANKLE].z])
+                                            rk_3d = np.array([world_lms[mp_lm.RIGHT_KNEE].x,  world_lms[mp_lm.RIGHT_KNEE].y,  world_lms[mp_lm.RIGHT_KNEE].z])
+                                            ra_3d = np.array([world_lms[mp_lm.RIGHT_ANKLE].x, world_lms[mp_lm.RIGHT_ANKLE].y, world_lms[mp_lm.RIGHT_ANKLE].z])
+                                            shin_m = (np.linalg.norm(lk_3d - la_3d) + np.linalg.norm(rk_3d - ra_3d)) / 2.0
+                                            lk_px = get_abs_point(mp_lm.LEFT_KNEE);  la_px = get_abs_point(mp_lm.LEFT_ANKLE)
+                                            rk_px = get_abs_point(mp_lm.RIGHT_KNEE); ra_px = get_abs_point(mp_lm.RIGHT_ANKLE)
+                                            shin_px = (np.linalg.norm(lk_px - la_px) + np.linalg.norm(rk_px - ra_px)) / 2.0
                                             stick_len_m = 0.71
-                                            len_ratio = stick_len_m / (forearm_m + 1e-6)
-                                            forearm_px = np.linalg.norm(wrist_pt_2d - elbow_pt_2d)
-                                            stick_px = forearm_px * len_ratio
-                                            
-                                            # CLAMP FIX
-                                            max_stick_px = avg_torso_px * 2.5
-                                            if stick_px > max_stick_px:
-                                                if self.debug_stick: 
-                                                    print(f"[DEBUG-PROCESS] Clamping excessive stick length: {stick_px:.1f} -> {max_stick_px:.1f}")
-                                                stick_px = max_stick_px
-                                            
-                                            # SIDE VIEW: Use YOLO direction (reliable from side) + corrected length
+                                            stick_px = shin_px * (stick_len_m / (shin_m + 1e-6))
+                                            if stick_px > avg_torso_px * 2.5:
+                                                if self.debug_stick:
+                                                    print(f"[DEBUG-PROCESS] Clamping excessive stick length: {stick_px:.1f} -> {avg_torso_px * 2.5:.1f}")
+                                                stick_px = avg_torso_px * 2.5
+
+                                            # SIDE VIEW DIRECTION: Pure YOLO (reliable from side)
                                             yolo_vec = tip_arr - grip_arr
                                             y_len = np.linalg.norm(yolo_vec)
-                                            
+
                                             if y_len > 1e-6:
                                                 direction_unit = yolo_vec / y_len
                                                 new_tip = grip_arr + (direction_unit * stick_px)
                                                 corrected_tip = (int(new_tip[0]), int(new_tip[1]))
                                                 stick_endpoints = (grip_pt, corrected_tip)
-                                            
+
                                             if self.debug_stick:
-                                                print(f"[DEBUG-PROCESS] Stick Corrected (SIDE): Px={stick_px:.0f}, YOLO direction")
+                                                print(f"[DEBUG-PROCESS] Stick Corrected (SIDE): Px={stick_px:.0f}, shin-based length, YOLO direction")
                                         # End of correction logic (only runs if not foreshortened)
 
                                     except Exception as e:

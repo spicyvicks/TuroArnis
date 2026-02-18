@@ -137,6 +137,11 @@ class GCNInferenceEngine:
         confidence = probabilities[pred_idx].item()
         predicted_class = CLASS_NAMES[pred_idx]
 
+        # Apply per-viewpoint confidence threshold from config (single source of truth)
+        threshold = self.config['models'].get(self.current_viewpoint, {}).get('confidence_threshold', 0.50)
+        if confidence < threshold:
+            return "No Technique Detected", 0.0, probabilities.cpu().numpy()
+
         return predicted_class, confidence, probabilities.cpu().numpy()
 
 

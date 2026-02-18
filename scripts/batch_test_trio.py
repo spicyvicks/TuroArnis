@@ -57,8 +57,8 @@ FILENAME_TO_CLASS = {
 ZONE_VIEWPOINTS = ["left", "front", "right"]
 ZONE_USER_NAMES = ["User 1", "User 2", "User 3"]
 
-# Confidence thresholds (match main app)
-CONFIDENCE_THRESHOLDS = {"front": 0.35, "left": 0.35, "right": 0.35}
+# Confidence thresholds are defined per-viewpoint in app/models/gcn_model_config.json
+# (single source of truth — do not duplicate here)
 
 # ── Skeleton drawing helper (identical to test_image_app.py) ───────────────────
 
@@ -90,8 +90,9 @@ def draw_skeleton(frame, landmarks, color):
             cv2.circle(frame, (x, y), 7, keypoint_border, 2)
 
 
-def get_rating(predicted_class, confidence):
-    """Determine quality rating exactly like test_image_app.py analyze_zones"""
+def get_rating(predicted_class, confidence, viewpoint='front', pose_analyzer=None):
+    """Determine quality rating matching app.py show_feedback logic.
+    Reads per-viewpoint threshold from gcn_model_config.json (single source of truth)."""
     pose_detected = (predicted_class != 'N/A' and
                      predicted_class.lower() != 'no technique detected' and
                      predicted_class not in ('NO_DETECTION', 'ERROR') and
@@ -99,9 +100,14 @@ def get_rating(predicted_class, confidence):
 
     if not pose_detected:
         return "NOT DETECTED", (0, 0, 255)
-    elif confidence >= 0.40:
+
+    # Read threshold from GCN engine config (mirrors app.py show_feedback)
+    gcn_config = pose_analyzer.gcn_engine.config if (pose_analyzer and pose_analyzer.gcn_engine) else {}
+    threshold = gcn_config.get('models', {}).get(viewpoint, {}).get('confidence_threshold', 0.55)
+
+    if confidence >= threshold + 0.15:   # Excellent band
         return "EXCELLENT", (46, 204, 113)   # Green
-    elif confidence >= 0.30:
+    elif confidence >= threshold:         # Good band (minimum)
         return "GOOD", (0, 255, 191)         # Lime
     else:
         return "FAIR", (18, 153, 243)        # Orange
@@ -185,8 +191,8 @@ def analyze_single_image(image_path, pose_analyzer, pose_stem=None, stick_config
                 else:
                     adjusted_stick = None
 
-                # Determine quality rating (same logic as test_image_app.py)
-                rating, rating_color = get_rating(predicted_class, confidence)
+                # Determine quality rating (same logic as app.py show_feedback)
+                rating, rating_color = get_rating(predicted_class, confidence, viewpoint=viewpoint, pose_analyzer=pose_analyzer)
 
                 # Convert technical name to display name
                 pose_detected = (predicted_class != 'N/A' and
@@ -277,8 +283,10 @@ def visualize_and_save(composite_frame, zone_results, user_names, viewpoints, sa
             stick_foreshortened = zone_data.get('stick_foreshortened', False)
             skip_drawing = False
             
-            # Apply stick visualization config (with viewpoint override support)
-            if stick_config and predicted_class in stick_config:
+            # Apply stick visualization config — FRONT VIEW ONLY
+            # Config was designed for front-view correct classifications (e.g. thrusts pointing at camera)
+            # Left/right views always use 'auto' (foreshortening flag decides line vs circle)
+            if stick_config and predicted_class in stick_config and viewpoint == 'front':
                 pose_config = stick_config[predicted_class]
                 
                 # Check for viewpoint-specific override first
@@ -394,27 +402,24 @@ def visualize_and_save(composite_frame, zone_results, user_names, viewpoints, sa
     # Display (fit to screen without stretching)
     if show:
         try:
-            # Screen dimensions (safe defaults for most displays)
-            screen_width = 1600
-            screen_height = 900
-            
+            # Leave headroom for taskbar and window chrome; keep feedback panel visible
+            screen_width = 1280
+            screen_height = 720
+
             img_height, img_width = vis_frame.shape[:2]
 
-            # Calculate scale factors for both dimensions
-            width_scale = screen_width / img_width
-            height_scale = screen_height / img_height
-            
-            # Use the smaller scale to ensure image fits within screen bounds (preserves aspect ratio)
-            scale = min(width_scale, height_scale)
-            
+            # Scale to fit within screen bounds (preserves aspect ratio)
+            scale = min(screen_width / img_width, screen_height / img_height)
+
             new_width = int(img_width * scale)
             new_height = int(img_height * scale)
 
-            # Use appropriate interpolation: INTER_AREA for downscaling, INTER_CUBIC for upscaling
             interp = cv2.INTER_AREA if scale < 1.0 else cv2.INTER_CUBIC
             display_frame = cv2.resize(vis_frame, (new_width, new_height), interpolation=interp)
 
             win_name = window_title or "Multi-User Recognition Test (Zoning Mode)"
+            cv2.namedWindow(win_name, cv2.WINDOW_NORMAL)
+            cv2.resizeWindow(win_name, new_width, new_height)
             cv2.imshow(win_name, display_frame)
             print(f"\nDisplay size: {new_width}x{new_height} (original: {img_width}x{img_height}, scale: {scale:.2f}x)")
             print("\n" + "=" * 60)

@@ -79,7 +79,7 @@
  [],
  False,
  False,
- 1770965308,
+ 1771472536,
  [('run.exe',
    'C:\\Users\\HP\\Documents\\GitHub\\TuroArnis\\venv_311\\Lib\\site-packages\\PyInstaller\\bootloader\\Windows-64bit-intel\\run.exe',
    'EXECUTABLE')],

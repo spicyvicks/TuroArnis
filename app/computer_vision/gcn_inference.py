@@ -101,48 +101,66 @@ class GCNInferenceEngine:
             confidence: float (0-1)
             all_probabilities: np.ndarray (12 classes)
         """
-        # Extract node features [35, 6]
-        # pose_keypoints: [33, 4] (x, y, z, visibility)
-        # stick_keypoints: [2, 4] (x, y, z, visibility)
+        # Run inference for EACH template hypothesis
+        # We don't know the ground truth, so we must test the user's pose against 
+        # each template and see which one yields the highest self-consistent confidence.
+        
+        # Pre-compute node features (shared across all hypotheses)
+        # [35, 6] -> [33 body + 2 stick, 6 features]
         node_features = extract_node_features(pose_keypoints, stick_keypoints)
-
-        # Compute hybrid features [30]
-        # Use first class as reference template for consistency
-        hybrid_features = compute_hybrid_features(
-            global_features,
-            self.templates,
-            viewpoint=self.current_viewpoint,
-            class_name=CLASS_NAMES[0]  # 'crown_thrust_correct'
-        )
-
-        # Convert to tensors
         x = torch.tensor(node_features, dtype=torch.float32).to(self.device)
-        hybrid = torch.tensor(hybrid_features, dtype=torch.float32).unsqueeze(0).to(self.device)
         batch = torch.zeros(35, dtype=torch.long).to(self.device)
-
-        # Run inference
+        
         model = self.models.get(self.current_viewpoint)
         if model is None:
-            # Fallback to first available model if current viewpoint not loaded
             if not self.models:
                 return "Unknown", 0.0, np.zeros(len(CLASS_NAMES))
             model = next(iter(self.models.values()))
-
+            
+        best_class = "No Technique Detected"
+        best_conf = 0.0
+        final_probs = np.zeros(len(CLASS_NAMES))
+        
+        # Iterate through all possible classes as "template hypotheses"
+        # We ignore 'neutral' as a template source because it has no fixed geometry
+        # but we still allow the model to predict 'neutral' if no other template fits well.
+        candidate_classes = [c for c in CLASS_NAMES if c != 'neutral']
+        
         with torch.no_grad():
-            logits = model(x, self.edge_index, batch, hybrid)
-            probabilities = torch.softmax(logits, dim=1)[0]
+            for candidate in candidate_classes:
+                # 1. Hypothesize: "User is trying to do [candidate]"
+                # Compute hybrid features measuring deviation from [candidate] template
+                hybrid_features = compute_hybrid_features(
+                    global_features,
+                    self.templates,
+                    viewpoint=self.current_viewpoint,
+                    class_name=candidate
+                )
+                
+                h = torch.tensor(hybrid_features, dtype=torch.float32).unsqueeze(0).to(self.device)
+                
+                # 2. Ask Model: "Given this deviation from [candidate], what is the class?"
+                logits = model(x, self.edge_index, batch, h)
+                probs = torch.softmax(logits, dim=1)[0]
+                
+                # 3. Check consistency: Did the model predict [candidate] with high confidence?
+                # We look specifically at the probability of the candidate class
+                candidate_idx = CLASS_NAMES.index(candidate)
+                candidate_conf = probs[candidate_idx].item()
+                
+                if candidate_conf > best_conf:
+                    best_conf = candidate_conf
+                    best_class = candidate
+                    final_probs = probs.cpu().numpy()
 
-        # Get prediction
-        pred_idx = probabilities.argmax().item()
-        confidence = probabilities[pred_idx].item()
-        predicted_class = CLASS_NAMES[pred_idx]
-
-        # Apply per-viewpoint confidence threshold from config (single source of truth)
+        # Apply per-viewpoint confidence threshold
         threshold = self.config['models'].get(self.current_viewpoint, {}).get('confidence_threshold', 0.50)
-        if confidence < threshold:
-            return "No Technique Detected", 0.0, probabilities.cpu().numpy()
+        
+        # Filter neutral predictions or low confidence
+        if best_class == 'neutral' or best_conf < threshold:
+            return "No Technique Detected", 0.0, final_probs
 
-        return predicted_class, confidence, probabilities.cpu().numpy()
+        return best_class, best_conf, final_probs
 
 
 # Global instance (lazy-loaded)

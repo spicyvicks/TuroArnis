@@ -46,6 +46,7 @@ hiddenimports = [
 datas = [
     ('app/assets', 'app/assets'),
     ('app/models', 'app/models'),
+    ('app/models/gcn_model_config.json', 'app/models'),
     # Copy deployment_package if it exists, as main_app might use it (though seemingly not directly?)
     # app/main_app.py uses 'app/models/weights/best.pt', not deployment_package
     # But just in case, we include it if present

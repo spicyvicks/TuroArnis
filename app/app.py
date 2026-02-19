@@ -34,6 +34,7 @@ from app.database.db_manager import DatabaseManager
 from app.gui.results_window import ResultsWindow
 from app.gui.user_dialog import UserManagementDialog
 from app.computer_vision.pose_analyzer import PoseAnalyzer
+from app.computer_vision.feedback_analyzer import FeedbackAnalyzer
 from app.utils.resource_path import get_resource_path
 
 # Fix for CTk DPI Scaling
@@ -98,6 +99,14 @@ class KioskApp(ctk.CTk):
         except Exception as e:
             print(f"[Kiosk] Warning: Could not initialize Pose Analyzer: {e}")
             self.pose_analyzer = None
+
+        # Initialize Feedback Analyzer
+        try:
+            self.feedback_analyzer = FeedbackAnalyzer()
+            print("[Kiosk] Feedback Analyzer initialized successfully")
+        except Exception as e:
+            print(f"[Kiosk] Warning: Could not initialize Feedback Analyzer: {e}")
+            self.feedback_analyzer = None
         
         # Bindings
         self.bind("<Escape>", lambda e: self.close_app())
@@ -565,6 +574,28 @@ class KioskApp(ctk.CTk):
             good_confidence  = (confidence >= threshold)         # Good band (minimum)
             pose_detected = (predicted_class != 'N/A' and predicted_class.lower() != 'no technique detected' and confidence > 0)
             
+            # --- FEEDBACK ANALYZER INTEGRATION ---
+            # Get detailed corrective feedback if a pose is detected
+            feedback_messages = []
+            if pose_detected and self.feedback_analyzer:
+                # Analyze against the predicted form (assuming user intent matches prediction)
+                analysis = self.feedback_analyzer.analyze(
+                    result=zone_result,
+                    target_form=predicted_class,
+                    confidence_threshold=threshold,
+                    viewpoint=viewpoint
+                )
+                
+                # Get top priority messages (errors/warnings)
+                prioritized = self.feedback_analyzer.get_prioritized_messages(analysis, max_messages=2)
+                feedback_messages = [msg for msg, type_ in prioritized if type_ in ['error', 'warning']]
+                
+                # If excellent but minor suggestions exist, add one suggestion
+                if high_confidence and not feedback_messages:
+                    suggestions = [msg for msg, type_ in prioritized if type_ == 'suggestion']
+                    if suggestions:
+                        feedback_messages.append(suggestions[0])
+
             # Color coding based on confidence
             if not pose_detected:
                 color = "#e74c3c"  # Red - No detection
@@ -599,13 +630,21 @@ class KioskApp(ctk.CTk):
                 display_name = predicted_class.replace('_correct', '').replace('_', ' ').title()
                 self.add_text(cx, video_bottom - 230, display_name, font=("Inter", 20), fill="white")
             
-            # Display confidence score
+            # Display confidence/status score
             self.add_text(cx, video_bottom - 180, score_text, font=("Inter", 48, "bold"), fill=color)
             
-            # Display percentage (optional)
-            if pose_detected:
-                percentage = f"{int(confidence * 100)}%"
-                self.add_text(cx, video_bottom - 130, percentage, font=("Inter", 24), fill="white")
+            # --- DISPLAY CORRECTIVE FEEDBACK ---
+            # Show specific improvements below the score
+            if feedback_messages:
+                y_offset = video_bottom - 135
+                for msg in feedback_messages:
+                    self.add_text(cx, y_offset, msg, font=("Inter", 20, "bold"), fill="white")
+                    y_offset += 30
+            else:
+                # Fallback to percentage if no specific feedback
+                if pose_detected:
+                    percentage = f"{int(confidence * 100)}%"
+                    self.add_text(cx, video_bottom - 130, percentage, font=("Inter", 24), fill="white")
             
             # Stick detection indicator
             stick_text = "✓ Stick" if stick_detected else "✗ No stick"
@@ -1149,7 +1188,8 @@ class KioskApp(ctk.CTk):
                         }
                         viewpoint = viewpoint_mapping.get(viewpoint_ui, "front").lower()
                         
-                        confidence_threshold = CONFIDENCE_THRESHOLDS.get(viewpoint, 0.35)
+                        gcn_config = self.pose_analyzer.gcn_engine.config if (self.pose_analyzer and self.pose_analyzer.gcn_engine) else {}
+                        confidence_threshold = gcn_config.get('models', {}).get(viewpoint, {}).get('confidence_threshold', 0.55)
                         
                         # Determine quality based purely on confidence
                         pose_detected = (predicted != 'N/A') and (predicted.lower() != 'no technique detected') and (conf > 0)

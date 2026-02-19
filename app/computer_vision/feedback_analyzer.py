@@ -365,7 +365,9 @@ class FeedbackAnalyzer:
             predicted_display = predicted_class.replace('_correct', '').replace('_', ' ').title()
             target_display = target_form.replace('_correct', '').replace('_', ' ').title()
             
-            if confidence > 0.55:
+            if predicted_class == 'neutral':
+                suggestions.append(f"Ready - Begin {target_display}")
+            elif confidence > 0.55:
                 suggestions.append(f"Detected: {predicted_display} - Switch to {target_display}")
             else:
                 suggestions.append(f"Adjust position to match {target_display}")

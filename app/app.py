@@ -418,7 +418,7 @@ class KioskApp(ctk.CTk):
         self.clear_ui()
         self.show_user_names = True
         self.names_shown_time = time.time()
-        # Track zoning start time for 10-second timeout
+        # Track zoning start time for 5-second timeout
         self.zoning_start_time = time.time()
         # Check if users are in zones before starting countdown
         self.check_zones_and_countdown()
@@ -428,9 +428,9 @@ class KioskApp(ctk.CTk):
         if self.kiosk_state != KioskState.ZONING:
             return
         
-        # Check for 10-second timeout
+        # Check for 5-second timeout (was 10s)
         elapsed_time = time.time() - self.zoning_start_time
-        if elapsed_time > 10.0:
+        if elapsed_time > 5.0:
             # Timeout: start countdown anyway
             self.after(1000, self.start_countdown)
             return

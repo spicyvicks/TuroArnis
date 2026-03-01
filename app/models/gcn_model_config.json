@@ -5,7 +5,7 @@
         "front": {
             "path": "app/models/hybrid_gcn_v2_front.pth",
             "accuracy": 0.83,
-            "confidence_threshold": 0.70,
+            "confidence_threshold": 0.50,
             "description": "Front viewpoint specialist"
         },
         "left": {

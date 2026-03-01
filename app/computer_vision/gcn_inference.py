@@ -20,6 +20,7 @@ from app.models.gcn.feature_extraction import (
     compute_hybrid_features,
     extract_raw_features
 )
+from app.utils.resource_path import get_resource_path
 
 
 class GCNInferenceEngine:
@@ -27,7 +28,7 @@ class GCNInferenceEngine:
     Manages loading and inference for 3 GCN specialist models.
     """
 
-    def __init__(self, config_path: str = 'app/models/gcn_model_config.json',
+    def __init__(self, config_path: str = None,
                  device: str = 'cpu'):
         self.device = torch.device(device)
         self.models = {}
@@ -35,32 +36,43 @@ class GCNInferenceEngine:
         self.templates = None
         self.edge_index = None
 
+        if config_path is None:
+            config_path = 'app/models/gcn_model_config.json'
+            
         self._load_config(config_path)
         self._load_models()
         self._prepare_graph_structure()
 
     def _load_config(self, config_path: str):
         """Load model configuration"""
-        print(f"[GCN] Loading config from {config_path}...")
-        with open(config_path, 'r') as f:
+        # Resolve config path
+        resolved_config_path = get_resource_path(config_path)
+        print(f"[GCN] Loading config from {resolved_config_path}...")
+        
+        with open(resolved_config_path, 'r') as f:
             self.config = json.load(f)
 
+        # Resolve templates path
         templates_path = self.config['feature_templates']
-        print(f"[GCN] Loading templates from {templates_path}...")
-        with open(templates_path, 'r') as f:
+        resolved_templates_path = get_resource_path(templates_path)
+        print(f"[GCN] Loading templates from {resolved_templates_path}...")
+        
+        with open(resolved_templates_path, 'r') as f:
             self.templates = json.load(f)
 
     def _load_models(self):
         """Load all 3 specialist models"""
         for viewpoint, model_info in self.config['models'].items():
             model_path = model_info['path']
-            print(f"[GCN] Loading {viewpoint} model from {model_path}...")
+            # Resolve model path
+            resolved_model_path = get_resource_path(model_path)
+            print(f"[GCN] Loading {viewpoint} model from {resolved_model_path}...")
             
-            if not os.path.exists(model_path):
-                print(f"[ERROR] Model file not found: {model_path}")
+            if not os.path.exists(resolved_model_path):
+                print(f"[ERROR] Model file not found: {resolved_model_path}")
                 continue
                 
-            checkpoint = torch.load(model_path, map_location=self.device)
+            checkpoint = torch.load(resolved_model_path, map_location=self.device)
 
             model = HybridGCN(
                 node_in_channels=checkpoint['node_feat_dim'],

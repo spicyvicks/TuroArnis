@@ -64,16 +64,113 @@ FONT_BOLD = ("Inter", 24, "bold")
 # Confidence thresholds are defined per-viewpoint in app/models/gcn_model_config.json
 # (single source of truth — do not duplicate here)
 
-class KioskState:
-    SPLASH = "splash"
-    USER_COUNT = "user_count"
-    CONFIG = "config"
-    ZONING = "zoning"
-    COUNTDOWN = "countdown"
-    SNAPSHOT = "snapshot"
-    FEEDBACK = "feedback"
-    PAUSED = "paused"
-    RESULTS = "results"
+class AppState:
+    SPLASH             = "splash"
+    MODE_SELECT        = "mode_select"
+    USER_COUNT         = "user_count"
+    CONFIG             = "config"
+    ZONING             = "zoning"
+    COUNTDOWN          = "countdown"
+    SNAPSHOT           = "snapshot"
+    FEEDBACK           = "feedback"
+    PAUSED             = "paused"
+    RESULTS            = "results"
+    LESSON_SELECT      = "lesson_select"
+    LESSON_INSTRUCTION = "lesson_instruction"
+
+# --- LESSON TECHNIQUE CATALOGUE ---
+# Keys match gcn_model_config.json class_names
+TECHNIQUES = [
+    {"key": "crown_thrust_correct",       "name": "Crown Thrust",       "category": "Thrust",
+     "description": "A straight thrust aimed at the crown of the head.",
+     "key_points": ["Extend your striking arm fully forward",
+                    "Align the stick tip with the opponent's crown",
+                    "Drive forward from the shoulder, not just the wrist",
+                    "Keep your non-striking arm guarded at the chest"],
+     "viewpoint": "Front"},
+    {"key": "left_chest_thrust_correct",   "name": "Left Chest Thrust",  "category": "Thrust",
+     "description": "A thrust directed at the left side of the opponent's chest.",
+     "key_points": ["Rotate torso slightly left to load the strike",
+                    "Extend arm to full reach at chest height",
+                    "Step forward on the dominant foot for power",
+                    "Keep the tip pointed directly at the target"],
+     "viewpoint": "Front"},
+    {"key": "left_elbow_block_correct",    "name": "Left Elbow Block",   "category": "Block",
+     "description": "A downward-angled block protecting the left elbow area.",
+     "key_points": ["Bring your stick diagonally across the body to the left",
+                    "Elbow stays close to the rib cage",
+                    "Absorb the force through your forearm, not the wrist",
+                    "Maintain a slight bend in the blocking arm"],
+     "viewpoint": "Front"},
+    {"key": "left_eye_thrust_correct",     "name": "Left Eye Thrust",    "category": "Thrust",
+     "description": "A precise thrust targeting the left eye / temple area.",
+     "key_points": ["Raise stick to eye level before thrusting",
+                    "Extend arm in a straight line — no arc",
+                    "Feet shoulder-width apart for balance",
+                    "Non-striking hand covers your own face"],
+     "viewpoint": "Front"},
+    {"key": "left_knee_block_correct",     "name": "Left Knee Block",    "category": "Block",
+     "description": "A low block defending the left knee from downward strikes.",
+     "key_points": ["Drop the stick tip low toward the left knee",
+                    "Slightly bend both knees for a stable base",
+                    "Keep the back straight — do not hunch",
+                    "Redirect rather than absorb the incoming strike"],
+     "viewpoint": "Front"},
+    {"key": "left_temple_block_correct",   "name": "Left Temple Block",  "category": "Block",
+     "description": "A high block protecting the left temple.",
+     "key_points": ["Raise the stick above shoulder height on the left side",
+                    "Angle the stick at roughly 45\u00b0 outward",
+                    "Keep your elbow slightly bent to absorb impact",
+                    "Eyes forward — don't look at the stick"],
+     "viewpoint": "Front"},
+    {"key": "right_chest_thrust_correct",  "name": "Right Chest Thrust", "category": "Thrust",
+     "description": "A thrust directed at the right side of the opponent's chest.",
+     "key_points": ["Rotate torso slightly right to load the strike",
+                    "Extend arm to full reach at chest height",
+                    "Step forward on the dominant foot for power",
+                    "Keep the tip pointed directly at the target"],
+     "viewpoint": "Front"},
+    {"key": "right_elbow_block_correct",   "name": "Right Elbow Block",  "category": "Block",
+     "description": "A downward-angled block protecting the right elbow area.",
+     "key_points": ["Bring your stick diagonally across the body to the right",
+                    "Elbow stays close to the rib cage",
+                    "Absorb the force through your forearm, not the wrist",
+                    "Maintain a slight bend in the blocking arm"],
+     "viewpoint": "Front"},
+    {"key": "right_eye_thrust_correct",    "name": "Right Eye Thrust",   "category": "Thrust",
+     "description": "A precise thrust targeting the right eye / temple area.",
+     "key_points": ["Raise stick to eye level before thrusting",
+                    "Extend arm in a straight line — no arc",
+                    "Feet shoulder-width apart for balance",
+                    "Non-striking hand covers your own face"],
+     "viewpoint": "Front"},
+    {"key": "right_knee_block_correct",    "name": "Right Knee Block",   "category": "Block",
+     "description": "A low block defending the right knee from downward strikes.",
+     "key_points": ["Drop the stick tip low toward the right knee",
+                    "Slightly bend both knees for a stable base",
+                    "Keep the back straight — do not hunch",
+                    "Redirect rather than absorb the incoming strike"],
+     "viewpoint": "Front"},
+    {"key": "right_temple_block_correct",  "name": "Right Temple Block", "category": "Block",
+     "description": "A high block protecting the right temple.",
+     "key_points": ["Raise the stick above shoulder height on the right side",
+                    "Angle the stick at roughly 45\u00b0 outward",
+                    "Keep your elbow slightly bent to absorb impact",
+                    "Eyes forward — don't look at the stick"],
+     "viewpoint": "Front"},
+    {"key": "solar_plexus_thrust_correct", "name": "Solar Plexus Thrust", "category": "Thrust",
+     "description": "A mid-body thrust aimed at the solar plexus.",
+     "key_points": ["Target the center of the torso at stomach height",
+                    "Lead with the hip to generate forward momentum",
+                    "Arm fully extended at the point of contact",
+                    "Keep shoulders level throughout the motion"],
+     "viewpoint": "Front"},
+]
+
+CATEGORY_COLORS = {
+    "Thrust": "#6c3483",   # Dark Purple
+    "Block":  "#1a5276",   # Dark Navy Blue
+}
 
 class KioskApp(ctk.CTk):
     def __init__(self):
@@ -115,13 +212,14 @@ class KioskApp(ctk.CTk):
         self.protocol("WM_DELETE_WINDOW", self.close_app)
         
         # State
-        self.kiosk_state = KioskState.SPLASH
+        self.app_state = AppState.SPLASH
         self.previous_state = None
         self.num_users = 0
         self.user_configs = [] 
         self.feedback_timer = 0
         self.countdown_timer = 0
         self.analysis_results = {}  # Store pose analysis per user zone
+        self.current_lesson = None  # Set when in guided lesson mode
         
         # Main Container
         self.container = ctk.CTkFrame(self, fg_color="black")
@@ -219,19 +317,19 @@ class KioskApp(ctk.CTk):
 
     # --- INPUT HANDLERS ---
     def on_spacebar(self, event):
-        if self.kiosk_state == KioskState.PAUSED:
+        if self.app_state == AppState.PAUSED:
             self.resume_session()
-        elif self.kiosk_state in [KioskState.ZONING, KioskState.COUNTDOWN, KioskState.SNAPSHOT, KioskState.FEEDBACK]:
+        elif self.app_state in [AppState.ZONING, AppState.COUNTDOWN, AppState.SNAPSHOT, AppState.FEEDBACK]:
             self.show_pause_menu()
             
     def on_enter(self, event):
-        if self.kiosk_state == KioskState.CONFIG:
+        if self.app_state == AppState.CONFIG:
             self.start_zoning_check()
 
     # --- MENU ACTIONS ---
     def show_pause_menu(self):
-        self.previous_state = self.kiosk_state
-        self.kiosk_state = KioskState.PAUSED
+        self.previous_state = self.app_state
+        self.app_state = AppState.PAUSED
         self.clear_ui()
         
         cx, cy = self.screen_width // 2, self.screen_height // 2
@@ -255,10 +353,10 @@ class KioskApp(ctk.CTk):
 
     def resume_session(self):
         if self.previous_state:
-            self.kiosk_state = self.previous_state
-            if self.kiosk_state == KioskState.ZONING: self.start_zoning_check()
-            elif self.kiosk_state == KioskState.FEEDBACK: self.show_feedback() 
-            elif self.kiosk_state == KioskState.COUNTDOWN: self.start_countdown()
+            self.app_state = self.previous_state
+            if self.app_state == AppState.ZONING: self.start_zoning_check()
+            elif self.app_state == AppState.FEEDBACK: self.show_feedback() 
+            elif self.app_state == AppState.COUNTDOWN: self.start_countdown()
 
     def end_session_and_show_results(self):
         for config in self.user_configs:
@@ -270,7 +368,7 @@ class KioskApp(ctk.CTk):
     # --- STATES ---
 
     def show_splash(self):
-        self.kiosk_state = KioskState.SPLASH
+        self.app_state = AppState.SPLASH
         self.clear_ui()
         self.video_canvas.configure(bg=COLOR_BG) 
         
@@ -294,11 +392,273 @@ class KioskApp(ctk.CTk):
         
         btn = ctk.CTkButton(self.video_canvas, text="START PRACTICE", font=("Inter", 28, "bold"),
                            fg_color=COLOR_ACCENT, hover_color=COLOR_ACCENT_HOVER, height=80, width=300, corner_radius=40,
-                           command=self.show_user_count)
+                           command=self.show_mode_select)
         self.add_widget(cx, cy + 180, btn)
 
+    # ── MODE SELECT ───────────────────────────────────────────────────────────
+
+    def show_mode_select(self):
+        self.app_state = AppState.MODE_SELECT
+        self.clear_ui()
+        self.video_canvas.configure(bg=COLOR_BG)
+        cx, cy = self.screen_width // 2, self.screen_height // 2
+
+        self.add_text(cx, cy - 220, "Choose Your Mode", font=FONT_HEADER, fill="white")
+
+        # Free Practice card
+        fp_card = ctk.CTkFrame(self.video_canvas, fg_color="white",
+                               corner_radius=24, width=380, height=300)
+        fp_card.pack_propagate(False)
+        ctk.CTkLabel(fp_card, text="🥋", font=("Inter", 56)).pack(pady=(28, 4))
+        ctk.CTkLabel(fp_card, text="Free Practice",
+                     font=("Inter", 26, "bold"), text_color=COLOR_TEXT).pack()
+        ctk.CTkLabel(fp_card, text="Strike any technique.\nThe system will recognise it.",
+                     font=("Inter", 15), text_color="gray", justify="center").pack(pady=8)
+        ctk.CTkButton(fp_card, text="SELECT", font=FONT_BOLD,
+                      fg_color=COLOR_ACCENT, hover_color=COLOR_ACCENT_HOVER,
+                      height=48, corner_radius=12,
+                      command=self._enter_free_practice).pack(padx=30, fill="x", pady=(0, 20))
+        self.add_widget(cx - 240, cy + 20, fp_card)
+
+        # Guided Lesson card
+        gl_card = ctk.CTkFrame(self.video_canvas, fg_color="white",
+                               corner_radius=24, width=380, height=300)
+        gl_card.pack_propagate(False)
+        ctk.CTkLabel(gl_card, text="📖", font=("Inter", 56)).pack(pady=(28, 4))
+        ctk.CTkLabel(gl_card, text="Guided Lesson",
+                     font=("Inter", 26, "bold"), text_color=COLOR_TEXT).pack()
+        ctk.CTkLabel(gl_card, text="Pick a technique to learn.\nGet targeted feedback.",
+                     font=("Inter", 15), text_color="gray", justify="center").pack(pady=8)
+        ctk.CTkButton(gl_card, text="SELECT", font=FONT_BOLD,
+                      fg_color=COLOR_SUCCESS, hover_color="#2ecc71",
+                      height=48, corner_radius=12,
+                      command=self.show_lesson_select).pack(padx=30, fill="x", pady=(0, 20))
+        self.add_widget(cx + 240, cy + 20, gl_card)
+
+        btn_back = ctk.CTkButton(self.video_canvas, text="← Back", font=("Inter", 18),
+                                 fg_color="transparent", border_width=2,
+                                 border_color="white", text_color="white",
+                                 hover_color="#aecef7", height=44, width=160, corner_radius=22,
+                                 command=self.show_splash)
+        self.add_widget(cx, cy + 290, btn_back)
+
+    def _enter_free_practice(self):
+        """Free Practice path — resets lesson context and goes to user count."""
+        self.current_lesson = None
+        self.show_user_count()
+
+    # ── LESSON SELECT ─────────────────────────────────────────────────────────
+
+    def show_lesson_select(self):
+        self.app_state = AppState.LESSON_SELECT
+        self.clear_ui()
+        self.video_canvas.configure(bg=COLOR_BG)
+        cx = self.screen_width // 2
+        sh = self.screen_height
+
+        self.add_text(cx, 80, "Select a Technique", font=("Inter", 48, "bold"), fill="white")
+        self.add_text(cx, 130, "Choose one of the 12 fundamental techniques to practise",
+                      font=("Inter", 20), fill="white")
+
+        # Back button (top-left)
+        btn_back = ctk.CTkButton(self.video_canvas, text="← Mode Select",
+                                 font=("Inter", 18, "bold"),
+                                 fg_color="transparent", border_width=2,
+                                 border_color="white", text_color="white",
+                                 hover_color="#ecf0f1", height=44, width=200, corner_radius=22,
+                                 command=self.show_mode_select)
+        self.add_widget(150, 60, btn_back)
+
+        # Scrollable card grid
+        wrapper = ctk.CTkFrame(self.video_canvas, fg_color="transparent",
+                               width=1120, height=sh - 240)
+        self.add_widget(cx, (sh // 2) + 60, wrapper)
+        wrapper.pack_propagate(False)
+
+        scroll = ctk.CTkScrollableFrame(wrapper, fg_color="transparent")
+        scroll.pack(fill="both", expand=True)
+
+        cols = 3
+        for idx, tech in enumerate(TECHNIQUES):
+            row, col = divmod(idx, cols)
+            cat_color = CATEGORY_COLORS.get(tech["category"], COLOR_ACCENT)
+
+            card = ctk.CTkFrame(scroll, fg_color="white", corner_radius=18,
+                                width=340, height=170)
+            card.grid(row=row, column=col, padx=12, pady=12, sticky="nsew")
+            card.pack_propagate(False)
+            card.grid_propagate(False)
+
+            badge = ctk.CTkFrame(card, fg_color=cat_color, corner_radius=8, width=70, height=26)
+            badge.pack(anchor="w", padx=16, pady=(14, 0))
+            badge.pack_propagate(False)
+            ctk.CTkLabel(badge, text=tech["category"],
+                         font=("Inter", 12, "bold"), text_color="white").pack(expand=True)
+
+            ctk.CTkLabel(card, text=tech["name"],
+                         font=("Inter", 20, "bold"), text_color=COLOR_TEXT,
+                         anchor="w").pack(anchor="w", padx=16, pady=(4, 0))
+            ctk.CTkLabel(card, text=tech["description"],
+                         font=("Inter", 14), text_color="gray",
+                         wraplength=290, justify="left", anchor="w").pack(anchor="w", padx=16)
+            ctk.CTkButton(card, text="Learn →",
+                          font=("Inter", 15, "bold"),
+                          fg_color=cat_color, hover_color=COLOR_ACCENT,
+                          height=34, corner_radius=10,
+                          command=lambda t=tech: self.show_lesson_instruction(t)).pack(
+                              anchor="e", padx=16, pady=(6, 12))
+
+    # ── LESSON INSTRUCTION ────────────────────────────────────────────────────
+
+    def show_lesson_instruction(self, technique: dict):
+        self.current_lesson = technique
+        self.app_state = AppState.LESSON_INSTRUCTION
+        self.clear_ui()
+        self.video_canvas.configure(bg=COLOR_BG)
+
+        cx, cy = self.screen_width // 2, self.screen_height // 2
+        cat_color = CATEGORY_COLORS.get(technique["category"], COLOR_ACCENT)
+
+        # Left panel — technique info
+        info_panel = ctk.CTkFrame(self.video_canvas, fg_color="white",
+                                  corner_radius=24, width=540, height=620)
+        info_panel.pack_propagate(False)
+        self.add_widget(cx - 315, cy, info_panel)
+
+        badge = ctk.CTkFrame(info_panel, fg_color=cat_color, corner_radius=10,
+                              width=90, height=30)
+        badge.pack(anchor="w", padx=24, pady=(24, 0))
+        badge.pack_propagate(False)
+        ctk.CTkLabel(badge, text=technique["category"],
+                     font=("Inter", 13, "bold"), text_color="white").pack(expand=True)
+
+        ctk.CTkLabel(info_panel, text=technique["name"],
+                     font=("Inter", 36, "bold"), text_color=COLOR_TEXT,
+                     anchor="w").pack(anchor="w", padx=24, pady=(8, 4))
+        ctk.CTkLabel(info_panel, text=technique["description"],
+                     font=("Inter", 18), text_color="gray",
+                     wraplength=480, justify="left", anchor="w").pack(anchor="w", padx=24, pady=(0, 16))
+
+        sep = ctk.CTkFrame(info_panel, fg_color="#ecf0f1", height=2)
+        sep.pack(fill="x", padx=24, pady=(0, 16))
+
+        ctk.CTkLabel(info_panel, text="Key Points",
+                     font=("Inter", 18, "bold"), text_color=cat_color,
+                     anchor="w").pack(anchor="w", padx=24)
+
+        for point in technique["key_points"]:
+            row_f = ctk.CTkFrame(info_panel, fg_color="transparent")
+            row_f.pack(anchor="w", padx=24, pady=3, fill="x")
+            ctk.CTkLabel(row_f, text="▸", font=("Inter", 18, "bold"),
+                         text_color=cat_color, width=20).pack(side="left")
+            ctk.CTkLabel(row_f, text=point, font=("Inter", 18),
+                         text_color=COLOR_TEXT, anchor="w",
+                         wraplength=440, justify="left").pack(side="left", padx=6)
+
+        # Right panel — image placeholder + actions
+        right_panel = ctk.CTkFrame(self.video_canvas, fg_color="white",
+                                   corner_radius=24, width=460, height=620)
+        right_panel.pack_propagate(False)
+        self.add_widget(cx + 255, cy, right_panel)
+
+        # Image placeholder — click to zoom
+        media_box = ctk.CTkFrame(right_panel, fg_color="#ecf0f1",
+                                 corner_radius=16, width=400, height=340,
+                                 cursor="hand2")
+        media_box.pack(padx=30, pady=(24, 0))
+        media_box.pack_propagate(False)
+        media_img_label = ctk.CTkLabel(media_box, text="🖼️", font=("Inter", 80))
+        media_img_label.pack(expand=True)
+        media_cap_label = ctk.CTkLabel(media_box, text="Reference image\n(tap to enlarge)",
+                     font=("Inter", 16), text_color="gray")
+        media_cap_label.pack(pady=(0, 16))
+        # Bind click on the whole box and its children to zoom
+        for w in (media_box, media_img_label, media_cap_label):
+            w.bind("<Button-1>", lambda e: self._show_image_zoom())
+
+        ctk.CTkLabel(right_panel,
+                     text=f"📷  Recommended viewpoint: {technique['viewpoint']}",
+                     font=("Inter", 16), text_color=COLOR_TEXT).pack(pady=(16, 0))
+
+        ctk.CTkButton(right_panel, text="Let's Practise! →",
+                      font=("Inter", 22, "bold"),
+                      fg_color=COLOR_SUCCESS, hover_color="#2ecc71",
+                      height=60, corner_radius=16,
+                      command=self.start_lesson_practice).pack(padx=30, pady=(16, 0), fill="x")
+
+        ctk.CTkButton(right_panel, text="← Choose Another",
+                      font=("Inter", 18),
+                      fg_color="transparent", border_width=2,
+                      border_color=COLOR_TEXT, text_color=COLOR_TEXT,
+                      hover_color="#ecf0f1", height=48, corner_radius=12,
+                      command=self.show_lesson_select).pack(padx=30, pady=(10, 24), fill="x")
+
+    def _show_image_zoom(self):
+        """Overlay a full-screen-height image panel on top of the instruction screen."""
+        cx = self.screen_width // 2
+        sh = self.screen_height
+
+        # Semi-transparent backdrop (canvas rectangle)
+        overlay_bg = self.video_canvas.create_rectangle(
+            0, 0, self.screen_width, sh,
+            fill="#000000", stipple="gray50", outline=""
+        )
+        self.canvas_items.append(overlay_bg)
+
+        # Zoom panel — same width as the original image box, full screen height
+        zoom_panel = ctk.CTkFrame(self.video_canvas, fg_color="#ecf0f1",
+                                  corner_radius=20, width=460, height=sh - 40)
+        zoom_panel.pack_propagate(False)
+
+        ctk.CTkLabel(zoom_panel, text="🖼️", font=("Inter", 160)).pack(expand=True)
+        ctk.CTkLabel(zoom_panel,
+                     text=f"Reference image — {self.current_lesson['name']}\n(full image coming soon)",
+                     font=("Inter", 18), text_color="gray").pack(pady=(0, 16))
+
+        ctk.CTkButton(zoom_panel, text="✕  Close",
+                      font=("Inter", 18, "bold"),
+                      fg_color=COLOR_TEXT, hover_color="#555",
+                      text_color="white", height=48, corner_radius=12,
+                      command=lambda: self._close_image_zoom(overlay_bg, zoom_win)
+                      ).pack(padx=40, pady=(0, 24), fill="x")
+
+        zoom_win = self.video_canvas.create_window(cx, sh // 2, window=zoom_panel, anchor="center")
+        self.canvas_items.append(zoom_win)
+
+        # Also close when clicking the backdrop
+        self.video_canvas.tag_bind(overlay_bg, "<Button-1>",
+                                   lambda e: self._close_image_zoom(overlay_bg, zoom_win))
+
+    def _close_image_zoom(self, overlay_bg, zoom_win):
+        """Remove the zoom overlay items from the canvas."""
+        try:
+            self.video_canvas.delete(overlay_bg)
+            self.video_canvas.delete(zoom_win)
+        except Exception:
+            pass
+
+
+
+    def start_lesson_practice(self):
+        """Begin the lesson practice loop using the existing zoning → countdown → feedback flow."""
+        tech = self.current_lesson
+        # Set up a single-user guest session with the full structure start_zoning_check expects
+        self.num_users = 1
+        # Keep the UI-cased string ("Front", "Right Side", "Left Side") so that
+        # analyze_zones and show_feedback can map it correctly via viewpoint_mapping.
+        viewpoint = tech.get("viewpoint", "Front")  # e.g. "Front", NOT "front"
+        self.user_configs = [{
+            "name": "Practitioner",
+            "viewpoint": viewpoint,
+            "user": None,       # start_zoning_check creates a guest if None
+            "session_id": None, # filled in by start_zoning_check
+            "zone": None,
+        }]
+        self.start_zoning_check()
+
+
     def show_user_count(self):
-        self.kiosk_state = KioskState.USER_COUNT
+        self.app_state = AppState.USER_COUNT
         self.clear_ui()
         self.video_canvas.configure(bg=COLOR_BG)
         
@@ -314,11 +674,11 @@ class KioskApp(ctk.CTk):
             btn.pack(side="left", padx=30)
         self.add_widget(cx, cy + 50, bg_frame)
         
-        # Back Button
+        # Back Button — return to Mode Select, not Splash
         btn_back = ctk.CTkButton(self.video_canvas, text="← BACK", font=("Inter", 24, "bold"),
                                 fg_color="transparent", border_width=2, border_color=COLOR_TEXT, text_color=COLOR_TEXT,
                                 hover_color="#ecf0f1", height=60, width=200, corner_radius=30,
-                                command=self.show_splash)
+                                command=self.show_mode_select)
         self.add_widget(cx, cy + 250, btn_back)
 
     def start_config(self, n):
@@ -333,7 +693,7 @@ class KioskApp(ctk.CTk):
         self.show_config_screen()
 
     def show_config_screen(self):
-        self.kiosk_state = KioskState.CONFIG
+        self.app_state = AppState.CONFIG
         self.clear_ui()
         self.video_canvas.configure(bg=COLOR_BG)
         
@@ -393,7 +753,7 @@ class KioskApp(ctk.CTk):
 
     def restart_zoning(self):
         """Restart the zoning phase for a new repetition"""
-        self.kiosk_state = KioskState.ZONING
+        self.app_state = AppState.ZONING
         self.clear_ui()
         self.frozen_frame = None
         self.analysis_results = {} 
@@ -410,11 +770,12 @@ class KioskApp(ctk.CTk):
                 user_id = self.db.create_user(guest_name)
                 config['user'] = self.db.get_user_by_id(user_id)
             
-            # Pure recognition mode - no target pose
-            sid = self.db.start_session(user_id, target_pose=None)
+            # In guided lesson mode, record the target technique for analytics
+            target_pose = self.current_lesson["key"] if self.current_lesson else None
+            sid = self.db.start_session(user_id, target_pose=target_pose)
             config['session_id'] = sid
             
-        self.kiosk_state = KioskState.ZONING
+        self.app_state = AppState.ZONING
         self.clear_ui()
         self.show_user_names = True
         self.names_shown_time = time.time()
@@ -425,7 +786,7 @@ class KioskApp(ctk.CTk):
     
     def check_zones_and_countdown(self):
         """Validate that users are properly positioned in zones before starting countdown"""
-        if self.kiosk_state != KioskState.ZONING:
+        if self.app_state != AppState.ZONING:
             return
         
         # Check for 5-second timeout (was 10s)
@@ -490,7 +851,7 @@ class KioskApp(ctk.CTk):
             self.after(500, self.check_zones_and_countdown)
 
     def start_countdown(self):
-        self.kiosk_state = KioskState.COUNTDOWN
+        self.app_state = AppState.COUNTDOWN
         self.clear_ui()
         self.countdown_timer = 5
         
@@ -510,7 +871,7 @@ class KioskApp(ctk.CTk):
         self.update_countdown()
 
     def update_countdown(self):
-        if self.kiosk_state != KioskState.COUNTDOWN: return
+        if self.app_state != AppState.COUNTDOWN: return
 
         if self.countdown_timer > 0:
             self.video_canvas.itemconfig(self.count_text_id, text=str(self.countdown_timer))
@@ -524,7 +885,7 @@ class KioskApp(ctk.CTk):
             self.capture_snapshot()
 
     def capture_snapshot(self):
-        self.kiosk_state = KioskState.SNAPSHOT
+        self.app_state = AppState.SNAPSHOT
         if self.current_frame is not None:
             self.frozen_frame = self.current_frame.copy()
             # Analyze poses in the snapshot
@@ -533,7 +894,7 @@ class KioskApp(ctk.CTk):
         self.after(800, self.show_feedback)
 
     def show_feedback(self):
-        self.kiosk_state = KioskState.FEEDBACK
+        self.app_state = AppState.FEEDBACK
         self.clear_ui()
         self.feedback_timer = 6
         
@@ -558,13 +919,14 @@ class KioskApp(ctk.CTk):
             
             # Pure recognition mode - confidence-based scoring only
             # Get viewpoint-specific confidence threshold from gcn_model_config.json (single source of truth)
-            viewpoint_ui = config['viewpoint'].get()
+            vp_raw = config['viewpoint']
+            viewpoint_ui = vp_raw.get() if hasattr(vp_raw, 'get') else vp_raw
             viewpoint_mapping = {
                 "Front": "front",
                 "Right Side": "right",
                 "Left Side": "left"
             }
-            viewpoint = viewpoint_mapping.get(viewpoint_ui, "front").lower()
+            viewpoint = viewpoint_mapping.get(viewpoint_ui, viewpoint_ui).lower()
             gcn_config = self.pose_analyzer.gcn_engine.config if (self.pose_analyzer and self.pose_analyzer.gcn_engine) else {}
             threshold = gcn_config.get('models', {}).get(viewpoint, {}).get('confidence_threshold', 0.55)
 
@@ -574,50 +936,97 @@ class KioskApp(ctk.CTk):
             good_confidence  = (confidence >= threshold)         # Good band (minimum)
             pose_detected = (predicted_class != 'N/A' and predicted_class.lower() != 'no technique detected' and confidence > 0)
             
-            # --- FEEDBACK ANALYZER INTEGRATION ---
-            # Get detailed corrective feedback if a pose is detected
+            # ─────────────────────────────────────────────────────────────
+            # SCORE + FEEDBACK — two completely different paths
+            # ─────────────────────────────────────────────────────────────
             feedback_messages = []
-            if pose_detected and self.feedback_analyzer:
-                # Analyze against the predicted form (assuming user intent matches prediction)
-                analysis = self.feedback_analyzer.analyze(
-                    result=zone_result,
-                    target_form=predicted_class,
-                    confidence_threshold=threshold,
-                    viewpoint=viewpoint
-                )
-                
-                # Get top priority messages (errors/warnings)
-                prioritized = self.feedback_analyzer.get_prioritized_messages(analysis, max_messages=2)
-                feedback_messages = [msg for msg, type_ in prioritized if type_ in ['error', 'warning']]
-                
-                # If excellent but minor suggestions exist, add one suggestion
-                if high_confidence and not feedback_messages:
-                    suggestions = [msg for msg, type_ in prioritized if type_ == 'suggestion']
-                    if suggestions:
-                        feedback_messages.append(suggestions[0])
 
-            # Color coding based on confidence
-            if not pose_detected:
-                color = "#e74c3c"  # Red - No detection
-                score_text = "NOT DETECTED"
-            elif high_confidence: 
-                color = "#2ecc71"  # Green - Excellent
-                score_text = "EXCELLENT!"
-            elif good_confidence:
-                color = "#bfff00"  # Lime - Good
-                score_text = "GOOD"
+            if self.current_lesson:
+                # ── GUIDED MODE ──────────────────────────────────────────
+                target_key  = self.current_lesson["key"]
+                correct_hit = pose_detected and (predicted_class == target_key)
+                wrong_hit   = pose_detected and (predicted_class != target_key)
+
+                # Always compare against target form (even if nothing detected)
+                if self.feedback_analyzer:
+                    analysis = self.feedback_analyzer.analyze(
+                        result=zone_result,
+                        target_form=target_key,
+                        confidence_threshold=threshold,
+                        viewpoint=viewpoint
+                    )
+                    prioritized = self.feedback_analyzer.get_prioritized_messages(analysis, max_messages=3)
+                    # Corrections first, then warnings, skip suggestions unless clean
+                    feedback_messages = [msg for msg, t in prioritized if t in ('error', 'warning')]
+                    if not feedback_messages and correct_hit and high_confidence:
+                        suggestions = [msg for msg, t in prioritized if t == 'suggestion']
+                        if suggestions:
+                            feedback_messages = [suggestions[0]]
+
+                if wrong_hit:
+                    color = "#e67e22"          # Orange — wrong technique
+                    detected_display = predicted_class.replace('_correct', '').replace('_', ' ').title()
+                    target_display   = target_key.replace('_correct', '').replace('_', ' ').title()
+                    score_text = f"WRONG TECHNIQUE"
+                    # Prepend a redirect message; keep at most 1 form correction
+                    feedback_messages = [f"You did: {detected_display}",
+                                         f"Target: {target_display}"] + feedback_messages[:1]
+                elif correct_hit and high_confidence:
+                    color = "#2ecc71"           # Green — excellent
+                    score_text = "EXCELLENT!"
+                elif correct_hit:
+                    color = "#bfff00"           # Lime — good
+                    score_text = "GOOD"
+                else:
+                    color = "#e74c3c"           # Red — not detected
+                    score_text = "NOT DETECTED"
+                    # Still show form corrections so user knows what to fix
+                    if not feedback_messages:
+                        target_display = target_key.replace('_correct', '').replace('_', ' ').title()
+                        feedback_messages = [f"Target: {target_display}", "Get into position and try again"]
+
+                # is_correct flag for DB: only true when the right technique was hit well
+                is_correct_db = correct_hit and high_confidence
+
             else:
-                color = "#f39c12"  # Orange - Fair
-                score_text = "FAIR"
+                # ── FREE PRACTICE MODE ───────────────────────────────────
+                if not pose_detected:
+                    color = "#e74c3c"
+                    score_text = "NOT DETECTED"
+                elif high_confidence:
+                    color = "#2ecc71"
+                    score_text = "EXCELLENT!"
+                elif good_confidence:
+                    color = "#bfff00"
+                    score_text = "GOOD"
+                else:
+                    color = "#f39c12"
+                    score_text = "FAIR"
+
+                if pose_detected and self.feedback_analyzer:
+                    analysis = self.feedback_analyzer.analyze(
+                        result=zone_result,
+                        target_form=predicted_class,
+                        confidence_threshold=threshold,
+                        viewpoint=viewpoint
+                    )
+                    prioritized = self.feedback_analyzer.get_prioritized_messages(analysis, max_messages=2)
+                    feedback_messages = [msg for msg, t in prioritized if t in ('error', 'warning')]
+                    if high_confidence and not feedback_messages:
+                        suggestions = [msg for msg, t in prioritized if t == 'suggestion']
+                        if suggestions:
+                            feedback_messages.append(suggestions[0])
+
+                is_correct_db = high_confidence
             
-            # Save performance with high_confidence flag
+            # Save performance
             if config['session_id']:
                 self.db.save_performance(
                     session_id=config['session_id'],
                     user_id=config['user']['id'],
                     pose_detected=predicted_class,
                     confidence=confidence,
-                    is_correct=high_confidence,  # Repurposed as high_confidence indicator
+                    is_correct=is_correct_db,
                     stick_detected=stick_detected
                 )
             
@@ -631,17 +1040,23 @@ class KioskApp(ctk.CTk):
                 self.add_text(cx, video_bottom - 230, display_name, font=("Inter", 20), fill="white")
             
             # Display confidence/status score
-            self.add_text(cx, video_bottom - 180, score_text, font=("Inter", 48, "bold"), fill=color)
-            
+            # When hints exist and it's not excellent, shrink the score and let hints dominate
+            is_excellent = (color == "#2ecc71")
+            score_font = ("Inter", 48, "bold") if (is_excellent or not feedback_messages) else ("Inter", 28, "bold")
+            self.add_text(cx, video_bottom - 185, score_text, font=score_font, fill=color)
+
             # --- DISPLAY CORRECTIVE FEEDBACK ---
-            # Show specific improvements below the score
             if feedback_messages:
-                y_offset = video_bottom - 135
+                # Non-excellent: hints are the hero — large, prominent, with generous spacing
+                hint_font  = ("Inter", 20, "bold") if is_excellent else ("Inter", 24, "bold")
+                hint_color = "white"
+                hint_spacing = 32 if is_excellent else 38
+                y_offset = video_bottom - (145 if is_excellent else 150)
                 for msg in feedback_messages:
-                    self.add_text(cx, y_offset, msg, font=("Inter", 20, "bold"), fill="white")
-                    y_offset += 30
+                    self.add_text(cx, y_offset, msg, font=hint_font, fill=hint_color)
+                    y_offset += hint_spacing
             else:
-                # Fallback to percentage if no specific feedback
+                # No hints: show confidence % as secondary info
                 if pose_detected:
                     percentage = f"{int(confidence * 100)}%"
                     self.add_text(cx, video_bottom - 130, percentage, font=("Inter", 24), fill="white")
@@ -651,7 +1066,24 @@ class KioskApp(ctk.CTk):
             stick_color = "#27ae60" if stick_detected else "#95a5a6"
             self.add_text(cx, video_bottom - 90, stick_text, font=("Inter", 16), fill=stick_color)
         
+        # Timer label (must exist before update_feedback_timer tries to itemconfig it)
+        self.timer_text_id = self.video_canvas.create_text(
+            self.screen_width // 2, 50,
+            text=f"Next in {self.feedback_timer}...",
+            font=("Inter", 28), fill="white"
+        )
+        self.canvas_items.append(self.timer_text_id)
+
+        # FINISH button (top-right corner)
+        btn_finish = ctk.CTkButton(
+            self.video_canvas, text="FINISH", width=150, height=50,
+            fg_color=COLOR_WARNING, font=("Inter", 18, "bold"),
+            command=self.end_session_and_show_results
+        )
+        self.add_widget(self.screen_width - 100, 50, btn_finish)
+
         self.update_feedback_timer()
+
     def generate_form_feedback(self, target_class, viewpoint, live_angles, landmarks=None):
         """Generate feedback based on angle deviations from template"""
         # Template keys are like "front_crown_thrust_correct"
@@ -712,20 +1144,8 @@ class KioskApp(ctk.CTk):
         unique_tips = sorted(list(set(deviations)))
         return "Tip: " + ", ".join(unique_tips[:2])
 
-        self.timer_text_id = self.video_canvas.create_text(self.screen_width//2, 50, 
-                                                          text=f"Next in {self.feedback_timer}...", 
-                                                          font=("Inter", 28), fill="white")
-        self.canvas_items.append(self.timer_text_id)
-        
-        btn = ctk.CTkButton(self.video_canvas, text="FINISH", width=150, height=50, 
-                           fg_color=COLOR_WARNING, font=("Inter", 18, "bold"),
-                           command=self.end_session_and_show_results)
-        self.add_widget(self.screen_width - 120, 50, btn)
-        
-        self.update_feedback_timer()
-
     def show_results_screen(self):
-        self.kiosk_state = KioskState.RESULTS
+        self.app_state = AppState.RESULTS
         self.clear_ui()
         self.video_canvas.configure(bg=COLOR_BG)
         
@@ -790,7 +1210,7 @@ class KioskApp(ctk.CTk):
     
     def update_feedback_timer(self):
         """Update the feedback timer countdown"""
-        if self.kiosk_state != KioskState.FEEDBACK:
+        if self.app_state != AppState.FEEDBACK:
             return
         
         if self.feedback_timer > 0:
@@ -798,8 +1218,54 @@ class KioskApp(ctk.CTk):
             self.feedback_timer -= 1
             self.after(1000, self.update_feedback_timer)
         else:
-            # Restart the countdown via zoning validation for proper resets
-            self.restart_zoning()
+            if self.current_lesson:
+                # Lesson mode: let user choose to try again or pick another technique
+                self._show_lesson_feedback_end()
+            else:
+                # Free practice: auto-restart zoning for the next rep
+                self.restart_zoning()
+
+    def _show_lesson_feedback_end(self):
+        """Post-feedback screen shown in lesson mode — Try Again or Choose Another."""
+        self.clear_ui()
+        self.video_canvas.configure(bg=COLOR_BG)
+        cx, cy = self.screen_width // 2, self.screen_height // 2
+
+        tech_name = self.current_lesson.get("name", "Technique")
+        self.add_text(cx, cy - 160, "Rep Complete!", font=("Inter", 48, "bold"), fill="white")
+        self.add_text(cx, cy - 100, tech_name, font=("Inter", 28), fill="white")
+
+        # Try Again
+        btn_retry = ctk.CTkButton(
+            self.video_canvas, text="🔄  Try Again",
+            font=("Inter", 24, "bold"),
+            fg_color=COLOR_ACCENT, hover_color=COLOR_ACCENT_HOVER,
+            height=70, width=320, corner_radius=18,
+            command=self.start_lesson_practice
+        )
+        self.add_widget(cx, cy, btn_retry)
+
+        # Choose Another
+        btn_other = ctk.CTkButton(
+            self.video_canvas, text="← Choose Another Technique",
+            font=("Inter", 20),
+            fg_color="transparent", border_width=2,
+            border_color="white", text_color="white",
+            hover_color="#aecef7", height=56, width=320, corner_radius=18,
+            command=self.show_lesson_select
+        )
+        self.add_widget(cx, cy + 100, btn_other)
+
+        # Exit to splash
+        btn_exit = ctk.CTkButton(
+            self.video_canvas, text="Exit to Menu",
+            font=("Inter", 18),
+            fg_color="transparent", border_width=2,
+            border_color="white", text_color="white",
+            hover_color="#aecef7", height=48, width=220, corner_radius=14,
+            command=self.show_splash
+        )
+        self.add_widget(cx, cy + 180, btn_exit)
 
     # --- VIDEO ENGINE ---
 
@@ -946,13 +1412,14 @@ class KioskApp(ctk.CTk):
             # Set viewpoint for this user's GCN model
             # Direct mapping: models are trained with mirror augmentation
             # Models are now mirror-invariant and work with mirrored frames directly
-            viewpoint_ui = self.user_configs[i]['viewpoint'].get()
+            vp_raw = self.user_configs[i]['viewpoint']
+            viewpoint_ui = vp_raw.get() if hasattr(vp_raw, 'get') else vp_raw
             viewpoint_mapping = {
                 "Front": "front",
                 "Right Side": "right",
                 "Left Side": "left"
             }
-            viewpoint = viewpoint_mapping.get(viewpoint_ui, "front").lower()
+            viewpoint = viewpoint_mapping.get(viewpoint_ui, viewpoint_ui).lower()
             
             if self.pose_analyzer.gcn_engine:
                 self.pose_analyzer.gcn_engine.set_viewpoint(viewpoint)
@@ -1027,17 +1494,17 @@ class KioskApp(ctk.CTk):
         if not self.running: return
         self.frame_counter += 1
         
-        VIDEO_ACTIVE_STATES = [KioskState.ZONING, KioskState.COUNTDOWN, KioskState.SNAPSHOT, KioskState.FEEDBACK, KioskState.PAUSED]
+        VIDEO_ACTIVE_STATES = [AppState.ZONING, AppState.COUNTDOWN, AppState.SNAPSHOT, AppState.FEEDBACK, AppState.PAUSED]
         
-        if self.kiosk_state not in VIDEO_ACTIVE_STATES:
+        if self.app_state not in VIDEO_ACTIVE_STATES:
             if self.image_item: self.video_canvas.itemconfig(self.image_item, state="hidden")
             self.after(30, self.update_feed)
             return
 
         # Frame Capture
-        if self.kiosk_state == KioskState.FEEDBACK and self.frozen_frame is not None:
+        if self.app_state == AppState.FEEDBACK and self.frozen_frame is not None:
             frame = self.frozen_frame.copy()
-        elif self.kiosk_state == KioskState.PAUSED and self.frozen_frame is not None:
+        elif self.app_state == AppState.PAUSED and self.frozen_frame is not None:
              if self.cap:
                 ret, frame = self.cap.read()
                 frame = cv2.flip(frame, 1) if ret else np.zeros((720,1280,3),np.uint8)
@@ -1054,7 +1521,7 @@ class KioskApp(ctk.CTk):
 
 
         # Draw Zoning
-        if self.kiosk_state in [KioskState.ZONING, KioskState.COUNTDOWN, KioskState.SNAPSHOT]:
+        if self.app_state in [AppState.ZONING, AppState.COUNTDOWN, AppState.SNAPSHOT]:
             h, w, _ = frame.shape
             cols = self.num_users
             
@@ -1065,7 +1532,7 @@ class KioskApp(ctk.CTk):
                     self.draw_vertical_separator(frame, i * col_w, h)
             
             # Show positioning status during ZONING
-            if self.kiosk_state == KioskState.ZONING:
+            if self.app_state == AppState.ZONING:
                 elapsed = time.time() - self.zoning_start_time
                 remaining = max(0, 10 - int(elapsed))
                 
@@ -1089,7 +1556,7 @@ class KioskApp(ctk.CTk):
                            (255, 255, 255), thickness, cv2.LINE_AA)
             
             # Draw Minimal User IDs (only for first 3 seconds in ZONING state)
-            if self.kiosk_state == KioskState.ZONING and self.show_user_names and (time.time() - self.names_shown_time) < 3.0:
+            if self.app_state == AppState.ZONING and self.show_user_names and (time.time() - self.names_shown_time) < 3.0:
                 for i in range(cols):
                     col_w = w // cols
                     cx = (i * col_w) + (col_w // 2)
@@ -1110,14 +1577,14 @@ class KioskApp(ctk.CTk):
                     cv2.rectangle(frame, (tx-pad, ty-text_h-pad), (tx+text_w+pad, ty+pad), (0,0,0), -1)
                     # Text
                     cv2.putText(frame, user_name, (tx, ty), cv2.FONT_HERSHEY_SIMPLEX, font_scale, (255, 255, 255), thickness, cv2.LINE_AA)
-            elif self.kiosk_state == KioskState.ZONING and self.show_user_names and (time.time() - self.names_shown_time) >= 3.0:
+            elif self.app_state == AppState.ZONING and self.show_user_names and (time.time() - self.names_shown_time) >= 3.0:
                 self.show_user_names = False
         
         # SAFEGUARD: Flag to prevent double skeleton drawings on the same frame
         skeletons_drawn_this_frame = False
         
         # Real-time keypoint drawing during ZONING, COUNTDOWN only (NOT SNAPSHOT to avoid double-drawing)
-        if self.kiosk_state in [KioskState.ZONING, KioskState.COUNTDOWN] and self.pose_analyzer and not skeletons_drawn_this_frame:
+        if self.app_state in [AppState.ZONING, AppState.COUNTDOWN] and self.pose_analyzer and not skeletons_drawn_this_frame:
             h, w, _ = frame.shape
             col_w = w // self.num_users
             
@@ -1166,7 +1633,7 @@ class KioskApp(ctk.CTk):
                     print(f"Error drawing realtime keypoints: {e}")
         
         # Draw keypoints during FEEDBACK state (on frozen frame with analysis results)
-        if self.kiosk_state == KioskState.FEEDBACK and hasattr(self, 'analysis_results') and self.analysis_results:
+        if self.app_state == AppState.FEEDBACK and hasattr(self, 'analysis_results') and self.analysis_results:
             h, w, _ = frame.shape
             col_w = w // self.num_users
             
@@ -1266,7 +1733,7 @@ class KioskApp(ctk.CTk):
         self.video_display_width = new_width
         self.video_display_height = new_height
         
-        if self.kiosk_state == KioskState.PAUSED:
+        if self.app_state == AppState.PAUSED:
             overlay = Image.new("RGBA", final_img.size, (0, 0, 0, 0))
             draw = ImageDraw.Draw(overlay)
             draw.rectangle([(0,0), final_img.size], fill=(0, 0, 0, 150))

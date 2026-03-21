@@ -123,30 +123,32 @@ class FeedbackAnalyzer:
         }
     
     
-    def analyze(self, result: Dict, target_form: str, confidence_threshold: float = None, viewpoint: str = 'front') -> Dict:
+    def analyze(self, result: Dict, target_form: str,
+                confidence_threshold: float = None, viewpoint: str = 'front',
+                gcn_engine=None) -> Dict:
         """
-        Analyze pose result and generate feedback with structured corrections
-        
+        Analyze pose result and generate feedback with structured corrections.
+
         Returns:
-            Dictionary with feedback analysis:
             {
                 'is_correct': bool,
                 'confidence': float,
                 'errors': List[str],
-                'corrections': List[Dict],  # [{'joint': str, 'action': str, 'value': float, 'message': str}]
+                'corrections': List[Dict],
                 'warnings': List[str],
                 'suggestions': List[str],
                 'error_count': int,
                 'severity': str
             }
         """
-        # Use per-viewpoint threshold if no explicit threshold provided
+        from app.computer_vision.feedback_mapper import get_corrections
+
         if confidence_threshold is None:
             confidence_threshold = self.get_confidence_threshold(viewpoint)
-        
+
         predicted_class = result.get('predicted_class', '').strip()
         confidence = result.get('confidence', 0.0)
-        
+
         feedback = {
             'is_correct': False,
             'confidence': confidence,
@@ -157,45 +159,85 @@ class FeedbackAnalyzer:
             'error_count': 0,
             'severity': 'ok'
         }
-        
-        #check if predicted class matches target
-        if predicted_class == target_form and confidence > confidence_threshold:
+
+        # ── Body visibility gate (checked before is_correct) ─────────────────
+        # Run this early so a partial-body view never gets marked as correct.
+        landmarks_abs = result.get('landmarks_absolute')
+        frame_w = result.get('frame_w', 640)
+        frame_h = result.get('frame_h', 480)
+        body_visible = True
+        body_warning = None
+        if landmarks_abs and len(landmarks_abs) >= 27:
+            is_vis, vis_count, total, missing = self.is_full_body_visible(
+                landmarks_abs, frame_w, frame_h
+            )
+            if not is_vis:
+                body_visible = False
+                missing_str = ', '.join(missing[:3])
+                body_warning = f"Step back — body not fully in frame ({missing_str} cut off)"
+        print(f"[ANALYZE] target={target_form} | predicted={predicted_class} | conf={confidence:.2f} vs thresh={confidence_threshold:.2f} | body_visible={body_visible} | gcn={'yes' if gcn_engine else 'no'} | global_feats={'yes' if result.get('global_features') else 'no'}")
+
+        # ── Correct pose ──────────────────────────────────────────────────────
+        if body_visible and predicted_class == target_form and confidence > confidence_threshold:
             feedback['is_correct'] = True
             feedback['suggestions'].append('Maintain this position')
+            print(f"[ANALYZE] → EXCELLENT (is_correct=True, returning early)")
             return feedback
-        
-        #analyze errors
+
         errors = []
         corrections = []
         warnings = []
         suggestions = []
-        
-        #1. grip angle analysis
-        grip_errors, grip_corrections = self._analyze_grip_angle(result, target_form)
-        errors.extend(grip_errors)
-        corrections.extend(grip_corrections)
-        
-        #2. joint angle analysis
-        joint_errors, joint_corrections = self._analyze_joint_angles(result, target_form)
-        errors.extend(joint_errors)
-        corrections.extend(joint_corrections)
-        
-        #3. posture analysis
-        posture_errors = self._analyze_posture(result)
-        warnings.extend(posture_errors)
-        
-        #4. stick detection
-        stick_warnings = self._analyze_stick_detection(result)
-        warnings.extend(stick_warnings)
-        
-        #5. confidence-based suggestions
-        confidence_suggestions = self._analyze_confidence(predicted_class, target_form, confidence)
-        suggestions.extend(confidence_suggestions)
-        
-        #categorize severity
+
+        # ── Model-driven corrections (hybrid feature approach) ─────────────────
+        global_features = result.get('global_features')
+        used_hybrid = False
+
+        if gcn_engine is not None and global_features and target_form != 'neutral':
+            correction_data = gcn_engine.get_feature_corrections(
+                global_features, target_form
+            )
+            if correction_data:
+                raw_corrections = get_corrections(
+                    raw_features=correction_data['raw_values'],
+                    hybrid_scores=correction_data['hybrid_scores'],
+                    feature_names=correction_data['feature_names'],
+                    template_means=correction_data['template_means'],
+                    max_corrections=3,
+                )
+                for msg, score in raw_corrections:
+                    errors.append(msg)
+                    corrections.append({
+                        'joint': 'body',
+                        'action': 'adjust',
+                        'value': round(1.0 - score, 2),
+                        'message': msg
+                    })
+                used_hybrid = True
+                print(f"[ANALYZE] → hybrid corrections ({len(errors)}): {errors}")
+        if not used_hybrid:
+            print(f"[ANALYZE] → fallback to joint-angle analysis (gcn={'yes' if gcn_engine else 'no'}, global_feats={'yes' if result.get('global_features') else 'no'})")
+
+        # ── Fallback: original hardcoded joint-angle analysis ─────────────────
+        if not used_hybrid:
+            joint_errors, joint_corrections = self._analyze_joint_angles(result, target_form)
+            errors.extend(joint_errors)
+            corrections.extend(joint_corrections)
+            grip_errors, grip_corrections = self._analyze_grip_angle(result, target_form)
+            errors.extend(grip_errors)
+            corrections.extend(grip_corrections)
+
+        # ── Always-on checks ──────────────────────────────────────────────────
+        # If body is cut off, prepend that warning and skip further posture analysis
+        if body_warning:
+            warnings.insert(0, body_warning)
+        else:
+            warnings.extend(self._analyze_posture(result))
+        warnings.extend(self._analyze_stick_detection(result))
+        suggestions.extend(self._analyze_confidence(predicted_class, target_form, confidence))
+
         error_count = len(errors)
         warning_count = len(warnings)
-        
         if error_count == 0 and warning_count == 0:
             severity = 'ok'
         elif error_count == 0:
@@ -204,7 +246,7 @@ class FeedbackAnalyzer:
             severity = 'major'
         else:
             severity = 'critical'
-        
+
         feedback.update({
             'errors': errors,
             'corrections': corrections,
@@ -213,7 +255,6 @@ class FeedbackAnalyzer:
             'error_count': error_count,
             'severity': severity
         })
-        
         return feedback
     
     def _analyze_grip_angle(self, result: Dict, target_form: str) -> Tuple[List[str], List[Dict]]:
@@ -304,14 +345,71 @@ class FeedbackAnalyzer:
         
         return errors, corrections
     
+    # Key landmark indices required for a 'full body' check
+    _FULL_BODY_LANDMARKS = {
+        0:  'nose',
+        11: 'left shoulder',
+        12: 'right shoulder',
+        15: 'left wrist',
+        16: 'right wrist',
+        23: 'left hip',
+        24: 'right hip',
+        27: 'left ankle',
+        28: 'right ankle',
+    }
+
+    def is_full_body_visible(
+        self,
+        landmarks_abs: list,
+        frame_w: int,
+        frame_h: int,
+        min_visible: int = 7,
+        margin: int = 10,
+    ) -> tuple:
+        """
+        Check whether the key body landmarks are all within the frame bounds.
+
+        Returns:
+            (is_visible: bool, visible_count: int, total_checked: int,
+             missing_names: list[str])
+        """
+        visible = 0
+        missing = []
+        for idx, name in self._FULL_BODY_LANDMARKS.items():
+            if idx >= len(landmarks_abs):
+                missing.append(name)
+                continue
+            x, y = landmarks_abs[idx][0], landmarks_abs[idx][1]
+            # (-1, -1) is the sentinel pose_analyzer stores for landmarks with
+            # visibility < 0.3 (cut off or heavily occluded)
+            is_sentinel = (x == -1 and y == -1)
+            in_bounds = (not is_sentinel) and (margin < x < frame_w - margin) and (margin < y < frame_h - margin)
+            if in_bounds:
+                visible += 1
+            else:
+                missing.append(name)
+        total = len(self._FULL_BODY_LANDMARKS)
+        return (visible >= min_visible, visible, total, missing)
+
     def _analyze_posture(self, result: Dict) -> List[str]:
         """Analyze overall posture and body alignment"""
         warnings = []
-        
+
         landmarks = result.get('landmarks_absolute')
         if not landmarks or len(landmarks) < 27:
             return warnings
-        
+
+        # ── Full-body visibility check ────────────────────────────────────────
+        frame_w = result.get('frame_w', 640)
+        frame_h = result.get('frame_h', 480)
+        is_visible, visible_count, total, missing = self.is_full_body_visible(
+            landmarks, frame_w, frame_h
+        )
+        if not is_visible:
+            missing_str = ', '.join(missing[:3])
+            warnings.append(f"Step back — body not fully in frame ({missing_str} cut off)")
+            return warnings  # Skip further posture checks if body is cut off
+
         try:
             #check shoulder alignment (should be relatively level)
             left_shoulder = landmarks[self.SHOULDER_LEFT]
@@ -347,58 +445,64 @@ class FeedbackAnalyzer:
         return warnings
     
     def _analyze_stick_detection(self, result: Dict) -> List[str]:
-        """Check stick detection status"""
+        """Check stick detection status — only surface this if there is nothing
+        more important to say (it's a low-priority warning)."""
         warnings = []
-        
         stick_endpoints = result.get('stick_endpoints')
         if stick_endpoints is None:
-            warnings.append("Stick: Not detected - ensure stick is visible")
-        
+            warnings.append("Make sure your stick is visible")
         return warnings
     
     def _analyze_confidence(self, predicted_class: str, target_form: str, confidence: float) -> List[str]:
-        """Generate suggestions based on prediction confidence"""
+        """Generate suggestions based on prediction confidence.
+        Only emit something useful — no generic 'You did X, aim for Y' noise.
+        """
         suggestions = []
-        
-        if predicted_class != target_form:
-            #format form names for display
-            predicted_display = predicted_class.replace('_correct', '').replace('_', ' ').title()
+
+        if predicted_class == target_form and confidence < 0.55:
+            # Right technique but low confidence — coach to sharpen the form
+            suggestions.append(f"Close — sharpen your form ({confidence:.0%} confidence)")
+        elif predicted_class and predicted_class not in ('N/A', 'neutral_stance', 'neutral') \
+                and target_form and predicted_class != target_form:
+            # Wrong technique detected in lesson mode — keep it short
             target_display = target_form.replace('_correct', '').replace('_', ' ').title()
-            
-            if predicted_class == 'neutral':
-                suggestions.append(f"Ready - Begin {target_display}")
-            elif confidence > 0.55:
-                suggestions.append(f"Detected: {predicted_display} - Switch to {target_display}")
-            else:
-                suggestions.append(f"Adjust position to match {target_display}")
-        elif confidence < 0.55:
-            suggestions.append(f"Close to correct - refine position (confidence: {confidence:.0%})")
-        
+            suggestions.append(f"Try to match {target_display} position")
+
         return suggestions
     
     def get_prioritized_messages(self, feedback: Dict, max_messages: int = 4) -> List[Tuple[str, str]]:
         """
-        Get prioritized feedback messages for display
-        
+        Get prioritized feedback messages for display.
+
+        Priority order: errors > warnings (skip stick warning when errors
+        are present) > suggestions.
+
         Returns:
-            List of (message, type) tuples where type is 'error', 'warning', or 'suggestion'
+            List of (message, type) tuples where type is 'error', 'warning',
+            or 'suggestion'.
         """
         messages = []
-        
-        #priority 1: critical errors (high importance)
-        for error in feedback['errors'][:2]:  #max 2 errors
+
+        # Priority 1: actionable joint / form errors (max 2)
+        for error in feedback['errors'][:2]:
             messages.append((error, 'error'))
-        
-        #priority 2: warnings
-        remaining = max_messages - len(messages)
-        if remaining > 0:
+
+        # Priority 2: warnings — but skip the stick warning when we already
+        # have real joint corrections to show (it just adds noise).
+        if len(messages) < max_messages:
+            remaining = max_messages - len(messages)
+            has_errors = len(feedback['errors']) > 0
             for warning in feedback['warnings'][:remaining]:
+                # Suppress the low-priority stick warning when there is
+                # already something more meaningful to say.
+                if has_errors and 'stick' in warning.lower():
+                    continue
                 messages.append((warning, 'warning'))
-        
-        #priority 3: suggestions
-        remaining = max_messages - len(messages)
-        if remaining > 0:
+
+        # Priority 3: suggestions (only if there's still room)
+        if len(messages) < max_messages:
+            remaining = max_messages - len(messages)
             for suggestion in feedback['suggestions'][:remaining]:
                 messages.append((suggestion, 'suggestion'))
-        
+
         return messages[:max_messages]

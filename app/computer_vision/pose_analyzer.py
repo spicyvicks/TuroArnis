@@ -110,6 +110,24 @@ class PoseAnalyzer:
         self.last_detections = []
         print("[info] computer vision components ready.")
 
+    def clear_session_cache(self):
+        """Clear all per-session inference caches.
+        
+        Call this at the start of every new repetition / session so that
+        stale predictions, stick results and global features from the
+        previous rep cannot bleed into the next one.
+        """
+        # GCN prediction cache
+        if hasattr(self, '_cached_prediction'):
+            del self._cached_prediction
+        if hasattr(self, '_cached_g_feat'):
+            del self._cached_g_feat
+        # Stick detection result cache (keyed by person_id)
+        self._cached_stick_results.clear()
+        # Stick keypoint smoothing buffer
+        self.stick_buffer.clear()
+        print("[PoseAnalyzer] Session cache cleared.")
+
     def _calculate_iou(self, boxA, boxB):
         xA = max(boxA[0], boxB[0]); yA = max(boxA[1], boxB[1])
         xB = min(boxA[2], boxB[2]); yB = min(boxA[3], boxB[3])
@@ -712,6 +730,7 @@ class PoseAnalyzer:
                                 pose_kpts_array, stick_kpts_array, g_feat
                             )
                             self._cached_prediction = (predicted_class, confidence)
+                            self._cached_g_feat = g_feat  # cache for skipped frames
                         except Exception as e:
                             print(f"[error] GCN inference failed: {e}")
                             pass
@@ -721,6 +740,9 @@ class PoseAnalyzer:
                     #use cached prediction from previous frame
                     if hasattr(self, '_cached_prediction'):
                         predicted_class, confidence = self._cached_prediction
+                    # Restore cached global features for skipped frames
+                    if hasattr(self, '_cached_g_feat'):
+                        g_feat = self._cached_g_feat
                 
                 
                 # Stick detection already handled during GCN inference above (line 401)
@@ -728,10 +750,13 @@ class PoseAnalyzer:
                 
                 analysis_results[person_id]['predicted_class'] = predicted_class
                 analysis_results[person_id]['confidence'] = confidence
+                analysis_results[person_id]['global_features'] = g_feat if 'g_feat' in locals() else None
                 analysis_results[person_id]['live_angles'] = live_angles
                 analysis_results[person_id]['landmarks'] = pose_results.pose_landmarks
                 analysis_results[person_id]['world_landmarks'] = pose_results.pose_world_landmarks
                 analysis_results[person_id]['landmarks_absolute'] = abs_landmarks
+                analysis_results[person_id]['frame_w'] = w_frame if 'w_frame' in locals() else frame.shape[1]
+                analysis_results[person_id]['frame_h'] = h_frame if 'h_frame' in locals() else frame.shape[0]
 
         return list(analysis_results.values())
 

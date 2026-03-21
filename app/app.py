@@ -172,6 +172,22 @@ CATEGORY_COLORS = {
     "Block":  "#1a5276",   # Dark Navy Blue
 }
 
+# Maps each technique key to its lesson image filename (in app/assets/lesson_images/)
+LESSON_IMAGE_MAP = {
+    "crown_thrust_correct":       "crown.jpg",
+    "left_chest_thrust_correct":  "left_chest.jpg",
+    "left_elbow_block_correct":   "left_elbow.jpg",
+    "left_eye_thrust_correct":    "left_eye.jpg",
+    "left_knee_block_correct":    "left_knee.jpg",
+    "left_temple_block_correct":  "left_temple.jpg",
+    "right_chest_thrust_correct": "right_chest.jpg",
+    "right_elbow_block_correct":  "right_elbow.jpg",
+    "right_eye_thrust_correct":   "right_eye.jpg",
+    "right_knee_block_correct":   "right_knee.jpg",
+    "right_temple_block_correct": "right_temple.jpg",
+    "solar_plexus_thrust_correct":"solar_plexus.jpg",
+}
+
 class KioskApp(ctk.CTk):
     def __init__(self):
         super().__init__()
@@ -343,7 +359,7 @@ class KioskApp(ctk.CTk):
 
         btn_settings = ctk.CTkButton(self.video_canvas, text="RESTART SETUP", font=FONT_BOLD,
                                     fg_color="#f39c12", width=300, height=70, corner_radius=15,
-                                    command=lambda: self.show_user_count()) 
+                                    command=self.show_mode_select)
         self.add_widget(cx, cy + 60, btn_settings)
 
         btn_quit = ctk.CTkButton(self.video_canvas, text="END SESSION", font=FONT_BOLD,
@@ -461,13 +477,13 @@ class KioskApp(ctk.CTk):
                       font=("Inter", 20), fill="white")
 
         # Back button (top-left)
-        btn_back = ctk.CTkButton(self.video_canvas, text="← Mode Select",
-                                 font=("Inter", 18, "bold"),
+        btn_back = ctk.CTkButton(self.video_canvas, text="← Back",
+                                 font=("Inter", 18),
                                  fg_color="transparent", border_width=2,
                                  border_color="white", text_color="white",
-                                 hover_color="#ecf0f1", height=44, width=200, corner_radius=22,
+                                 hover_color="#aecef7", height=44, width=160, corner_radius=22,
                                  command=self.show_mode_select)
-        self.add_widget(150, 60, btn_back)
+        self.add_widget(120, 60, btn_back)
 
         # Scrollable card grid
         wrapper = ctk.CTkFrame(self.video_canvas, fg_color="transparent",
@@ -561,24 +577,67 @@ class KioskApp(ctk.CTk):
         right_panel.pack_propagate(False)
         self.add_widget(cx + 255, cy, right_panel)
 
-        # Image placeholder — click to zoom
+        # Image panel with Front / Left / Right viewpoint tabs
         media_box = ctk.CTkFrame(right_panel, fg_color="#ecf0f1",
-                                 corner_radius=16, width=400, height=340,
+                                 corner_radius=16, width=400, height=280,
                                  cursor="hand2")
-        media_box.pack(padx=30, pady=(24, 0))
+        media_box.pack(padx=30, pady=(16, 0))
         media_box.pack_propagate(False)
-        media_img_label = ctk.CTkLabel(media_box, text="🖼️", font=("Inter", 80))
+
+        img_filename = LESSON_IMAGE_MAP.get(technique["key"])
+        self._lesson_thumb_refs = {}   # viewpoint → CTkImage (prevents GC)
+        self._lesson_active_vp = technique["viewpoint"].lower()
+
+        # Pre-load all three viewpoint images
+        for vp in ("front", "left", "right"):
+            if img_filename:
+                img_path = get_resource_path(f"app/assets/lesson_images/{vp}/{img_filename}")
+                try:
+                    pil_img = Image.open(img_path)
+                    pil_img.thumbnail((380, 240), Image.LANCZOS)
+                    self._lesson_thumb_refs[vp] = ctk.CTkImage(pil_img, size=pil_img.size)
+                except Exception as e:
+                    print(f"[LESSON] Could not pre-load {vp}/{img_filename}: {e}")
+
+        # Image display label inside media_box
+        media_img_label = ctk.CTkLabel(media_box, text="", image=None)
         media_img_label.pack(expand=True)
-        media_cap_label = ctk.CTkLabel(media_box, text="Reference image\n(tap to enlarge)",
-                     font=("Inter", 16), text_color="gray")
-        media_cap_label.pack(pady=(0, 16))
-        # Bind click on the whole box and its children to zoom
-        for w in (media_box, media_img_label, media_cap_label):
+
+        # Tab strip (must be defined before _switch_vp so closure can reference tab_labels)
+        tab_strip = ctk.CTkFrame(right_panel, fg_color="transparent")
+        tab_strip.pack(pady=(6, 0))
+        tab_labels = []
+
+        def _switch_vp(vp: str):
+            self._lesson_active_vp = vp
+            ctk_img = self._lesson_thumb_refs.get(vp)
+            if ctk_img:
+                media_img_label.configure(image=ctk_img, text="")
+            else:
+                media_img_label.configure(image=None, text="🖼️", font=("Inter", 60))
+            for lbl, bvp in tab_labels:
+                lbl.configure(
+                    fg_color=cat_color if bvp == vp else "#dfe6e9",
+                    text_color="white" if bvp == vp else COLOR_TEXT
+                )
+
+        for vp_label, vp_key in [("Front", "front"), ("Left", "left"), ("Right", "right")]:
+            lbl = ctk.CTkLabel(tab_strip, text=vp_label, font=("Inter", 15, "bold"),
+                               width=90, height=32, corner_radius=8, cursor="hand2",
+                               fg_color="#dfe6e9", text_color=COLOR_TEXT)
+            lbl.pack(side="left", padx=4)
+            lbl.bind("<Button-1>", lambda e, v=vp_key: _switch_vp(v))
+            tab_labels.append((lbl, vp_key))
+
+        # Seed initial image and active tab highlight
+        _switch_vp(self._lesson_active_vp)
+
+        # Bind image box click to zoom
+        for w in (media_box, media_img_label):
             w.bind("<Button-1>", lambda e: self._show_image_zoom())
 
-        ctk.CTkLabel(right_panel,
-                     text=f"📷  Recommended viewpoint: {technique['viewpoint']}",
-                     font=("Inter", 16), text_color=COLOR_TEXT).pack(pady=(16, 0))
+        ctk.CTkLabel(right_panel, text="Click image to enlarge",
+                     font=("Inter", 13), text_color="gray").pack(pady=(4, 0))
 
         ctk.CTkButton(right_panel, text="Let's Practise! →",
                       font=("Inter", 22, "bold"),
@@ -586,11 +645,11 @@ class KioskApp(ctk.CTk):
                       height=60, corner_radius=16,
                       command=self.start_lesson_practice).pack(padx=30, pady=(16, 0), fill="x")
 
-        ctk.CTkButton(right_panel, text="← Choose Another",
+        ctk.CTkButton(right_panel, text="← Back",
                       font=("Inter", 18),
                       fg_color="transparent", border_width=2,
                       border_color=COLOR_TEXT, text_color=COLOR_TEXT,
-                      hover_color="#ecf0f1", height=48, corner_radius=12,
+                      hover_color="#ecf0f1", height=44, corner_radius=22,
                       command=self.show_lesson_select).pack(padx=30, pady=(10, 24), fill="x")
 
     def _show_image_zoom(self):
@@ -598,22 +657,42 @@ class KioskApp(ctk.CTk):
         cx = self.screen_width // 2
         sh = self.screen_height
 
-        # Semi-transparent backdrop (canvas rectangle)
+        # Semi-transparent backdrop
         overlay_bg = self.video_canvas.create_rectangle(
             0, 0, self.screen_width, sh,
             fill="#000000", stipple="gray50", outline=""
         )
         self.canvas_items.append(overlay_bg)
 
-        # Zoom panel — same width as the original image box, full screen height
+        # Zoom panel
         zoom_panel = ctk.CTkFrame(self.video_canvas, fg_color="#ecf0f1",
-                                  corner_radius=20, width=460, height=sh - 40)
+                                  corner_radius=20, width=480, height=sh - 40)
         zoom_panel.pack_propagate(False)
 
-        ctk.CTkLabel(zoom_panel, text="🖼️", font=("Inter", 160)).pack(expand=True)
-        ctk.CTkLabel(zoom_panel,
-                     text=f"Reference image — {self.current_lesson['name']}\n(full image coming soon)",
-                     font=("Inter", 18), text_color="gray").pack(pady=(0, 16))
+        # Load full-size image for zoom view — use whichever tab is active
+        self._lesson_zoom_ref = None
+        technique_key = self.current_lesson.get("key") if self.current_lesson else None
+        img_filename = LESSON_IMAGE_MAP.get(technique_key) if technique_key else None
+        active_vp = getattr(self, "_lesson_active_vp", "front")
+        if img_filename:
+            img_path = get_resource_path(f"app/assets/lesson_images/{active_vp}/{img_filename}")
+            try:
+                pil_img = Image.open(img_path)
+                max_w, max_h = 440, sh - 140
+                pil_img.thumbnail((max_w, max_h), Image.LANCZOS)
+                ctk_img = ctk.CTkImage(pil_img, size=pil_img.size)
+                self._lesson_zoom_ref = ctk_img
+                ctk.CTkLabel(zoom_panel, image=ctk_img, text="").pack(expand=True, pady=(16, 0))
+            except Exception as e:
+                print(f"[LESSON] Could not load zoom image ({active_vp}): {e}")
+                ctk.CTkLabel(zoom_panel, text="🖼️", font=("Inter", 160)).pack(expand=True)
+        else:
+            ctk.CTkLabel(zoom_panel, text="🖼️", font=("Inter", 160)).pack(expand=True)
+
+        technique_name = self.current_lesson["name"] if self.current_lesson else ""
+        vp_display = active_vp.title()
+        ctk.CTkLabel(zoom_panel, text=f"{technique_name}  ({vp_display} view)",
+                     font=("Inter", 20, "bold"), text_color="#2c3e50").pack(pady=(8, 0))
 
         ctk.CTkButton(zoom_panel, text="✕  Close",
                       font=("Inter", 18, "bold"),
@@ -674,10 +753,10 @@ class KioskApp(ctk.CTk):
             btn.pack(side="left", padx=30)
         self.add_widget(cx, cy + 50, bg_frame)
         
-        # Back Button — return to Mode Select, not Splash
-        btn_back = ctk.CTkButton(self.video_canvas, text="← BACK", font=("Inter", 24, "bold"),
-                                fg_color="transparent", border_width=2, border_color=COLOR_TEXT, text_color=COLOR_TEXT,
-                                hover_color="#ecf0f1", height=60, width=200, corner_radius=30,
+        # Back Button — return to Mode Select
+        btn_back = ctk.CTkButton(self.video_canvas, text="← Back", font=("Inter", 18),
+                                fg_color="transparent", border_width=2, border_color="white", text_color="white",
+                                hover_color="#aecef7", height=44, width=160, corner_radius=22,
                                 command=self.show_mode_select)
         self.add_widget(cx, cy + 250, btn_back)
 
@@ -719,7 +798,7 @@ class KioskApp(ctk.CTk):
                                     command=lambda idx=i: self.open_user_select(idx))
             btn_user.pack(pady=(30, 20), padx=20, fill="x")
             
-            ctk.CTkLabel(card, text="Tap to change user", font=("Inter", 14), text_color="gray").pack(pady=(0, 20))
+            ctk.CTkLabel(card, text="Click to change user", font=("Inter", 14), text_color="gray").pack(pady=(0, 20))
             
             ctk.CTkLabel(card, text="Viewpoint", font=("Inter", 18, "bold"), text_color=COLOR_TEXT).pack(anchor="w", padx=20)
             ctk.CTkSegmentedButton(card, values=["Front", "Right Side", "Left Side"], variable=self.user_configs[i]['viewpoint'], 
@@ -736,11 +815,11 @@ class KioskApp(ctk.CTk):
         self.add_widget(self.screen_width//2, self.screen_height - 100, btn)
         
         # Back Button
-        btn_back = ctk.CTkButton(self.video_canvas, text="← BACK", font=("Inter", 24, "bold"),
+        btn_back = ctk.CTkButton(self.video_canvas, text="← Back", font=("Inter", 18),
                                 fg_color="transparent", border_width=2, border_color="white", text_color="white",
-                                hover_color="#ffffff", height=60, width=150, corner_radius=30,
+                                hover_color="#aecef7", height=44, width=160, corner_radius=22,
                                 command=self.show_user_count)
-        self.add_widget(150, self.screen_height - 100, btn_back)
+        self.add_widget(120, self.screen_height - 60, btn_back)
 
     def open_user_select(self, slot_index):
         dialog = UserManagementDialog(self, self.db)
@@ -756,10 +835,15 @@ class KioskApp(ctk.CTk):
         self.app_state = AppState.ZONING
         self.clear_ui()
         self.frozen_frame = None
-        self.analysis_results = {} 
+        self.analysis_results = {}
+        self.realtime_pose_cache.clear()  # drop stale per-zone pose data
         self.show_user_names = True
         self.names_shown_time = time.time()
         self.zoning_start_time = time.time()
+        # Clear all GCN / stick / smoothing caches so the warm-up check
+        # starts fresh and deferral doesn't hang on the next rep.
+        if self.pose_analyzer:
+            self.pose_analyzer.clear_session_cache()
         self.after(200, self.check_zones_and_countdown)
 
     def start_zoning_check(self):
@@ -774,7 +858,14 @@ class KioskApp(ctk.CTk):
             target_pose = self.current_lesson["key"] if self.current_lesson else None
             sid = self.db.start_session(user_id, target_pose=target_pose)
             config['session_id'] = sid
-            
+
+        # Clear stale caches from any previous session so the GCN warm-up
+        # check doesn't see a leftover _cached_g_feat and so inference
+        # starts fresh without leaked predictions or stick history.
+        self.realtime_pose_cache.clear()
+        if self.pose_analyzer:
+            self.pose_analyzer.clear_session_cache()
+
         self.app_state = AppState.ZONING
         self.clear_ui()
         self.show_user_names = True
@@ -822,21 +913,23 @@ class KioskApp(ctk.CTk):
                         landmarks = person_data.get('landmarks_absolute')
                         
                         if landmarks and len(landmarks) >= 33:
-                            # Check visibility and positioning
-                            # Key landmarks: nose (0), shoulders (11,12), hips (23,24), ankles (27,28)
-                            visible_count = 0
-                            key_indices = [0, 11, 12, 23, 24, 27, 28]
-                            
-                            for idx in key_indices:
-                                if idx < len(landmarks):
-                                    x, y, z = landmarks[idx]
-                                    # Check if landmark is within zone bounds (with margin)
-                                    if 0 < x < zone_w and 0 < y < zone_h:
-                                        visible_count += 1
-                            
-                            # Require at least 5 out of 7 key landmarks visible
-                            if visible_count >= 5:
-                                properly_positioned += 1
+                            # Use the same full-body check as live feedback for consistency
+                            if self.feedback_analyzer:
+                                is_vis, _, _, _ = self.feedback_analyzer.is_full_body_visible(
+                                    landmarks, zone_w, zone_h, min_visible=7
+                                )
+                                if is_vis:
+                                    properly_positioned += 1
+                            else:
+                                # Fallback if feedback_analyzer not ready
+                                visible_count = sum(
+                                    1 for idx in [0, 11, 12, 23, 24, 27, 28]
+                                    if idx < len(landmarks)
+                                    and 0 < landmarks[idx][0] < zone_w
+                                    and 0 < landmarks[idx][1] < zone_h
+                                )
+                                if visible_count >= 5:
+                                    properly_positioned += 1
                 except:
                     pass
             
@@ -867,8 +960,38 @@ class KioskApp(ctk.CTk):
         
         self.count_text_id = self.video_canvas.create_text(cx, cy, text="5", font=("Inter", 200, "bold"), fill="white")
         self.canvas_items.append(self.count_text_id)
-        
+
+        # Kick off a background GCN warm-up inference so _cached_g_feat is
+        # set well before SNAP fires (5-second runway).
+        self._snapshot_defer_count = 0
+        threading.Thread(target=self._warmup_gcn, daemon=True).start()
+
         self.update_countdown()
+
+    def _warmup_gcn(self):
+        """Run one GCN inference in a background thread during countdown.
+
+        This populates _cached_g_feat / _cached_prediction so that
+        capture_snapshot() can proceed without deferring.
+        """
+        try:
+            frame = self.current_frame
+            if frame is None or self.pose_analyzer is None:
+                return
+            h, w = frame.shape[:2]
+            col_w = w // self.num_users
+            # Use zone 0; any zone is fine — we just need GCN to run once.
+            zone_frame = frame[:, 0:col_w].copy()
+            viewpoint = "front"  # default; exact viewpoint doesn't matter for warm-up
+            if self.pose_analyzer.gcn_engine:
+                self.pose_analyzer.gcn_engine.set_viewpoint(viewpoint)
+            self.pose_analyzer.process_frame(
+                zone_frame, skip_ml_inference=False, mode='snapshot'
+            )
+            print("[GCN-WARMUP] Warm-up inference complete — GCN ready.")
+        except Exception as e:
+            print(f"[GCN-WARMUP] Warm-up inference failed (non-fatal): {e}")
+
 
     def update_countdown(self):
         if self.app_state != AppState.COUNTDOWN: return
@@ -885,6 +1008,31 @@ class KioskApp(ctk.CTk):
             self.capture_snapshot()
 
     def capture_snapshot(self):
+        # Guard: ensure GCN has completed at least one inference so global_features
+        # will be available for hybrid feedback corrections.
+        gcn_ready = (
+            self.pose_analyzer is not None
+            and hasattr(self.pose_analyzer, '_cached_g_feat')
+        )
+        if not gcn_ready:
+            # Cap deferrals at 2 (max 2 extra seconds) so we never hang forever.
+            defer_count = getattr(self, '_snapshot_defer_count', 0)
+            if defer_count < 2:
+                self._snapshot_defer_count = defer_count + 1
+                if self.count_text_id:
+                    try:
+                        self.video_canvas.itemconfig(self.count_text_id, text="...", font=("Inter", 80, "bold"))
+                        if self.countdown_circle_id:
+                            self.video_canvas.itemconfig(self.countdown_circle_id, fill=COLOR_WARNING)
+                    except Exception:
+                        pass
+                print(f"[SNAPSHOT] GCN not warmed up yet — deferring 1 s ({self._snapshot_defer_count}/2)")
+                self.after(1000, self.capture_snapshot)
+                return
+            else:
+                # Proceed anyway — don't let a slow warm-up block the user indefinitely.
+                print("[SNAPSHOT] Defer limit reached — proceeding without warm-up cache.")
+
         self.app_state = AppState.SNAPSHOT
         if self.current_frame is not None:
             self.frozen_frame = self.current_frame.copy()
@@ -893,10 +1041,11 @@ class KioskApp(ctk.CTk):
                 self.analysis_results = self.analyze_zones(self.frozen_frame)
         self.after(800, self.show_feedback)
 
+
     def show_feedback(self):
         self.app_state = AppState.FEEDBACK
         self.clear_ui()
-        self.feedback_timer = 6
+        self.feedback_timer = 10  # 10 s so users have time to read all corrections
         
         # Use letterbox-aware coordinates so text aligns with the actual video zones
         vx = self.video_x_offset
@@ -953,40 +1102,49 @@ class KioskApp(ctk.CTk):
                         result=zone_result,
                         target_form=target_key,
                         confidence_threshold=threshold,
-                        viewpoint=viewpoint
+                        viewpoint=viewpoint,
+                        gcn_engine=self.pose_analyzer.gcn_engine if self.pose_analyzer else None
                     )
-                    prioritized = self.feedback_analyzer.get_prioritized_messages(analysis, max_messages=3)
-                    # Corrections first, then warnings, skip suggestions unless clean
+                    # No cap — show every correction the system found
+                    prioritized = self.feedback_analyzer.get_prioritized_messages(analysis, max_messages=10)
                     feedback_messages = [msg for msg, t in prioritized if t in ('error', 'warning')]
                     if not feedback_messages and correct_hit and high_confidence:
                         suggestions = [msg for msg, t in prioritized if t == 'suggestion']
                         if suggestions:
                             feedback_messages = [suggestions[0]]
+                    print(f"[FEEDBACK][GUIDED] target={target_key} | is_correct={analysis.get('is_correct')} | conf={confidence:.2f} | errors={analysis.get('errors',[])} | warnings={analysis.get('warnings',[])} | msgs={feedback_messages}")
+
+                target_display = target_key.replace('_correct', '').replace('_', ' ').title()
 
                 if wrong_hit:
-                    color = "#e67e22"          # Orange — wrong technique
+                    color = "#e67e22"
                     detected_display = predicted_class.replace('_correct', '').replace('_', ' ').title()
-                    target_display   = target_key.replace('_correct', '').replace('_', ' ').title()
-                    score_text = f"WRONG TECHNIQUE"
-                    # Prepend a redirect message; keep at most 1 form correction
-                    feedback_messages = [f"You did: {detected_display}",
-                                         f"Target: {target_display}"] + feedback_messages[:1]
+                    score_text = "WRONG TECHNIQUE"
+                    # Show ALL real corrections toward the target form — no cap
+                    if not feedback_messages:
+                        feedback_messages = [f"Adjust to {target_display} position"]
                 elif correct_hit and high_confidence:
-                    color = "#2ecc71"           # Green — excellent
+                    color = "#2ecc71"
                     score_text = "EXCELLENT!"
                 elif correct_hit:
-                    color = "#bfff00"           # Lime — good
+                    color = "#bfff00"
                     score_text = "GOOD"
-                else:
-                    color = "#e74c3c"           # Red — not detected
-                    score_text = "NOT DETECTED"
-                    # Still show form corrections so user knows what to fix
+                    # Show corrections even on a good hit — they still have room to improve
                     if not feedback_messages:
-                        target_display = target_key.replace('_correct', '').replace('_', ' ').title()
-                        feedback_messages = [f"Target: {target_display}", "Get into position and try again"]
+                        feedback_messages = ["Almost there — refine your form"]
+                else:
+                    color = "#e74c3c"
+                    score_text = "NOT DETECTED"
+                    # Show corrections if available, else a useful directional hint
+                    if not feedback_messages:
+                        feedback_messages = [f"Get into {target_display} position", "Face the camera fully"]
 
                 # is_correct flag for DB: only true when the right technique was hit well
                 is_correct_db = correct_hit and high_confidence
+                # Track rep success so _show_lesson_feedback_end knows whether to celebrate
+                # or silently restart. Use a per-user flag keyed by zone index.
+                if i == 0:  # Only the first zone drives the lesson gate
+                    self.last_attempt_success = is_correct_db
 
             else:
                 # ── FREE PRACTICE MODE ───────────────────────────────────
@@ -1003,19 +1161,24 @@ class KioskApp(ctk.CTk):
                     color = "#f39c12"
                     score_text = "FAIR"
 
-                if pose_detected and self.feedback_analyzer:
+                if self.feedback_analyzer:
+                    # In free practice, compare against the predicted class.
+                    # Use a raised threshold so we still surface corrections
+                    # even when confidence is high — corrections are the main goal.
+                    fp_threshold = min(threshold + 0.15, 0.98)
                     analysis = self.feedback_analyzer.analyze(
                         result=zone_result,
                         target_form=predicted_class,
-                        confidence_threshold=threshold,
-                        viewpoint=viewpoint
+                        confidence_threshold=fp_threshold,
+                        viewpoint=viewpoint,
+                        gcn_engine=self.pose_analyzer.gcn_engine if self.pose_analyzer else None
                     )
-                    prioritized = self.feedback_analyzer.get_prioritized_messages(analysis, max_messages=2)
+                    prioritized = self.feedback_analyzer.get_prioritized_messages(analysis, max_messages=10)
+                    # Always show errors/warnings first; fall back to suggestions only if nothing else
                     feedback_messages = [msg for msg, t in prioritized if t in ('error', 'warning')]
-                    if high_confidence and not feedback_messages:
-                        suggestions = [msg for msg, t in prioritized if t == 'suggestion']
-                        if suggestions:
-                            feedback_messages.append(suggestions[0])
+                    if not feedback_messages:
+                        feedback_messages = [msg for msg, t in prioritized if t == 'suggestion']
+                    print(f"[FEEDBACK][FREE]   predicted={predicted_class} | is_correct={analysis.get('is_correct')} | conf={confidence:.2f} | errors={analysis.get('errors',[])} | warnings={analysis.get('warnings',[])} | msgs={feedback_messages}")
 
                 is_correct_db = high_confidence
             
@@ -1046,25 +1209,25 @@ class KioskApp(ctk.CTk):
             self.add_text(cx, video_bottom - 185, score_text, font=score_font, fill=color)
 
             # --- DISPLAY CORRECTIVE FEEDBACK ---
+            # Stick indicator is fixed at the very bottom; corrections grow UPWARD from above it.
+            stick_text = "✓ Stick" if stick_detected else "✗ No stick"
+            stick_color = "#27ae60" if stick_detected else "#95a5a6"
+            self.add_text(cx, video_bottom - 30, stick_text, font=("Inter", 16), fill=stick_color)
+
             if feedback_messages:
-                # Non-excellent: hints are the hero — large, prominent, with generous spacing
-                hint_font  = ("Inter", 20, "bold") if is_excellent else ("Inter", 24, "bold")
-                hint_color = "white"
-                hint_spacing = 32 if is_excellent else 38
-                y_offset = video_bottom - (145 if is_excellent else 150)
-                for msg in feedback_messages:
-                    self.add_text(cx, y_offset, msg, font=hint_font, fill=hint_color)
-                    y_offset += hint_spacing
+                hint_font    = ("Inter", 20, "bold") if is_excellent else ("Inter", 22, "bold")
+                hint_color   = "white"
+                hint_spacing = 30  # px between lines
+                # Start just above the stick indicator and grow upward
+                y_base = video_bottom - 60
+                for msg in reversed(feedback_messages):
+                    self.add_text(cx, y_base, msg, font=hint_font, fill=hint_color)
+                    y_base -= hint_spacing
             else:
                 # No hints: show confidence % as secondary info
                 if pose_detected:
                     percentage = f"{int(confidence * 100)}%"
-                    self.add_text(cx, video_bottom - 130, percentage, font=("Inter", 24), fill="white")
-            
-            # Stick detection indicator
-            stick_text = "✓ Stick" if stick_detected else "✗ No stick"
-            stick_color = "#27ae60" if stick_detected else "#95a5a6"
-            self.add_text(cx, video_bottom - 90, stick_text, font=("Inter", 16), fill=stick_color)
+                    self.add_text(cx, video_bottom - 70, percentage, font=("Inter", 24), fill="white")
         
         # Timer label (must exist before update_feedback_timer tries to itemconfig it)
         self.timer_text_id = self.video_canvas.create_text(
@@ -1226,7 +1389,22 @@ class KioskApp(ctk.CTk):
                 self.restart_zoning()
 
     def _show_lesson_feedback_end(self):
-        """Post-feedback screen shown in lesson mode — Try Again or Choose Another."""
+        """Post-feedback screen shown in lesson mode.
+
+        Only shows the 'Rep Complete!' celebration screen if the user
+        actually hit the target pose at an acceptable confidence.
+        If the attempt failed (wrong technique or not detected),
+        it silently restarts the zoning phase so the user tries again.
+        """
+        succeeded = getattr(self, 'last_attempt_success', False)
+
+        if not succeeded:
+            # Attempt failed — restart immediately without any celebration screen.
+            print("[LESSON] Attempt did not meet target — restarting zoning.")
+            self.restart_zoning()
+            return
+
+        # Attempt succeeded — show the celebration / next-step screen.
         self.clear_ui()
         self.video_canvas.configure(bg=COLOR_BG)
         cx, cy = self.screen_width // 2, self.screen_height // 2
@@ -1297,20 +1475,23 @@ class KioskApp(ctk.CTk):
                 is_correct = zone_data.get('is_correct', False)
                 
                 if status == 'perfect':
-                     skeleton_color = (0, 255, 0)  # Green - Perfect
+                     skeleton_color = (0, 255, 0)    # Green - Perfect
                      keypoint_fill = (0, 255, 0)
                      keypoint_border = (0, 200, 0)
                 elif status == 'good':
-                     # Lime Green / Yellowish-Green (BGR: Blue=0, Green=255, Red=191)
-                     skeleton_color = (0, 255, 191) 
+                     skeleton_color = (0, 255, 191)  # Lime - Good
                      keypoint_fill = (0, 255, 191)
                      keypoint_border = (0, 200, 150)
-                elif is_correct: # Fallback for boolean True without status
-                     skeleton_color = (0, 255, 0) 
+                elif status == 'wrong':
+                     skeleton_color = (0, 140, 255)  # Orange (BGR) - Wrong technique
+                     keypoint_fill = (0, 140, 255)
+                     keypoint_border = (0, 100, 200)
+                elif is_correct:  # Fallback for boolean True without status
+                     skeleton_color = (0, 255, 0)
                      keypoint_fill = (0, 255, 0)
                      keypoint_border = (0, 200, 0)
                 else:
-                     skeleton_color = (0, 0, 255)  # Red - Bad
+                     skeleton_color = (0, 0, 255)    # Red - Bad/Not detected
                      keypoint_fill = (0, 0, 255)
                      keypoint_border = (0, 0, 180)
             elif prediction_ready:
@@ -1455,8 +1636,13 @@ class KioskApp(ctk.CTk):
                             'confidence': confidence,
                             'landmarks': person_data.get('landmarks'),
                             'landmarks_absolute': person_data.get('landmarks_absolute'),
+                            'world_landmarks': person_data.get('world_landmarks'),
+                            'live_angles': person_data.get('live_angles'),
+                            'global_features': person_data.get('global_features'),
                             'stick_endpoints': person_data.get('stick_endpoints'),
-                            'stick_detected': person_data.get('stick_endpoints') is not None
+                            'stick_detected': person_data.get('stick_endpoints') is not None,
+                            'frame_w': person_data.get('frame_w', zone_frame.shape[1]),
+                            'frame_h': person_data.get('frame_h', zone_frame.shape[0]),
                         }
                     elif isinstance(results, dict):
                         # Fallback for dict format (shouldn't happen but handle it)
@@ -1477,8 +1663,13 @@ class KioskApp(ctk.CTk):
                                 'confidence': confidence,
                                 'landmarks': person_data.get('landmarks'),
                                 'landmarks_absolute': person_data.get('landmarks_absolute'),
+                                'world_landmarks': person_data.get('world_landmarks'),
+                                'live_angles': person_data.get('live_angles'),
+                                'global_features': person_data.get('global_features'),
                                 'stick_endpoints': person_data.get('stick_endpoints'),
-                                'stick_detected': person_data.get('stick_endpoints') is not None
+                                'stick_detected': person_data.get('stick_endpoints') is not None,
+                                'frame_w': person_data.get('frame_w', zone_frame.shape[1]),
+                                'frame_h': person_data.get('frame_h', zone_frame.shape[0]),
                             }
                             break  # Only use first person in zone
                     else:
@@ -1644,28 +1835,36 @@ class KioskApp(ctk.CTk):
                     try:
                         predicted = self.analysis_results[i].get('predicted_class', 'N/A')
                         conf = self.analysis_results[i].get('confidence', 0.0)
-                        
+
                         # Pure recognition mode - confidence-based coloring only
                         user_conf = self.user_configs[i]
-                        viewpoint_ui = user_conf['viewpoint'].get()
+                        vp_raw = user_conf['viewpoint']
+                        viewpoint_ui = vp_raw.get() if hasattr(vp_raw, 'get') else vp_raw
                         viewpoint_mapping = {
                             "Front": "front",
                             "Right Side": "right",
                             "Left Side": "left"
                         }
                         viewpoint = viewpoint_mapping.get(viewpoint_ui, "front").lower()
-                        
+
                         gcn_config = self.pose_analyzer.gcn_engine.config if (self.pose_analyzer and self.pose_analyzer.gcn_engine) else {}
                         confidence_threshold = gcn_config.get('models', {}).get(viewpoint, {}).get('confidence_threshold', 0.55)
-                        
+
                         # Determine quality based purely on confidence
                         pose_detected = (predicted != 'N/A') and (predicted.lower() != 'no technique detected') and (conf > 0)
                         high_confidence = (conf >= 0.60)
                         good_confidence = (conf >= 0.40)
-                        
+
                         # Store result with confidence-based status for skeleton coloring
                         result_copy = self.analysis_results[i].copy()
-                        
+
+                        # In guided lesson mode, also detect wrong technique → orange
+                        target_key = self.current_lesson.get('key') if self.current_lesson else None
+                        wrong_technique = (self.current_lesson is not None
+                                          and pose_detected
+                                          and target_key is not None
+                                          and predicted != target_key)
+
                         # Adjust landmarks from zone-local to full-frame coordinates
                         x_start = i * col_w
                         if 'landmarks_absolute' in result_copy and result_copy['landmarks_absolute']:
@@ -1679,20 +1878,23 @@ class KioskApp(ctk.CTk):
                                 (grip_pt[0] + x_start, grip_pt[1]),
                                 (tip_pt[0] + x_start, tip_pt[1])
                             )
-                        
-                        if not pose_detected:
-                            result_copy['status'] = 'bad'  # Red - No detection
+
+                        if wrong_technique:
+                            result_copy['status'] = 'wrong'   # Orange - wrong technique in lesson
+                            result_copy['is_correct'] = False
+                        elif not pose_detected:
+                            result_copy['status'] = 'bad'     # Red - No detection
                             result_copy['is_correct'] = False
                         elif high_confidence:
-                            result_copy['status'] = 'perfect'  # Green - Excellent
+                            result_copy['status'] = 'perfect' # Green - Excellent
                             result_copy['is_correct'] = True
                         elif good_confidence:
-                            result_copy['status'] = 'good'  # Lime - Good
+                            result_copy['status'] = 'good'    # Lime - Good
                             result_copy['is_correct'] = True
                         else:
-                            result_copy['status'] = 'bad'  # Red - Fair/Low confidence
+                            result_copy['status'] = 'bad'     # Red - Fair/Low confidence
                             result_copy['is_correct'] = False
-                        
+
                         feedback_results[i] = result_copy
                     except Exception as e:
                         print(f"Error preparing feedback for user {i}: {e}")

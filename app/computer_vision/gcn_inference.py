@@ -174,6 +174,49 @@ class GCNInferenceEngine:
 
         return best_class, best_conf, final_probs
 
+    def get_feature_corrections(
+        self,
+        global_features: dict,
+        target_class: str,
+    ) -> dict:
+        """
+        Compute hybrid similarity scores comparing the user's pose against the
+        target class template and return data needed for actionable corrections.
+
+        Returns:
+            {
+              'hybrid_scores':   np.ndarray of 30 similarity scores (0=worst, 1=best),
+              'feature_names':   list of 30 feature names in same order,
+              'raw_values':      dict feature_name → user's raw value,
+              'template_means':  dict feature_name → ideal mean from template,
+            }
+            or None if the target class template is unavailable.
+        """
+        key = f"{self.current_viewpoint}_{target_class}"
+        if self.templates is None or key not in self.templates:
+            return None
+
+        template = self.templates[key]
+        feature_names = list(global_features.keys())
+        hybrid_scores = compute_hybrid_features(
+            global_features,
+            self.templates,
+            viewpoint=self.current_viewpoint,
+            class_name=target_class,
+        )
+        template_means = {
+            fname: template[fname]['mean']
+            for fname in feature_names
+            if fname in template
+        }
+
+        return {
+            'hybrid_scores':  hybrid_scores,
+            'feature_names':  feature_names,
+            'raw_values':     dict(global_features),
+            'template_means': template_means,
+        }
+
 
 # Global instance (lazy-loaded)
 _gcn_engine: Optional[GCNInferenceEngine] = None

@@ -532,7 +532,7 @@ class TuroArnisGUI:
                 draw_color = COLOR_ERROR; box_color = user_color; is_correct = False
 
                 if self.target_form:
-                    feedback = self.feedback_analyzer.analyze(result, self.target_form, viewpoint=self.selected_viewpoint.get())
+                    feedback = self.feedback_analyzer.analyze(result, self.target_form, viewpoint=self.selected_viewpoint.get(), gcn_engine=self.analyzer.gcn_engine if self.analyzer else None)
                     is_correct = feedback['is_correct']
                     
                     if is_correct:
@@ -606,7 +606,7 @@ class TuroArnisGUI:
 
                 if self.target_form:
                     if 'feedback' not in dir():
-                        feedback = self.feedback_analyzer.analyze(result, self.target_form, viewpoint=self.selected_viewpoint.get())
+                        feedback = self.feedback_analyzer.analyze(result, self.target_form, viewpoint=self.selected_viewpoint.get(), gcn_engine=self.analyzer.gcn_engine if self.analyzer else None)
 
                     prioritized_messages = self.feedback_analyzer.get_prioritized_messages(feedback, max_messages=3)
                     

@@ -36,6 +36,10 @@ hiddenimports = [
     'app.gui.loading_spinner',
     'app.computer_vision.pose_analyzer',
     'app.computer_vision.feedback_analyzer',
+    'app.computer_vision.feedback_mapper',
+    'app.computer_vision.gcn_inference',
+    'app.models.gcn.model_architecture',
+    'app.models.gcn.feature_extraction',
     'app.database.db_manager',
     'app.utils.resource_path',
     'utils.device_manager', # Explicitly add as top-level if code imports it that way
@@ -45,6 +49,7 @@ hiddenimports = [
 # Explicitly collect data files for critical libraries
 datas = [
     ('app/assets', 'app/assets'),
+    ('app/assets/lesson_images', 'app/assets/lesson_images'),
     ('app/models', 'app/models'),
     ('app/models/gcn_model_config.json', 'app/models'),
     # Copy deployment_package if it exists, as main_app might use it (though seemingly not directly?)

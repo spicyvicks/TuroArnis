@@ -49,7 +49,9 @@ hiddenimports = [
 # Explicitly collect data files for critical libraries
 datas = [
     ('app/assets', 'app/assets'),
-    ('app/assets/lesson_images', 'app/assets/lesson_images'),
+    ('lesson/front_gif', 'lesson/front_gif'),
+    ('lesson/left_gif', 'lesson/left_gif'),
+    ('lesson/right_gif', 'lesson/right_gif'),
     ('app/models', 'app/models'),
     ('app/models/gcn_model_config.json', 'app/models'),
     # Copy deployment_package if it exists, as main_app might use it (though seemingly not directly?)
@@ -94,7 +96,7 @@ a = Analysis(
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=['torch_geometric.distributed'],
+    excludes=['torch_geometric.distributed', 'app.eval_app', 'app.main_app'],
     noarchive=False,
 )
 

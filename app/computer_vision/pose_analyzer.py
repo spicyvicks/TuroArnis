@@ -272,7 +272,7 @@ class PoseAnalyzer:
                 traceback.print_exc()
             return None, None
 
-    def process_frame(self, frame, skip_ml_inference=False, skip_stick_detection=False, mode='snapshot', target_pose=None, stick_hand_config=None):
+    def process_frame(self, frame, skip_ml_inference=False, skip_stick_detection=False, mode='snapshot', target_pose=None, stick_hand_config=None, skip_threshold=False):
         """
         Process frame with mode-based detection strategy:
         
@@ -727,7 +727,8 @@ class PoseAnalyzer:
                             
                             # 4. Run GCN Prediction
                             predicted_class, confidence, _ = self.gcn_engine.predict(
-                                pose_kpts_array, stick_kpts_array, g_feat
+                                pose_kpts_array, stick_kpts_array, g_feat,
+                                skip_threshold=skip_threshold
                             )
                             self._cached_prediction = (predicted_class, confidence)
                             self._cached_g_feat = g_feat  # cache for skipped frames
@@ -751,6 +752,8 @@ class PoseAnalyzer:
                 analysis_results[person_id]['predicted_class'] = predicted_class
                 analysis_results[person_id]['confidence'] = confidence
                 analysis_results[person_id]['global_features'] = g_feat if 'g_feat' in locals() else None
+                analysis_results[person_id]['pose_kpts_array'] = pose_kpts_array if 'pose_kpts_array' in locals() else None
+                analysis_results[person_id]['stick_kpts_array'] = stick_kpts_array if 'stick_kpts_array' in locals() else None
                 analysis_results[person_id]['live_angles'] = live_angles
                 analysis_results[person_id]['landmarks'] = pose_results.pose_landmarks
                 analysis_results[person_id]['world_landmarks'] = pose_results.pose_world_landmarks

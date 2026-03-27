@@ -104,9 +104,15 @@ class GCNInferenceEngine:
 
     def predict(self, pose_keypoints: np.ndarray,
                 stick_keypoints: np.ndarray,
-                global_features: dict) -> Tuple[str, float, np.ndarray]:
+                global_features: dict,
+                skip_threshold: bool = False) -> Tuple[str, float, np.ndarray]:
         """
         Run GCN inference on extracted features.
+
+        Args:
+            skip_threshold: If True, return the raw top prediction without
+                            applying the confidence threshold filter.  Used by
+                            the evaluation tool only.
 
         Returns:
             predicted_class_name: str
@@ -165,14 +171,54 @@ class GCNInferenceEngine:
                     best_class = candidate
                     final_probs = probs.cpu().numpy()
 
-        # Apply per-viewpoint confidence threshold
-        threshold = self.config['models'].get(self.current_viewpoint, {}).get('confidence_threshold', 0.50)
-        
-        # Filter neutral predictions or low confidence
-        if best_class == 'neutral' or best_conf < threshold:
-            return "No Technique Detected", 0.0, final_probs
+        # Apply per-viewpoint confidence threshold (unless caller opts out)
+        if not skip_threshold:
+            threshold = self.config['models'].get(self.current_viewpoint, {}).get('confidence_threshold', 0.50)
+            if best_class == 'neutral' or best_conf < threshold:
+                return "No Technique Detected", 0.0, final_probs
 
         return best_class, best_conf, final_probs
+
+    def predict_for_class(self, pose_keypoints: np.ndarray,
+                          stick_keypoints: np.ndarray,
+                          global_features: dict,
+                          target_class: str) -> float:
+        """
+        Run a single GCN forward pass using the target class's template
+        hypothesis and return its self-consistent probability.
+
+        This answers: "How confident is the GCN that this pose IS [target_class]
+        when compared against [target_class]'s reference template?"
+
+        Returns:
+            probability (0-1) for the target class
+        """
+        if target_class not in CLASS_NAMES:
+            return 0.0
+
+        node_features = extract_node_features(pose_keypoints, stick_keypoints)
+        x = torch.tensor(node_features, dtype=torch.float32).to(self.device)
+        batch = torch.zeros(35, dtype=torch.long).to(self.device)
+
+        model = self.models.get(self.current_viewpoint)
+        if model is None:
+            if not self.models:
+                return 0.0
+            model = next(iter(self.models.values()))
+
+        hybrid_features = compute_hybrid_features(
+            global_features, self.templates,
+            viewpoint=self.current_viewpoint,
+            class_name=target_class
+        )
+        h = torch.tensor(hybrid_features, dtype=torch.float32).unsqueeze(0).to(self.device)
+
+        with torch.no_grad():
+            logits = model(x, self.edge_index, batch, h)
+            probs = torch.softmax(logits, dim=1)[0]
+
+        target_idx = CLASS_NAMES.index(target_class)
+        return probs[target_idx].item()
 
     def get_feature_corrections(
         self,

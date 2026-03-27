@@ -172,21 +172,55 @@ CATEGORY_COLORS = {
     "Block":  "#1a5276",   # Dark Navy Blue
 }
 
-# Maps each technique key to its lesson image filename (in app/assets/lesson_images/)
+# Maps each technique key to its lesson GIF filename (in lesson/{vp}_gif/)
 LESSON_IMAGE_MAP = {
-    "crown_thrust_correct":       "crown.jpg",
-    "left_chest_thrust_correct":  "left_chest.jpg",
-    "left_elbow_block_correct":   "left_elbow.jpg",
-    "left_eye_thrust_correct":    "left_eye.jpg",
-    "left_knee_block_correct":    "left_knee.jpg",
-    "left_temple_block_correct":  "left_temple.jpg",
-    "right_chest_thrust_correct": "right_chest.jpg",
-    "right_elbow_block_correct":  "right_elbow.jpg",
-    "right_eye_thrust_correct":   "right_eye.jpg",
-    "right_knee_block_correct":   "right_knee.jpg",
-    "right_temple_block_correct": "right_temple.jpg",
-    "solar_plexus_thrust_correct":"solar_plexus.jpg",
+    "crown_thrust_correct":       "crown.gif",
+    "left_chest_thrust_correct":  "left_chest.gif",
+    "left_elbow_block_correct":   "left_elbow.gif",
+    "left_eye_thrust_correct":    "left_eye.gif",
+    "left_knee_block_correct":    "left_knee.gif",
+    "left_temple_block_correct":  "left_temple.gif",
+    "right_chest_thrust_correct": "right_chest.gif",
+    "right_elbow_block_correct":  "right_elbow.gif",
+    "right_eye_thrust_correct":   "right_eye.gif",
+    "right_knee_block_correct":   "right_knee.gif",
+    "right_temple_block_correct": "right_temple.gif",
+    "solar_plexus_thrust_correct":"solar_plexus.gif",
 }
+
+def _lesson_gif_filename(technique_key: str, viewpoint: str) -> str:
+    """Return the correct GIF filename for a technique + viewpoint combo."""
+    return LESSON_IMAGE_MAP.get(technique_key, "")
+
+MAX_GIF_FRAMES = 30  # cap to prevent memory exhaustion on large GIFs
+
+def _load_gif_frames(gif_path: str, max_size: tuple) -> list:
+    """Load frames from an animated GIF, sampling evenly if too many frames.
+    Returns list of (CTkImage, delay_ms).  Capped at MAX_GIF_FRAMES."""
+    frames = []
+    try:
+        pil_img = Image.open(gif_path)
+        n_frames = getattr(pil_img, 'n_frames', 1)
+
+        # Determine which frame indices to keep
+        if n_frames <= MAX_GIF_FRAMES:
+            indices = list(range(n_frames))
+        else:
+            # Sample evenly across the animation
+            indices = [int(i * n_frames / MAX_GIF_FRAMES) for i in range(MAX_GIF_FRAMES)]
+
+        for i in indices:
+            pil_img.seek(i)
+            frame = pil_img.copy().convert("RGBA")
+            frame.thumbnail(max_size, Image.LANCZOS)
+            delay = pil_img.info.get('duration', 100)  # ms per frame
+            if delay < 20:
+                delay = 100  # safety floor
+            ctk_img = ctk.CTkImage(frame, size=frame.size)
+            frames.append((ctk_img, delay))
+    except Exception as e:
+        print(f"[LESSON] Error loading GIF frames from {gif_path}: {e}")
+    return frames
 
 class KioskApp(ctk.CTk):
     def __init__(self):
@@ -313,6 +347,12 @@ class KioskApp(ctk.CTk):
         sys.exit(0)
 
     def clear_ui(self):
+        # Cancel any running GIF animations
+        for attr in ('_lesson_gif_anim_id', '_lesson_zoom_anim_id'):
+            anim_id = getattr(self, attr, None)
+            if anim_id is not None:
+                self.after_cancel(anim_id)
+                setattr(self, attr, None)
         for item in self.canvas_items:
             self.video_canvas.delete(item)
         self.canvas_items = []
@@ -584,23 +624,17 @@ class KioskApp(ctk.CTk):
         media_box.pack(padx=30, pady=(16, 0))
         media_box.pack_propagate(False)
 
-        img_filename = LESSON_IMAGE_MAP.get(technique["key"])
-        self._lesson_thumb_refs = {}   # viewpoint → CTkImage (prevents GC)
+        self._lesson_gif_frames = {}   # viewpoint → list of (CTkImage, delay_ms)
+        self._lesson_thumb_refs = {}   # keep refs to prevent GC
         self._lesson_active_vp = technique["viewpoint"].lower()
-
-        # Pre-load all three viewpoint images
-        for vp in ("front", "left", "right"):
-            if img_filename:
-                img_path = get_resource_path(f"app/assets/lesson_images/{vp}/{img_filename}")
-                try:
-                    pil_img = Image.open(img_path)
-                    pil_img.thumbnail((380, 240), Image.LANCZOS)
-                    self._lesson_thumb_refs[vp] = ctk.CTkImage(pil_img, size=pil_img.size)
-                except Exception as e:
-                    print(f"[LESSON] Could not pre-load {vp}/{img_filename}: {e}")
+        self._lesson_gif_anim_id = None  # after() id for cancellation
+        self._lesson_gif_frame_idx = 0
+        self._lesson_technique_key = technique["key"]
+        self._lesson_loading_vp = None   # track which vp is being loaded
 
         # Image display label inside media_box
-        media_img_label = ctk.CTkLabel(media_box, text="", image=None)
+        media_img_label = ctk.CTkLabel(media_box, text="Loading...",
+                                       font=("Inter", 18), image=None)
         media_img_label.pack(expand=True)
 
         # Tab strip (must be defined before _switch_vp so closure can reference tab_labels)
@@ -608,13 +642,65 @@ class KioskApp(ctk.CTk):
         tab_strip.pack(pady=(6, 0))
         tab_labels = []
 
+        def _animate_gif():
+            """Cycle through GIF frames for the active viewpoint."""
+            frames = self._lesson_gif_frames.get(self._lesson_active_vp, [])
+            if not frames:
+                return
+            self._lesson_gif_frame_idx = self._lesson_gif_frame_idx % len(frames)
+            ctk_img, delay = frames[self._lesson_gif_frame_idx]
+            try:
+                media_img_label.configure(image=ctk_img, text="")
+            except Exception:
+                return  # widget destroyed
+            self._lesson_gif_frame_idx += 1
+            self._lesson_gif_anim_id = self.after(delay, _animate_gif)
+
+        def _on_frames_loaded(vp, frames):
+            """Callback on main thread once background loading finishes."""
+            if not frames:
+                return
+            self._lesson_gif_frames[vp] = frames
+            self._lesson_thumb_refs[vp] = frames[0][0]
+            # Only start animation if this viewpoint is still the active one
+            if self._lesson_active_vp == vp:
+                self._lesson_gif_frame_idx = 0
+                media_img_label.configure(image=frames[0][0], text="")
+                _animate_gif()
+
+        def _load_vp_async(vp):
+            """Load GIF frames for a viewpoint in a background thread."""
+            if vp in self._lesson_gif_frames:
+                # Already loaded — just start animating
+                _on_frames_loaded(vp, self._lesson_gif_frames[vp])
+                return
+            self._lesson_loading_vp = vp
+            media_img_label.configure(image=None, text="Loading...", font=("Inter", 18))
+            gif_name = _lesson_gif_filename(self._lesson_technique_key, vp)
+            if not gif_name:
+                media_img_label.configure(text="\U0001f5bc\ufe0f", font=("Inter", 60))
+                return
+            gif_path = get_resource_path(f"lesson/{vp}_gif/{gif_name}")
+
+            def _bg_load():
+                frames = _load_gif_frames(gif_path, (380, 240))
+                # Schedule callback on main thread
+                try:
+                    self.after(0, lambda: _on_frames_loaded(vp, frames))
+                except Exception:
+                    pass  # app closed during loading
+
+            threading.Thread(target=_bg_load, daemon=True).start()
+
         def _switch_vp(vp: str):
             self._lesson_active_vp = vp
-            ctk_img = self._lesson_thumb_refs.get(vp)
-            if ctk_img:
-                media_img_label.configure(image=ctk_img, text="")
-            else:
-                media_img_label.configure(image=None, text="🖼️", font=("Inter", 60))
+            self._lesson_gif_frame_idx = 0
+            # Cancel existing animation
+            if self._lesson_gif_anim_id is not None:
+                self.after_cancel(self._lesson_gif_anim_id)
+                self._lesson_gif_anim_id = None
+            # Lazy-load this viewpoint
+            _load_vp_async(vp)
             for lbl, bvp in tab_labels:
                 lbl.configure(
                     fg_color=cat_color if bvp == vp else "#dfe6e9",
@@ -629,7 +715,7 @@ class KioskApp(ctk.CTk):
             lbl.bind("<Button-1>", lambda e, v=vp_key: _switch_vp(v))
             tab_labels.append((lbl, vp_key))
 
-        # Seed initial image and active tab highlight
+        # Seed initial viewpoint (lazy-load)
         _switch_vp(self._lesson_active_vp)
 
         # Bind image box click to zoom
@@ -653,7 +739,7 @@ class KioskApp(ctk.CTk):
                       command=self.show_lesson_select).pack(padx=30, pady=(10, 24), fill="x")
 
     def _show_image_zoom(self):
-        """Overlay a full-screen-height image panel on top of the instruction screen."""
+        """Overlay a full-screen-height animated GIF panel on top of the instruction screen."""
         cx = self.screen_width // 2
         sh = self.screen_height
 
@@ -669,25 +755,50 @@ class KioskApp(ctk.CTk):
                                   corner_radius=20, width=480, height=sh - 40)
         zoom_panel.pack_propagate(False)
 
-        # Load full-size image for zoom view — use whichever tab is active
-        self._lesson_zoom_ref = None
+        # Load animated GIF for zoom view — use whichever tab is active
+        self._lesson_zoom_refs = []  # keep frame refs alive
+        self._lesson_zoom_anim_id = None
         technique_key = self.current_lesson.get("key") if self.current_lesson else None
-        img_filename = LESSON_IMAGE_MAP.get(technique_key) if technique_key else None
         active_vp = getattr(self, "_lesson_active_vp", "front")
-        if img_filename:
-            img_path = get_resource_path(f"app/assets/lesson_images/{active_vp}/{img_filename}")
-            try:
-                pil_img = Image.open(img_path)
-                max_w, max_h = 440, sh - 140
-                pil_img.thumbnail((max_w, max_h), Image.LANCZOS)
-                ctk_img = ctk.CTkImage(pil_img, size=pil_img.size)
-                self._lesson_zoom_ref = ctk_img
-                ctk.CTkLabel(zoom_panel, image=ctk_img, text="").pack(expand=True, pady=(16, 0))
-            except Exception as e:
-                print(f"[LESSON] Could not load zoom image ({active_vp}): {e}")
-                ctk.CTkLabel(zoom_panel, text="🖼️", font=("Inter", 160)).pack(expand=True)
+        gif_name = _lesson_gif_filename(technique_key, active_vp) if technique_key else None
+
+        zoom_img_label = ctk.CTkLabel(zoom_panel, text="Loading...",
+                                       font=("Inter", 24), image=None)
+        zoom_img_label.pack(expand=True, pady=(16, 0))
+
+        if gif_name:
+            gif_path = get_resource_path(f"lesson/{active_vp}_gif/{gif_name}")
+            max_w, max_h = 440, sh - 140
+
+            def _bg_load_zoom():
+                zoom_frames = _load_gif_frames(gif_path, (max_w, max_h))
+                try:
+                    self.after(0, lambda: _start_zoom_anim(zoom_frames))
+                except Exception:
+                    pass
+
+            def _start_zoom_anim(zoom_frames):
+                if zoom_frames:
+                    self._lesson_zoom_refs = [f[0] for f in zoom_frames]
+                    zoom_frame_idx = [0]
+
+                    def _animate_zoom():
+                        idx = zoom_frame_idx[0] % len(zoom_frames)
+                        ctk_img, delay = zoom_frames[idx]
+                        try:
+                            zoom_img_label.configure(image=ctk_img, text="")
+                        except Exception:
+                            return  # widget destroyed
+                        zoom_frame_idx[0] = idx + 1
+                        self._lesson_zoom_anim_id = self.after(delay, _animate_zoom)
+
+                    _animate_zoom()
+                else:
+                    zoom_img_label.configure(text="\U0001f5bc\ufe0f", font=("Inter", 160))
+
+            threading.Thread(target=_bg_load_zoom, daemon=True).start()
         else:
-            ctk.CTkLabel(zoom_panel, text="🖼️", font=("Inter", 160)).pack(expand=True)
+            zoom_img_label.configure(text="\U0001f5bc\ufe0f", font=("Inter", 160))
 
         technique_name = self.current_lesson["name"] if self.current_lesson else ""
         vp_display = active_vp.title()
@@ -709,7 +820,10 @@ class KioskApp(ctk.CTk):
                                    lambda e: self._close_image_zoom(overlay_bg, zoom_win))
 
     def _close_image_zoom(self, overlay_bg, zoom_win):
-        """Remove the zoom overlay items from the canvas."""
+        """Remove the zoom overlay items from the canvas and stop zoom animation."""
+        if getattr(self, '_lesson_zoom_anim_id', None) is not None:
+            self.after_cancel(self._lesson_zoom_anim_id)
+            self._lesson_zoom_anim_id = None
         try:
             self.video_canvas.delete(overlay_bg)
             self.video_canvas.delete(zoom_win)

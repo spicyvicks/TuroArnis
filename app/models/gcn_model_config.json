@@ -4,20 +4,20 @@
     "models": {
         "front": {
             "path": "app/models/hybrid_gcn_v2_front.pth",
-            "accuracy": 0.83,
-            "confidence_threshold": 0.70,
+            "accuracy": 0.80,
+            "confidence_threshold": 0.45,
             "description": "Front viewpoint specialist"
         },
         "left": {
             "path": "app/models/hybrid_gcn_v2_left.pth",
-            "accuracy": 0.82,
-            "confidence_threshold": 0.70,
+            "accuracy": 0.80,
+            "confidence_threshold": 0.45,
             "description": "Left side viewpoint specialist"
         },
         "right": {
             "path": "app/models/hybrid_gcn_v2_right.pth",
-            "accuracy": 0.83,
-            "confidence_threshold": 0.70,
+            "accuracy": 0.80,
+            "confidence_threshold": 0.45,
             "description": "Right side viewpoint specialist"
         }
     },

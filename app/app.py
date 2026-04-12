@@ -1741,9 +1741,14 @@ class KioskApp(ctk.CTk):
                         #     predicted_class = 'No Technique Detected'
                         #     confidence = 0.0
                         
-                        # NEW: No coordinate flipping needed!
-                        # Models return coordinates in mirrored space, matching the display frame
-                        # Landmarks and stick coordinates align directly with the user's view
+                        # MIRROR FIX: The camera frame is cv2.flip(frame, 1) for
+                        # display, so the GCN sees a mirrored pose — left↔right
+                        # are swapped vs. the user's real-world body.  Swap the
+                        # class label so it matches the user's actual perspective.
+                        if 'left_' in predicted_class:
+                            predicted_class = predicted_class.replace('left_', 'right_')
+                        elif 'right_' in predicted_class:
+                            predicted_class = predicted_class.replace('right_', 'left_')
                         
                         zone_results[i] = {
                             'predicted_class': predicted_class,
@@ -1769,8 +1774,11 @@ class KioskApp(ctk.CTk):
                                 predicted_class = 'No Technique Detected'
                                 confidence = 0.0
                             
-                            # NEW: No coordinate flipping needed!
-                            # Models return coordinates in mirrored space, matching the display frame
+                            # MIRROR FIX: same left↔right swap as primary path
+                            if 'left_' in predicted_class:
+                                predicted_class = predicted_class.replace('left_', 'right_')
+                            elif 'right_' in predicted_class:
+                                predicted_class = predicted_class.replace('right_', 'left_')
                             
                             zone_results[i] = {
                                 'predicted_class': predicted_class,

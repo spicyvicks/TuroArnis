@@ -171,11 +171,20 @@ class GCNInferenceEngine:
                     best_class = candidate
                     final_probs = probs.cpu().numpy()
 
+        # ── DIAGNOSTIC: raw GCN output before threshold filtering ──
+        top3_indices = np.argsort(final_probs)[::-1][:3]
+        top3_info = [(CLASS_NAMES[i], f"{final_probs[i]:.3f}") for i in top3_indices]
+        print(f"[GCN-RAW] best_class={best_class} | best_conf={best_conf:.4f} | "
+              f"viewpoint={self.current_viewpoint} | top3={top3_info}")
+
         # Apply per-viewpoint confidence threshold (unless caller opts out)
         if not skip_threshold:
             threshold = self.config['models'].get(self.current_viewpoint, {}).get('confidence_threshold', 0.50)
             if best_class == 'neutral' or best_conf < threshold:
+                print(f"[GCN-THRESHOLD] REJECTED: {best_class} conf={best_conf:.4f} < threshold={threshold}")
                 return "No Technique Detected", 0.0, final_probs
+            else:
+                print(f"[GCN-THRESHOLD] ACCEPTED: {best_class} conf={best_conf:.4f} >= threshold={threshold}")
 
         return best_class, best_conf, final_probs
 

@@ -57,9 +57,16 @@ def log(message, level="INFO"):
     """Log message to console and build log file."""
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     log_line = f"[{timestamp}] [{level}] {message}"
-    print(log_line)
     
-    # Append to build log
+    # Use ASCII-friendly output for Windows console compatibility
+    try:
+        print(log_line)
+    except UnicodeEncodeError:
+        # Fall back to ASCII-safe output
+        safe_line = log_line.encode('ascii', 'replace').decode('ascii')
+        print(safe_line)
+    
+    # Append to build log with UTF-8 encoding
     with open(BUILD_LOG, "a", encoding="utf-8") as f:
         f.write(log_line + "\n")
 
@@ -94,9 +101,9 @@ def check_model_files():
         path = Path(model_path)
         if path.exists():
             size_mb = path.stat().st_size / (1024 * 1024)
-            log(f"  ✓ {model_path} ({size_mb:.1f} MB)", "INFO")
+            log(f"  [OK] {model_path} ({size_mb:.1f} MB)", "INFO")
         else:
-            log(f"  ✗ MISSING: {model_path}", "ERROR")
+            log(f"  [MISSING] {model_path}", "ERROR")
             all_present = False
     
     return all_present
@@ -117,9 +124,9 @@ def check_gif_directories():
         # Count GIF files
         gif_files = list(path.glob("*.gif"))
         if len(gif_files) == 0:
-            log(f"  ⚠ {gif_dir} exists but contains no GIF files", "WARN")
+            log(f"  [WARN] {gif_dir} exists but contains no GIF files", "WARN")
         else:
-            log(f"  ✓ {gif_dir} ({len(gif_files)} GIF files)", "INFO")
+            log(f"  [OK] {gif_dir} ({len(gif_files)} GIF files)", "INFO")
     
     return all_valid
 
@@ -132,9 +139,9 @@ def check_assets():
     for asset_path in REQUIRED_ASSETS:
         path = Path(asset_path)
         if path.exists():
-            log(f"  ✓ {asset_path}", "INFO")
+            log(f"  [OK] {asset_path}", "INFO")
         else:
-            log(f"  ✗ MISSING: {asset_path}", "ERROR")
+            log(f"  [MISSING] {asset_path}", "ERROR")
             all_present = False
     
     return all_present
@@ -146,14 +153,14 @@ def check_spec_file():
     
     spec_path = Path(SPEC_FILE)
     if not spec_path.exists():
-        log(f"  ✗ MISSING: {SPEC_FILE}", "ERROR")
+        log(f"  [MISSING] {SPEC_FILE}", "ERROR")
         return False
     
     # Count hiddenimports to verify it's comprehensive
     content = spec_path.read_text(encoding="utf-8")
     hiddenimport_count = content.count("hiddenimports")
     
-    log(f"  ✓ {SPEC_FILE} exists ({hiddenimport_count} hiddenimport sections)", "INFO")
+    log(f"  [OK] {SPEC_FILE} exists ({hiddenimport_count} hiddenimport sections)", "INFO")
     return True
 
 
@@ -164,13 +171,13 @@ def check_pyinstaller():
     try:
         import PyInstaller
         version = PyInstaller.__version__
-        log(f"  ✓ PyInstaller {version}", "INFO")
+        log(f"  [OK] PyInstaller {version}", "INFO")
         
         # Check if version matches requirements
         if version == "6.12.0":
-            log("  ✓ Version matches requirements.txt (6.12.0)", "INFO")
+            log("  [OK] Version matches requirements.txt (6.12.0)", "INFO")
         else:
-            log(f"  ⚠ Version {version} differs from requirements.txt (6.12.0)", "WARN")
+            log(f"  [WARN] Version {version} differs from requirements.txt (6.12.0)", "WARN")
         
         return True
     except ImportError:

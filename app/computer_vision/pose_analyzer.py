@@ -78,6 +78,18 @@ class PoseAnalyzer:
             min_tracking_confidence=0.5,   #balanced with detection for consistent tracking
             smooth_landmarks=True      #temporal smoothing for stable landmarks
         )
+        # FIX #6: Separate static-mode Pose for snapshot classification.
+        # FIX #6: Static pose detector for lessons/single images (prevents temporal bleed)
+        # static_image_mode=True disables temporal smoothing - critical for lesson accuracy
+        # Video-mode (above) applies inter-frame temporal smoothing which bleeds
+        # ghost keypoints when processing independent snapshot frames.
+        self.pose_static = self.mp_pose.Pose(
+            static_image_mode=True,    #each frame treated independently
+            model_complexity=1,
+            min_detection_confidence=0.5,
+            min_tracking_confidence=0.5,
+            smooth_landmarks=False
+        )
 
         try:
             # Try to load GCN models first
@@ -276,6 +288,15 @@ class PoseAnalyzer:
         """
         Process frame with mode-based detection strategy:
         
+        MODE parameter controls MediaPipe temporal smoothing behavior:
+        - 'snapshot' uses pose_static (static_image_mode=True, no temporal smoothing)
+        - other values use pose (video mode with temporal smoothing)
+        
+        Use 'snapshot' for lessons, classification, and single images.
+        Use 'video' or other values for live camera streams.
+        
+        Valid modes: 'snapshot', 'video', 'countdown'
+        
         SNAPSHOT MODE (GCN Classification):
         - Uses YOLO regular detection (.predict()) - no tracking needed
         - Gets person bounding boxes → MediaPipe 33 keypoints → GCN classification
@@ -294,6 +315,10 @@ class PoseAnalyzer:
             target_pose: Optional target pose name (for batch testing with hand override)
             stick_hand_config: Optional dict mapping pose names to hand preferences {'pose_name': {'hand': 'left'/'right', ...}}
         """
+        # Validate mode parameter (D5)
+        if mode not in ('snapshot', 'video', 'countdown'):
+            raise ValueError(f"Invalid mode: {mode}. Must be 'snapshot', 'video', or 'countdown'")
+        
         h, w, _ = frame.shape
         
         print(f"[DEBUG-YOLO] Processing frame: {w}x{h}, mode={mode}")
@@ -436,8 +461,17 @@ class PoseAnalyzer:
                     # Fall through to MediaPipe
             
             # MediaPipe for snapshot or fallback
+            # MODE SELECTION: snapshot=pose_static (lessons/accuracy, no temporal smoothing)
+            #                  other=pose (live/video, temporal smoothing OK)
+            # FIX #6: Use static-mode Pose for snapshots to avoid temporal bleed
+            pose_instance = self.pose_static if mode == 'snapshot' else self.pose
+            
+            # Verify correct pose instance selected (D5 - runtime assertion)
+            if mode == 'snapshot':
+                assert pose_instance is self.pose_static, "Must use pose_static for snapshot mode"
+            
             crop_rgb = cv2.cvtColor(person_crop, cv2.COLOR_BGR2RGB)
-            pose_results = self.pose.process(crop_rgb)
+            pose_results = pose_instance.process(crop_rgb)
             
             print(f"[DEBUG-MediaPipe] Person {person_id}: pose_results={pose_results is not None}, has_landmarks={pose_results.pose_landmarks is not None if pose_results else False}")
             
@@ -711,15 +745,24 @@ class PoseAnalyzer:
                                     analysis_results[person_id]['stick_foreshortened'] = stick_foreshortened
                                 
                                 # For keypoint array creation (used by both raw and corrected paths)
+                                # FIX #3: Normalize stick to CROP-SPACE (same as MediaPipe)
+                                # MediaPipe landmarks are normalized to the person crop, not the
+                                # full frame.  Stick endpoints are absolute frame pixels, so we
+                                # must map them into the crop coordinate system to match.
                                 grip_pt, tip_pt = analysis_results[person_id]['stick_endpoints']
                                 h_frame, w_frame = frame.shape[:2]
                                 stick_kpts_array = np.array([
-                                    [grip_pt[0]/w_frame, grip_pt[1]/h_frame, 0.0, 1.0],
-                                    [tip_pt[0]/w_frame, tip_pt[1]/h_frame, 0.0, 1.0]
+                                    [(grip_pt[0] - x1_pad) / crop_w, (grip_pt[1] - y1_pad) / crop_h, 0.0, 1.0],
+                                    [(tip_pt[0] - x1_pad) / crop_w,  (tip_pt[1] - y1_pad) / crop_h, 0.0, 1.0]
                                 ]).astype(np.float32)
                             else:
-                                # Default stick positions [2, 4]
-                                stick_kpts_array = np.array([[0.5, 0.5, 0.0, 0.0], [0.5, 0.5, 0.0, 0.0]]).astype(np.float32)
+                                # FIX #2: Flag stick as unavailable with NaN sentinels
+                                # instead of (0.5, 0.5) center-of-frame which corrupts
+                                # all stick features with bogus values.
+                                stick_kpts_array = np.array([
+                                    [np.nan, np.nan, 0.0, 0.0],
+                                    [np.nan, np.nan, 0.0, 0.0]
+                                ]).astype(np.float32)
                             
                             # 3. Use modular helper for global features (joint angles, heights, etc.)
                             # Using pose_kpts_array (normalized MediaPipe coordinates)
@@ -970,4 +1013,5 @@ class PoseAnalyzer:
 
     def close(self):
         self.pose.close()
+        self.pose_static.close()
         print("[info] pose analyzer closed.")

@@ -378,6 +378,7 @@ class EvalApp(ctk.CTk):
             if self.pose_analyzer.gcn_engine:
                 self.pose_analyzer.gcn_engine.set_viewpoint(self.selected_viewpoint)
 
+            # MODE: snapshot - Evaluation/classification (no temporal smoothing for accuracy)
             persons = self.pose_analyzer.process_frame(
                 frame, skip_ml_inference=False, mode='snapshot',
                 skip_threshold=True)
@@ -948,6 +949,7 @@ class EvalApp(ctk.CTk):
             if self.pose_analyzer.gcn_engine:
                 self.pose_analyzer.gcn_engine.set_viewpoint(self.selected_viewpoint)
 
+            # MODE: snapshot - Evaluation/classification (no temporal smoothing for accuracy)
             persons = self.pose_analyzer.process_frame(
                 frame, skip_ml_inference=False, mode='snapshot',
                 skip_threshold=True)

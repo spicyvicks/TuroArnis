@@ -472,6 +472,7 @@ class TuroArnisVideoGUI:
             run_full_ml = (self.frame_counter - self.last_ml_inference_frame) >= self.ml_inference_interval
             run_stick_detection = (self.frame_counter - self.last_stick_detection_frame) >= self.stick_detection_interval
             
+            # MODE: snapshot (default) - Video file frame-by-frame (no temporal bleed between frames)
             analysis_results = self.analyzer.process_frame(
                 processing_frame,
                 skip_ml_inference=not run_full_ml,

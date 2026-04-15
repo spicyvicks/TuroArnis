@@ -64,6 +64,34 @@ FONT_BOLD = ("Inter", 24, "bold")
 # Confidence thresholds are defined per-viewpoint in app/models/gcn_model_config.json
 # (single source of truth — do not duplicate here)
 
+# ============================================
+# TEMPORARY: Demo Mode - Controlled Results
+# Set DEMO_MODE = False to use normal camera
+# ============================================
+DEMO_MODE = False
+DEMO_IMAGE_RESULTS = {
+    "excellent.jpg": {
+        "confidence": 0.85, 
+        "pose": "left_elbow_block_correct",
+        "force_feedback": ["Maintain position"],
+        "force_excellent": True
+    },
+    "good.jpg": {
+        "confidence": 0.40, 
+        "pose": "left_elbow_block_correct",
+        "force_feedback": None,
+        "force_excellent": False
+    },
+    "fail.jpg": {
+        "confidence": 0.00, 
+        "pose": "left_elbow_block_correct",
+        "force_feedback": ["Get into Left Elbow Block position", "Face the camera fully"],
+        "force_excellent": False
+    },
+}
+DEMO_IMAGE_PATH = "demo_images/good.jpg"  # Change for each test: excellent.jpg, good.jpg, fail.jpg
+# ============================================
+
 class AppState:
     SPLASH             = "splash"
     MODE_SELECT        = "mode_select"
@@ -321,6 +349,9 @@ class KioskApp(ctk.CTk):
         self.show_splash()
     
     def get_available_camera(self):
+        if DEMO_MODE:
+            print("[DEMO] Demo mode - no camera needed")
+            return None
         print("Searching for cameras...")
         for i in range(3):
             try:
@@ -1019,6 +1050,7 @@ class KioskApp(ctk.CTk):
                     
                     if person_data is None:
                         # Fallback: Run detection if not in cache
+                        # MODE: video - Live camera preview (temporal smoothing OK)
                         results = self.pose_analyzer.process_frame(zone_frame, skip_ml_inference=True, skip_stick_detection=False)
                         if results and len(results) > 0:
                             person_data = results[0]
@@ -1099,6 +1131,7 @@ class KioskApp(ctk.CTk):
             viewpoint = "front"  # default; exact viewpoint doesn't matter for warm-up
             if self.pose_analyzer.gcn_engine:
                 self.pose_analyzer.gcn_engine.set_viewpoint(viewpoint)
+            # MODE: snapshot - GCN warm-up inference (single image, no temporal smoothing needed)
             self.pose_analyzer.process_frame(
                 zone_frame, skip_ml_inference=False, mode='snapshot'
             )
@@ -1269,7 +1302,7 @@ class KioskApp(ctk.CTk):
                     color = "#2ecc71"
                     score_text = "EXCELLENT!"
                 elif good_confidence:
-                    color = "#bfff00"
+                    color = "#ffff00"
                     score_text = "GOOD"
                 else:
                     color = "#f39c12"
@@ -1293,6 +1326,13 @@ class KioskApp(ctk.CTk):
                     if not feedback_messages:
                         feedback_messages = [msg for msg, t in prioritized if t == 'suggestion']
                     print(f"[FEEDBACK][FREE]   predicted={predicted_class} | is_correct={analysis.get('is_correct')} | conf={confidence:.2f} | errors={analysis.get('errors',[])} | warnings={analysis.get('warnings',[])} | msgs={feedback_messages}")
+
+                # DEMO OVERRIDE: Force specific feedback messages
+                if DEMO_MODE and getattr(self, '_demo_image_name', None):
+                    forced = getattr(self, '_demo_forced_feedback', None)
+                    if forced is not None:
+                        feedback_messages = forced
+                        print(f"[DEMO] Forced feedback for {self._demo_image_name}: {feedback_messages}")
 
                 is_correct_db = high_confidence
             
@@ -1593,9 +1633,9 @@ class KioskApp(ctk.CTk):
                      keypoint_fill = (0, 255, 0)
                      keypoint_border = (0, 200, 0)
                 elif status == 'good':
-                     skeleton_color = (0, 255, 191)  # Lime - Good
-                     keypoint_fill = (0, 255, 191)
-                     keypoint_border = (0, 200, 150)
+                     skeleton_color = (0, 255, 255)  # Yellow - Good
+                     keypoint_fill = (0, 255, 255)
+                     keypoint_border = (0, 200, 200)
                 elif status == 'wrong':
                      skeleton_color = (0, 140, 255)  # Orange (BGR) - Wrong technique
                      keypoint_fill = (0, 140, 255)
@@ -1725,6 +1765,7 @@ class KioskApp(ctk.CTk):
             
             # Analyze the zone with mirrored frame directly
             try:
+                # MODE: snapshot - Lesson pose classification (no temporal smoothing)
                 # Use MediaPipe for accurate snapshot classification
                 results = self.pose_analyzer.process_frame(zone_frame, skip_ml_inference=False, mode='snapshot')
                 
@@ -1801,6 +1842,21 @@ class KioskApp(ctk.CTk):
                 import traceback
                 traceback.print_exc()
         
+        # DEMO OVERRIDE: Force specific outcomes for test images
+        if DEMO_MODE and getattr(self, '_demo_image_name', None):
+            if self._demo_image_name in DEMO_IMAGE_RESULTS:
+                override = DEMO_IMAGE_RESULTS[self._demo_image_name]
+                if 0 in zone_results:
+                    # Force pose and confidence only
+                    # DO NOT adjust landmarks/stick - YOLO already gives full-frame coordinates
+                    # The portrait image is centered in the frame, detections are already correct
+                    zone_results[0]['predicted_class'] = override['pose']
+                    zone_results[0]['confidence'] = override['confidence']
+                    # Store forced feedback for use in show_feedback
+                    self._demo_forced_feedback = override.get('force_feedback')
+                    self._demo_force_excellent = override.get('force_excellent', False)
+                    print(f"[DEMO] Applied override for {self._demo_image_name}: confidence={override['confidence']}, pose={override['pose']}, stick={'detected' if zone_results[0].get('stick_endpoints') else 'not detected'}")
+        
         return zone_results
 
     def update_feed(self):
@@ -1822,7 +1878,37 @@ class KioskApp(ctk.CTk):
                 ret, frame = self.cap.read()
                 frame = cv2.flip(frame, 1) if ret else np.zeros((720,1280,3),np.uint8)
         else:
-            if self.cap:
+            if DEMO_MODE:
+                # TEMPORARY: Demo mode - load image instead of camera
+                # 9:16 portrait aspect ratio with black letterbox bars
+                try:
+                    frame = cv2.imread(DEMO_IMAGE_PATH)
+                    if frame is None:
+                        print(f"[DEMO] Could not load image: {DEMO_IMAGE_PATH}")
+                        frame = np.zeros((720, 1280, 3), np.uint8)
+                    else:
+                        # Portrait 9:16 aspect ratio
+                        target_height = 720
+                        target_width = int(target_height * 9 / 16)  # 9:16 ratio = 405px width
+                        frame = cv2.resize(frame, (target_width, target_height))
+                        # Pad with black bars to reach 1280x720, centered
+                        padded = np.zeros((720, 1280, 3), dtype=np.uint8)
+                        x_offset = (1280 - target_width) // 2
+                        padded[:, x_offset:x_offset+target_width] = frame
+                        frame = padded
+                        # Store x_offset for stick positioning
+                        self._demo_x_offset = x_offset
+                        self._demo_frame_width = target_width
+                    frame = cv2.flip(frame, 1)
+                    self.current_frame = frame.copy()
+                    self._demo_image_name = os.path.basename(DEMO_IMAGE_PATH)
+                except Exception as e:
+                    print(f"[DEMO] Error loading image: {e}")
+                    frame = np.zeros((720, 1280, 3), np.uint8)
+                    self.current_frame = frame.copy()
+                    self._demo_x_offset = 0
+                    self._demo_frame_width = 1280
+            elif self.cap:
                 ret, frame = self.cap.read()
                 if not ret: frame = np.zeros((720, 1280, 3), np.uint8)
                 else: frame = cv2.flip(frame, 1)
@@ -1909,6 +1995,7 @@ class KioskApp(ctk.CTk):
                 zone_frame = frame[:, x_start:x_end].copy()
                 
                 try:
+                    # MODE: countdown - Countdown visualization (uses video mode for temporal smoothing)
                     # Run pose detection ONLY (disable stick detection for speed/clarity)
                     # Use YOLO-Pose for fast countdown visualization
                     results = self.pose_analyzer.process_frame(zone_frame, skip_ml_inference=True, skip_stick_detection=True, mode='countdown')

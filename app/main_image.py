@@ -306,6 +306,7 @@ class TuroArnisImageGUI:
             #preserve aspect ratio during processing resize
             processing_frame = self.resize_preserve_aspect(frame, 640, 480)
             
+            # MODE: snapshot (default) - Single image analysis (no temporal smoothing needed)
             analysis_results = self.analyzer.process_frame(processing_frame)
             if analysis_results:
                 self.last_known_results = analysis_results

@@ -249,6 +249,7 @@ def analyze_zones(composite_frame, num_users, pose_analyzer, viewpoints):
         # Analyze zone
         try:
             print(f"[Zone {i+1}] Running pose detection...")
+            # MODE: snapshot - Test image pose classification (no temporal smoothing)
             results = pose_analyzer.process_frame(zone_frame, skip_ml_inference=False, mode='snapshot')
             print(f"[Zone {i+1}] Results type: {type(results)}, Length: {len(results) if results else 0}")
             
@@ -613,6 +614,7 @@ def test_image_classification(image_path, viewpoint='front'):
     # Run pose analysis
     print("Running pose analysis...")
     try:
+        # MODE: snapshot - Test image pose classification (no temporal smoothing)
         results = pose_analyzer.process_frame(frame, skip_ml_inference=False, mode='snapshot')
         
         if results and len(results) > 0:

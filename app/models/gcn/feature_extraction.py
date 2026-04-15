@@ -10,9 +10,18 @@ from ultralytics import YOLO
 
 
 def calculate_angle(p1, p2, p3):
-    """Calculate angle at p2 formed by p1-p2-p3"""
-    v1 = np.array([p1[0] - p2[0], p1[1] - p2[1]])
-    v2 = np.array([p3[0] - p2[0], p3[1] - p2[1]])
+    """Calculate 3D angle at p2 formed by p1-p2-p3 using three-dimensional coordinates"""
+    # Handle 2D input for backward compatibility
+    if len(p1) == 2:
+        p1 = [p1[0], p1[1], 0.0]
+    if len(p2) == 2:
+        p2 = [p2[0], p2[1], 0.0]
+    if len(p3) == 2:
+        p3 = [p3[0], p3[1], 0.0]
+    
+    # 3D vector construction
+    v1 = np.array([p1[0] - p2[0], p1[1] - p2[1], p1[2] - p2[2]])
+    v2 = np.array([p3[0] - p2[0], p3[1] - p2[1], p3[2] - p2[2]])
     
     cos_angle = np.dot(v1, v2) / (np.linalg.norm(v1) * np.linalg.norm(v2) + 1e-6)
     angle = np.arccos(np.clip(cos_angle, -1.0, 1.0))
@@ -73,9 +82,9 @@ def extract_raw_features(image, stick_detector):
         stick_grip = [stick_kpts[0, 0] / w, stick_kpts[0, 1] / h, 0.0, stick_kpts[0, 2]]
         stick_tip = [stick_kpts[1, 0] / w, stick_kpts[1, 1] / h, 0.0, stick_kpts[1, 2]]
     else:
-        # Fallback if stick not detected
-        stick_grip = [0.5, 0.5, 0.0, 0.0]
-        stick_tip = [0.5, 0.5, 0.0, 0.0]
+        # FIX #2: NaN sentinel when stick not detected
+        stick_grip = [np.nan, np.nan, 0.0, 0.0]
+        stick_tip = [np.nan, np.nan, 0.0, 0.0]
     
     stick_keypoints = np.array([stick_grip, stick_tip])
     
@@ -103,9 +112,12 @@ def compute_global_features_from_kpts(kpts, stick_keypoints):
     stick_grip = stick_keypoints[0]
     stick_tip = stick_keypoints[1]
     
+    # FIX #2: Detect whether stick is available (NaN sentinel = unavailable)
+    stick_available = not (np.isnan(stick_grip[0]) or np.isnan(stick_tip[0]))
+    
     features = {}
     
-    # Joint angles
+    # Joint angles (body-only — always valid)
     features['left_elbow_angle'] = calculate_angle(kpts[11], kpts[13], kpts[15])
     features['right_elbow_angle'] = calculate_angle(kpts[12], kpts[14], kpts[16])
     features['left_shoulder_angle'] = calculate_angle(kpts[13], kpts[11], kpts[23])
@@ -119,23 +131,35 @@ def compute_global_features_from_kpts(kpts, stick_keypoints):
     features['right_wrist_height'] = hip_center_y - kpts[16][1]
     features['left_elbow_height'] = hip_center_y - kpts[13][1]
     features['right_elbow_height'] = hip_center_y - kpts[14][1]
-    features['stick_tip_height'] = hip_center_y - stick_tip[1]
-    features['stick_grip_height'] = hip_center_y - stick_grip[1]
     
     # Horizontal positions relative to hip center
     hip_center_x = (kpts[23][0] + kpts[24][0]) / 2
     features['left_wrist_x'] = kpts[15][0] - hip_center_x
     features['right_wrist_x'] = kpts[16][0] - hip_center_x
-    features['stick_tip_x'] = stick_tip[0] - hip_center_x
-    features['stick_grip_x'] = stick_grip[0] - hip_center_x
     
-    # Stick orientation
-    stick_vector = np.array([stick_tip[0] - stick_grip[0], stick_tip[1] - stick_grip[1]])
-    features['stick_angle'] = np.degrees(np.arctan2(stick_vector[1], stick_vector[0]))
-    
-    stick_len = np.linalg.norm(stick_vector) + 1e-6
-    features['stick_dx'] = stick_vector[0] / stick_len
-    features['stick_dy'] = stick_vector[1] / stick_len
+    # FIX #2: Stick-dependent features — zero out when stick is unavailable
+    # so they contribute no discriminative signal instead of corrupt values.
+    if stick_available:
+        features['stick_tip_height'] = hip_center_y - stick_tip[1]
+        features['stick_grip_height'] = hip_center_y - stick_grip[1]
+        features['stick_tip_x'] = stick_tip[0] - hip_center_x
+        features['stick_grip_x'] = stick_grip[0] - hip_center_x
+        
+        # Stick orientation
+        stick_vector = np.array([stick_tip[0] - stick_grip[0], stick_tip[1] - stick_grip[1]])
+        features['stick_angle'] = np.degrees(np.arctan2(stick_vector[1], stick_vector[0]))
+        
+        stick_len = np.linalg.norm(stick_vector) + 1e-6
+        features['stick_dx'] = stick_vector[0] / stick_len
+        features['stick_dy'] = stick_vector[1] / stick_len
+    else:
+        features['stick_tip_height'] = 0.0
+        features['stick_grip_height'] = 0.0
+        features['stick_tip_x'] = 0.0
+        features['stick_grip_x'] = 0.0
+        features['stick_angle'] = 0.0
+        features['stick_dx'] = 0.0
+        features['stick_dy'] = 0.0
     
     # Expert features (relative to body landmarks)
     root_x = (kpts[23][0] + kpts[24][0]) / 2
@@ -143,22 +167,34 @@ def compute_global_features_from_kpts(kpts, stick_keypoints):
     shoulder_y = (kpts[11][1] + kpts[12][1]) / 2
     nose_y = kpts[0][1]
     
-    features['tip_vs_nose'] = stick_tip[1] - nose_y
-    features['tip_vs_shoulder'] = stick_tip[1] - shoulder_y
-    features['tip_vs_hip'] = stick_tip[1] - root_y
+    if stick_available:
+        features['tip_vs_nose'] = stick_tip[1] - nose_y
+        features['tip_vs_shoulder'] = stick_tip[1] - shoulder_y
+        features['tip_vs_hip'] = stick_tip[1] - root_y
+    else:
+        features['tip_vs_nose'] = 0.0
+        features['tip_vs_shoulder'] = 0.0
+        features['tip_vs_hip'] = 0.0
     
     features['r_hand_vs_nose'] = kpts[16][1] - nose_y
     features['r_hand_vs_shoulder'] = kpts[16][1] - shoulder_y
     features['r_hand_vs_hip'] = kpts[16][1] - root_y
     
-    features['tip_side'] = stick_tip[0] - root_x
-    features['grip_side'] = stick_grip[0] - root_x
+    if stick_available:
+        features['tip_side'] = stick_tip[0] - root_x
+        features['grip_side'] = stick_grip[0] - root_x
+    else:
+        features['tip_side'] = 0.0
+        features['grip_side'] = 0.0
     
     features['foot_stagger'] = kpts[27][1] - kpts[28][1]
     
     # Distances
     features['hands_distance'] = calculate_distance(kpts[15], kpts[16])
-    features['stick_length'] = calculate_distance(stick_grip, stick_tip)
+    if stick_available:
+        features['stick_length'] = calculate_distance(stick_grip, stick_tip)
+    else:
+        features['stick_length'] = 0.0
     
     return features
 
@@ -215,8 +251,15 @@ def extract_node_features(pose_keypoints, stick_keypoints):
     Returns:
         [35, 6] array of node features
     """
+    # FIX #2: Replace NaN stick keypoints with zeros so GCN receives
+    # valid numeric input.  Zero-valued nodes at the hip center produce
+    # zero dist/angle, contributing no discriminative signal.
+    clean_stick = stick_keypoints.copy()
+    if np.isnan(clean_stick).any():
+        clean_stick = np.zeros_like(clean_stick)
+    
     # Combine all nodes (33 pose + 2 stick)
-    all_keypoints = np.vstack([pose_keypoints, stick_keypoints])
+    all_keypoints = np.vstack([pose_keypoints, clean_stick])
     
     # Compute hip center for reference (3D)
     hip_center = (pose_keypoints[23, :3] + pose_keypoints[24, :3]) / 2  # [x, y, z]

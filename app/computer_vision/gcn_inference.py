@@ -59,6 +59,29 @@ class GCNInferenceEngine:
         
         with open(resolved_templates_path, 'r') as f:
             self.templates = json.load(f)
+        
+        # Apply STD clamping to template features (D2)
+        # Wide STDs make Gaussian similarity non-discriminative
+        ANGLE_FEATURES = {
+            'left_elbow_angle', 'right_elbow_angle', 
+            'left_shoulder_angle', 'right_shoulder_angle',
+            'left_knee_angle', 'right_knee_angle'
+        }
+        
+        for template_key, template in self.templates.items():
+            for feature_name, feature_data in template.items():
+                if isinstance(feature_data, dict) and 'std' in feature_data:
+                    old_std = feature_data['std']
+                    
+                    # Determine max STD based on feature type
+                    if feature_name in ANGLE_FEATURES:
+                        max_std = 20.0  # degrees
+                    else:
+                        max_std = 0.1   # normalized coordinates
+                    
+                    if old_std > max_std:
+                        print(f"[GCN-CLAMP] {template_key}.{feature_name}: std={old_std:.2f} clamped to {max_std}")
+                        feature_data['std'] = max_std
 
     def _load_models(self):
         """Load all 3 specialist models"""
@@ -119,6 +142,9 @@ class GCNInferenceEngine:
             confidence: float (0-1)
             all_probabilities: np.ndarray (12 classes)
         """
+        # Detect missing stick for confidence penalty (D3)
+        stick_missing = np.isnan(stick_keypoints).any()
+        
         # Run inference for EACH template hypothesis
         # We don't know the ground truth, so we must test the user's pose against 
         # each template and see which one yields the highest self-consistent confidence.
@@ -138,6 +164,8 @@ class GCNInferenceEngine:
         best_class = "No Technique Detected"
         best_conf = 0.0
         final_probs = np.zeros(len(CLASS_NAMES))
+        best_variance = 0.0  # Track variance for dynamic threshold (D4)
+        best_hybrid_features = None  # Store winning hybrid features
         
         # Iterate through all possible classes as "template hypotheses"
         # We ignore 'neutral' as a template source because it has no fixed geometry
@@ -170,6 +198,48 @@ class GCNInferenceEngine:
                     best_conf = candidate_conf
                     best_class = candidate
                     final_probs = probs.cpu().numpy()
+                    best_hybrid_features = hybrid_features  # Store for variance calc
+                    best_variance = np.var(hybrid_features)   # Track variance (D4)
+
+        # ── FIX #1: Post-loop argmax verification ──────────────────────
+        # The hypothesis loop picks the candidate whose self-consistent
+        # probability is highest.  But the final_probs distribution for
+        # that winning hypothesis may assign an *even higher* marginal
+        # probability to a different class.  Verify and correct.
+        if best_conf > 0 and len(final_probs) > 0:
+            argmax_idx = int(np.argmax(final_probs))
+            argmax_class = CLASS_NAMES[argmax_idx]
+            argmax_prob = final_probs[argmax_idx]
+
+            if argmax_class != best_class and argmax_class != 'neutral' and argmax_prob > best_conf:
+                print(f"[GCN-FIX1] Overriding hypothesis winner: "
+                      f"{best_class}({best_conf:.4f}) → {argmax_class}({argmax_prob:.4f}) "
+                      f"(argmax of final_probs)")
+                best_class = argmax_class
+                best_conf = argmax_prob
+                # Recompute variance for argmax winner (D4)
+                argmax_hybrid = compute_hybrid_features(
+                    global_features, self.templates,
+                    viewpoint=self.current_viewpoint,
+                    class_name=argmax_class
+                )
+                best_variance = np.var(argmax_hybrid)
+                best_hybrid_features = argmax_hybrid
+
+        # ── D3: Confidence penalty for missing stick ───────────────────
+        if stick_missing and best_conf > 0:
+            PENALTY_FACTOR = 0.7
+            original_conf = best_conf
+            best_conf = best_conf * PENALTY_FACTOR
+            print(f"[GCN-PENALTY] Stick missing: confidence {original_conf:.4f} → {best_conf:.4f} (×{PENALTY_FACTOR})")
+
+        # ── D4: Dynamic threshold based on feature variance ─────────────
+        # Low variance (pose matches multiple templates) → lower threshold
+        base_threshold = self.config['models'].get(self.current_viewpoint, {}).get('confidence_threshold', 0.50)
+        variance_factor = 1 - 0.3 * (1 - best_variance)
+        effective_threshold = base_threshold * variance_factor
+        effective_threshold = max(0.45, min(0.70, effective_threshold))  # Clamp [0.45, 0.70]
+        print(f"[GCN-THRESH] Base: {base_threshold:.4f}, Variance: {best_variance:.4f}, Effective: {effective_threshold:.4f}")
 
         # ── DIAGNOSTIC: raw GCN output before threshold filtering ──
         top3_indices = np.argsort(final_probs)[::-1][:3]
@@ -178,13 +248,13 @@ class GCNInferenceEngine:
               f"viewpoint={self.current_viewpoint} | top3={top3_info}")
 
         # Apply per-viewpoint confidence threshold (unless caller opts out)
+        # Uses effective_threshold which may be lowered for similar-looking poses (D4)
         if not skip_threshold:
-            threshold = self.config['models'].get(self.current_viewpoint, {}).get('confidence_threshold', 0.50)
-            if best_class == 'neutral' or best_conf < threshold:
-                print(f"[GCN-THRESHOLD] REJECTED: {best_class} conf={best_conf:.4f} < threshold={threshold}")
+            if best_class == 'neutral' or best_conf < effective_threshold:
+                print(f"[GCN-THRESHOLD] REJECTED: {best_class} conf={best_conf:.4f} < effective_threshold={effective_threshold:.4f}")
                 return "No Technique Detected", 0.0, final_probs
             else:
-                print(f"[GCN-THRESHOLD] ACCEPTED: {best_class} conf={best_conf:.4f} >= threshold={threshold}")
+                print(f"[GCN-THRESHOLD] ACCEPTED: {best_class} conf={best_conf:.4f} >= effective_threshold={effective_threshold:.4f}")
 
         return best_class, best_conf, final_probs
 

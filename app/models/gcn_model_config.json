@@ -1,23 +1,24 @@
 {
+    "_comment": "Dynamic threshold: base_threshold * (1 - 0.3 * (1 - score_variance)), clamped [0.45, 0.70]. Confidence penalty 0.7x when stick missing. Template STDs clamped (20 deg angles, 0.1 coords).",
     "model_type": "gcn_hybrid_v2",
     "viewpoint": "front",
     "models": {
         "front": {
             "path": "app/models/hybrid_gcn_v2_front.pth",
             "accuracy": 0.80,
-            "confidence_threshold": 0.45,
+            "confidence_threshold": 0.70,
             "description": "Front viewpoint specialist"
         },
         "left": {
             "path": "app/models/hybrid_gcn_v2_left.pth",
             "accuracy": 0.80,
-            "confidence_threshold": 0.45,
+            "confidence_threshold": 0.70,
             "description": "Left side viewpoint specialist"
         },
         "right": {
             "path": "app/models/hybrid_gcn_v2_right.pth",
             "accuracy": 0.80,
-            "confidence_threshold": 0.45,
+            "confidence_threshold": 0.70,
             "description": "Right side viewpoint specialist"
         }
     },

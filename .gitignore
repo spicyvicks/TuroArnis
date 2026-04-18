@@ -87,6 +87,7 @@ ENV/                    # Alternative venv name
 .ENV/                   # Hidden venv style (uppercase)
 env.bak/                # Backup venv
 venv.bak/               # Backup venv
+venv_311/
 
 # ============================================================================
 # 6. IDE AND EDITOR SETTINGS

@@ -1,0 +1,42 @@
+TuroArnis Build Log - Started 2026-04-14T08:17:33.218822
+==================================================
+
+[2026-04-14 08:17:33] [INFO] TuroArnis Build Script
+[2026-04-14 08:17:33] [INFO] =====================
+[2026-04-14 08:17:33] [INFO] ==================================================
+[2026-04-14 08:17:33] [INFO] PRE-BUILD VALIDATION
+[2026-04-14 08:17:33] [INFO] ==================================================
+[2026-04-14 08:17:33] [WARN] WARNING: Not using venv_311 Python: C:\Users\HP\AppData\Local\Programs\Python\Python311\python.exe
+[2026-04-14 08:17:33] [INFO] Recommendation: Run: .\venv_311\Scripts\activate
+[2026-04-14 08:17:33] [INFO] Checking PyInstaller...
+[2026-04-14 08:17:33] [INFO]   [OK] PyInstaller 6.17.0
+[2026-04-14 08:17:33] [WARN]   [WARN] Version 6.17.0 differs from requirements.txt (6.12.0)
+[2026-04-14 08:17:33] [INFO] Checking TuroArnis.spec...
+[2026-04-14 08:17:33] [INFO]   [OK] TuroArnis.spec exists (11 hiddenimport sections)
+[2026-04-14 08:17:33] [INFO] Checking ML model files...
+[2026-04-14 08:17:33] [INFO]   [OK] app/models/hybrid_gcn_v2_front.pth (1.4 MB)
+[2026-04-14 08:17:33] [INFO]   [OK] app/models/hybrid_gcn_v2_left.pth (1.4 MB)
+[2026-04-14 08:17:33] [INFO]   [OK] app/models/hybrid_gcn_v2_right.pth (1.4 MB)
+[2026-04-14 08:17:33] [INFO]   [OK] app/models/weights/best.pt (6.1 MB)
+[2026-04-14 08:17:33] [INFO]   [OK] yolov8n.pt (6.2 MB)
+[2026-04-14 08:17:33] [INFO] Checking instructional GIF directories...
+[2026-04-14 08:17:33] [INFO]   [OK] lesson/front_gif (12 GIF files)
+[2026-04-14 08:17:33] [INFO]   [OK] lesson/left_gif (12 GIF files)
+[2026-04-14 08:17:33] [INFO]   [OK] lesson/right_gif (12 GIF files)
+[2026-04-14 08:17:33] [INFO] Checking UI assets...
+[2026-04-14 08:17:33] [INFO]   [OK] app/assets/TA.ico
+[2026-04-14 08:17:33] [INFO] 
+Pre-flight Summary:
+[2026-04-14 08:17:33] [INFO]   [PASS] Virtual Environment
+[2026-04-14 08:17:33] [INFO]   [PASS] PyInstaller
+[2026-04-14 08:17:33] [INFO]   [PASS] Spec File
+[2026-04-14 08:17:33] [INFO]   [PASS] Model Files
+[2026-04-14 08:17:33] [INFO]   [PASS] GIF Directories
+[2026-04-14 08:17:33] [INFO]   [PASS] UI Assets
+[2026-04-14 08:17:33] [INFO] Cleaning previous build directories...
+[2026-04-14 08:17:33] [INFO]   ✓ Removed build/
+[2026-04-14 08:17:52] [INFO]   ✓ Removed dist/TuroArnis/
+[2026-04-14 08:17:56] [INFO]   ✓ Cleaned 1041 __pycache__ directories
+[2026-04-14 08:17:56] [INFO] Starting PyInstaller build...
+[2026-04-14 08:17:56] [INFO] Command: pyinstaller --noconfirm TuroArnis.spec
+[2026-04-14 08:17:56] [INFO] This may take 5-10 minutes...

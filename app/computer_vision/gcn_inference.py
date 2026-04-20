@@ -168,8 +168,9 @@ class GCNInferenceEngine:
         best_hybrid_features = None  # Store winning hybrid features
         
         # Iterate through all possible classes as "template hypotheses"
-        # All classes in CLASS_NAMES have templates (neutral was removed to match training)
-        candidate_classes = CLASS_NAMES[:]
+        # We ignore 'neutral' as a template source because it has no fixed geometry
+        # but we still allow the model to predict 'neutral' if no other template fits well.
+        candidate_classes = [c for c in CLASS_NAMES if c != 'neutral']
         
         with torch.no_grad():
             for candidate in candidate_classes:
@@ -210,7 +211,7 @@ class GCNInferenceEngine:
             argmax_class = CLASS_NAMES[argmax_idx]
             argmax_prob = final_probs[argmax_idx]
 
-            if argmax_class != best_class and argmax_prob > best_conf:
+            if argmax_class != best_class and argmax_class != 'neutral' and argmax_prob > best_conf:
                 print(f"[GCN-FIX1] Overriding hypothesis winner: "
                       f"{best_class}({best_conf:.4f}) → {argmax_class}({argmax_prob:.4f}) "
                       f"(argmax of final_probs)")
@@ -249,7 +250,7 @@ class GCNInferenceEngine:
         # Apply per-viewpoint confidence threshold (unless caller opts out)
         # Uses effective_threshold which may be lowered for similar-looking poses (D4)
         if not skip_threshold:
-            if best_conf < effective_threshold:
+            if best_class == 'neutral' or best_conf < effective_threshold:
                 print(f"[GCN-THRESHOLD] REJECTED: {best_class} conf={best_conf:.4f} < effective_threshold={effective_threshold:.4f}")
                 return "No Technique Detected", 0.0, final_probs
             else:

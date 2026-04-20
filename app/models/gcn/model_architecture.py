@@ -13,8 +13,8 @@ CLASS_NAMES = [
     'left_eye_thrust_correct', 'left_knee_block_correct', 'left_temple_block_correct',
     'right_chest_thrust_correct', 'right_elbow_block_correct',
     'right_eye_thrust_correct', 'right_knee_block_correct', 'right_temple_block_correct',
-    'solar_plexus_thrust_correct',
-    'neutral'
+    'solar_plexus_thrust_correct'
+    # Note: 'neutral' class removed to match training (12 classes total)
 ]
 
 SKELETON_EDGES = [

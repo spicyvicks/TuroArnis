@@ -514,9 +514,20 @@ class PoseAnalyzer:
                     if getattr(self, 'is_gcn', False) and self.gcn_engine:
                         print(f"[DEBUG-GCN] ✓ Entering GCN inference block...")
                         try:
-                            # 1. Prepare keypoints for GCN (normalized coordinates)
+                            # 1. Prepare keypoints for GCN (normalized to FULL FRAME coordinates)
+                            # MediaPipe outputs coordinates normalized to the crop (person_crop).
+                            # Training expects coordinates normalized to full frame dimensions.
+                            # Scale from crop-space to frame-space to match training.
                             landmarks_2d = pose_results.pose_landmarks.landmark
-                            pose_kpts_array = np.array([[lm.x, lm.y, lm.z, lm.visibility] for lm in landmarks_2d])
+                            h_frame, w_frame = frame.shape[:2]
+                            crop_h, crop_w = person_crop.shape[:2]
+                            pose_kpts_array = np.array([
+                                [lm.x * crop_w / w_frame, 
+                                 lm.y * crop_h / h_frame, 
+                                 lm.z, 
+                                 lm.visibility] 
+                                for lm in landmarks_2d
+                            ])
                             
                             # 2. Get stick keypoints if detected
                             if not skip_stick_detection:
@@ -745,15 +756,14 @@ class PoseAnalyzer:
                                     analysis_results[person_id]['stick_foreshortened'] = stick_foreshortened
                                 
                                 # For keypoint array creation (used by both raw and corrected paths)
-                                # FIX #3: Normalize stick to CROP-SPACE (same as MediaPipe)
-                                # MediaPipe landmarks are normalized to the person crop, not the
-                                # full frame.  Stick endpoints are absolute frame pixels, so we
-                                # must map them into the crop coordinate system to match.
+                                # Normalize stick to FULL FRAME (matching training pipeline)
+                                # Training normalizes stick coordinates to full frame dimensions (w, h).
+                                # Stick endpoints are absolute frame pixels, so divide by frame dimensions.
                                 grip_pt, tip_pt = analysis_results[person_id]['stick_endpoints']
                                 h_frame, w_frame = frame.shape[:2]
                                 stick_kpts_array = np.array([
-                                    [(grip_pt[0] - x1_pad) / crop_w, (grip_pt[1] - y1_pad) / crop_h, 0.0, 1.0],
-                                    [(tip_pt[0] - x1_pad) / crop_w,  (tip_pt[1] - y1_pad) / crop_h, 0.0, 1.0]
+                                    [grip_pt[0] / w_frame, grip_pt[1] / h_frame, 0.0, 1.0],
+                                    [tip_pt[0] / w_frame,  tip_pt[1] / h_frame, 0.0, 1.0]
                                 ]).astype(np.float32)
                             else:
                                 # FIX #2: Flag stick as unavailable with NaN sentinels

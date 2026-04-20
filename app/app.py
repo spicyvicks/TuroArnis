@@ -592,8 +592,86 @@ class KioskApp(ctk.CTk):
                           font=("Inter", 15, "bold"),
                           fg_color=cat_color, hover_color=COLOR_ACCENT,
                           height=34, corner_radius=10,
-                          command=lambda t=tech: self.show_lesson_instruction(t)).pack(
+                          command=lambda t=tech: self.show_lesson_viewpoint_select(t)).pack(
                               anchor="e", padx=16, pady=(6, 12))
+
+    # ── LESSON VIEWPOINT SELECTION ────────────────────────────────────────────
+
+    def show_lesson_viewpoint_select(self, technique: dict):
+        """Show viewpoint selection screen before starting lesson practice."""
+        self.app_state = AppState.LESSON_SELECT
+        self.clear_ui()
+        self.video_canvas.configure(bg=COLOR_BG)
+        
+        cx, cy = self.screen_width // 2, self.screen_height // 2
+        cat_color = CATEGORY_COLORS.get(technique["category"], COLOR_ACCENT)
+        
+        # Main container card
+        card = ctk.CTkFrame(self.video_canvas, fg_color="white",
+                            corner_radius=24, width=600, height=480)
+        card.pack_propagate(False)
+        self.add_widget(cx, cy, card)
+        
+        # Category badge
+        badge = ctk.CTkFrame(card, fg_color=cat_color, corner_radius=10,
+                              width=100, height=32)
+        badge.pack(anchor="center", pady=(40, 0))
+        badge.pack_propagate(False)
+        ctk.CTkLabel(badge, text=technique["category"],
+                     font=("Inter", 14, "bold"), text_color="white").pack(expand=True)
+        
+        # Technique name
+        ctk.CTkLabel(card, text=technique["name"],
+                     font=("Inter", 32, "bold"), text_color=COLOR_TEXT).pack(pady=(20, 8))
+        
+        # Instruction text
+        ctk.CTkLabel(card, text="Which camera angle will you practice from?",
+                     font=("Inter", 18), text_color=COLOR_TEXT).pack(pady=(0, 30))
+        
+        # Viewpoint buttons container
+        btn_frame = ctk.CTkFrame(card, fg_color="transparent")
+        btn_frame.pack(pady=20)
+        
+        # Store technique for callback
+        self._pending_technique = technique
+        
+        # Front button
+        front_btn = ctk.CTkButton(btn_frame, text="Front",
+                                  font=("Inter", 18, "bold"),
+                                  fg_color=COLOR_ACCENT, hover_color=COLOR_ACCENT_HOVER,
+                                  height=70, width=160, corner_radius=15,
+                                  command=lambda: self._start_lesson_with_viewpoint("Front"))
+        front_btn.pack(side="left", padx=12)
+        
+        # Left Side button
+        left_btn = ctk.CTkButton(btn_frame, text="Left Side",
+                                 font=("Inter", 18, "bold"),
+                                 fg_color=COLOR_ACCENT, hover_color=COLOR_ACCENT_HOVER,
+                                 height=70, width=160, corner_radius=15,
+                                 command=lambda: self._start_lesson_with_viewpoint("Left Side"))
+        left_btn.pack(side="left", padx=12)
+        
+        # Right Side button
+        right_btn = ctk.CTkButton(btn_frame, text="Right Side",
+                                  font=("Inter", 18, "bold"),
+                                  fg_color=COLOR_ACCENT, hover_color=COLOR_ACCENT_HOVER,
+                                  height=70, width=160, corner_radius=15,
+                                  command=lambda: self._start_lesson_with_viewpoint("Right Side"))
+        right_btn.pack(side="left", padx=12)
+        
+        # Back button
+        ctk.CTkButton(card, text="← Back",
+                      font=("Inter", 16),
+                      fg_color="transparent", border_width=2,
+                      border_color=COLOR_TEXT, text_color=COLOR_TEXT,
+                      hover_color="#ecf0f1", height=44, width=140, corner_radius=22,
+                      command=self.show_lesson_select).pack(pady=(30, 0))
+    
+    def _start_lesson_with_viewpoint(self, viewpoint: str):
+        """Start lesson with selected viewpoint."""
+        technique = self._pending_technique.copy()
+        technique["viewpoint"] = viewpoint
+        self.show_lesson_instruction(technique)
 
     # ── LESSON INSTRUCTION ────────────────────────────────────────────────────
 

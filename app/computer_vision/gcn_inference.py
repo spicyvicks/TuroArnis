@@ -342,6 +342,87 @@ class GCNInferenceEngine:
             'template_means': template_means,
         }
 
+    def capture_similarity_snapshot(
+        self,
+        pose_keypoints: np.ndarray,
+        stick_keypoints: np.ndarray,
+        global_features: dict,
+        target_class: str,
+        approach: str = 'variance'
+    ) -> dict:
+        """
+        Capture similarity scores for lesson mode snapshot.
+        
+        Calculates how close the user's pose is to the target technique using
+        the specified similarity approach, with psychological buffer applied
+        for display purposes.
+        
+        Args:
+            pose_keypoints: [33, 4] MediaPipe pose keypoints
+            stick_keypoints: [2, 4] YOLO stick keypoints
+            global_features: Dict of computed geometric features
+            target_class: Target technique class name
+            approach: 'simple', 'variance', or 'multifactor'
+        
+        Returns:
+            {
+                'actual_score': float,      # Real similarity (0-100)
+                'display_score': float,   # With +5% buffer applied (0-100)
+                'passed': bool,           # actual_score >= 65
+                'low_features': list,     # Features < 70% similarity
+                'approach': str,          # Which approach was used
+                'category_scores': dict   # For multifactor approach
+            }
+        """
+        # Import SimilarityCalculator
+        from .lesson_feedback import SimilarityCalculator
+        
+        # Get hybrid feature corrections vs target template
+        corrections = self.get_feature_corrections(global_features, target_class)
+        if corrections is None:
+            return {
+                'actual_score': 0.0,
+                'display_score': 0.0,
+                'passed': False,
+                'low_features': [],
+                'approach': approach,
+                'category_scores': {}
+            }
+        
+        # Get template for variance-weighted approach
+        template_key = f"{self.current_viewpoint}_{target_class}"
+        template = self.templates.get(template_key, {}) if self.templates else {}
+        
+        # Calculate similarity
+        calculator = SimilarityCalculator(self.templates)
+        result = calculator.calculate_similarity(
+            corrections['hybrid_scores'],
+            corrections['feature_names'],
+            template,
+            approach=approach
+        )
+        
+        actual_score = result['actual_score']
+        
+        # Identify low-scoring features for tips
+        low_features = calculator.identify_low_features(
+            corrections['hybrid_scores'],
+            corrections['feature_names'],
+            threshold=0.70
+        )
+        
+        # Apply psychological buffer for display
+        display_score = calculator.apply_psychological_buffer(actual_score)
+        
+        return {
+            'actual_score': actual_score,
+            'display_score': display_score,
+            'passed': actual_score >= 65.0,
+            'low_features': low_features,
+            'approach': approach,
+            'category_scores': result.get('category_scores', {})
+        }
+
 
 # Global instance (lazy-loaded)
 _gcn_engine: Optional[GCNInferenceEngine] = None

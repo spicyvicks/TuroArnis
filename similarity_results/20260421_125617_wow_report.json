@@ -1,0 +1,151 @@
+{
+  "timestamp": "20260421_125617",
+  "image": "wow.png",
+  "technique": "left_chest_thrust_correct",
+  "viewpoint": "right",
+  "results": {
+    "simple": {
+      "actual_score": 19.517812132835388,
+      "display_score": 24.517812132835388,
+      "passed": false,
+      "categories": {}
+    },
+    "variance": {
+      "actual_score": 12.760406226354245,
+      "display_score": 17.760406226354245,
+      "passed": false,
+      "categories": {}
+    },
+    "multifactor": {
+      "actual_score": 21.780968606472015,
+      "display_score": 26.780968606472015,
+      "passed": false,
+      "categories": {
+        "joint_angles": 26.663923263549805,
+        "stick_position": 10.685231536626816,
+        "body_posture": 34.206533432006836
+      }
+    },
+    "critical": {
+      "actual_score": 19.334006035376014,
+      "display_score": 24.334006035376014,
+      "passed": false,
+      "categories": {}
+    }
+  },
+  "tips": [
+    "Angle the stick more downward",
+    "Point the stick more diagonally",
+    "Bring your feet closer together"
+  ],
+  "low_features": [
+    {
+      "name": "stick_angle",
+      "score": 0.0
+    },
+    {
+      "name": "stick_dx",
+      "score": 0.0
+    },
+    {
+      "name": "foot_stagger",
+      "score": 1.8782642567844206e-25
+    },
+    {
+      "name": "right_wrist_x",
+      "score": 5.4828141979074586e-15
+    },
+    {
+      "name": "stick_grip_x",
+      "score": 1.0361521640689375e-09
+    },
+    {
+      "name": "grip_side",
+      "score": 1.0361521640689375e-09
+    },
+    {
+      "name": "right_shoulder_angle",
+      "score": 2.6797263075195588e-08
+    },
+    {
+      "name": "right_knee_angle",
+      "score": 0.000513015897013247
+    },
+    {
+      "name": "stick_grip_height",
+      "score": 0.00498956860974431
+    },
+    {
+      "name": "stick_tip_height",
+      "score": 0.010723567567765713
+    },
+    {
+      "name": "tip_vs_hip",
+      "score": 0.010723567567765713
+    },
+    {
+      "name": "right_elbow_height",
+      "score": 0.011058920994400978
+    },
+    {
+      "name": "right_wrist_height",
+      "score": 0.015088087879121304
+    },
+    {
+      "name": "r_hand_vs_hip",
+      "score": 0.015088087879121304
+    },
+    {
+      "name": "tip_vs_shoulder",
+      "score": 0.020397281274199486
+    },
+    {
+      "name": "stick_length",
+      "score": 0.035687390714883804
+    },
+    {
+      "name": "r_hand_vs_shoulder",
+      "score": 0.03661167621612549
+    },
+    {
+      "name": "stick_tip_x",
+      "score": 0.1104176789522171
+    },
+    {
+      "name": "tip_side",
+      "score": 0.1104176789522171
+    },
+    {
+      "name": "r_hand_vs_nose",
+      "score": 0.11071211099624634
+    },
+    {
+      "name": "tip_vs_nose",
+      "score": 0.21128833293914795
+    },
+    {
+      "name": "left_wrist_x",
+      "score": 0.21857620775699615
+    },
+    {
+      "name": "left_knee_angle",
+      "score": 0.22036996483802795
+    },
+    {
+      "name": "left_shoulder_angle",
+      "score": 0.24526099860668182
+    },
+    {
+      "name": "left_elbow_angle",
+      "score": 0.4736914336681366
+    },
+    {
+      "name": "stick_dy",
+      "score": 0.6218354105949402
+    },
+    {
+      "name": "right_elbow_angle",
+      "score": 0.6600001454353333
+    }
+  ]
+}

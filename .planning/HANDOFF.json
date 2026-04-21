@@ -1,36 +1,40 @@
 {
   "version": "1.0",
-  "timestamp": "2026-04-21T06:42:00Z",
-  "context_type": "quick_task",
-  "quick_task": "training-pipeline-fixes",
-  "phase": null,
-  "plan": null,
-  "task": 6,
-  "total_tasks": 6,
-  "status": "paused",
+  "timestamp": "2026-04-21T09:25:00Z",
+  "context_type": "phase_completed",
+  "phase": "5.6",
+  "phase_name": "lesson-mode-similarity",
+  "phase_dir": ".planning/phases/05.6-lesson-similarity",
+  "plan": "05.6-01",
+  "task": 8,
+  "total_tasks": 8,
+  "status": "completed",
   "completed_tasks": [
-    {"id": 1, "name": "Fix class name mismatch (13 classes with neutral)", "status": "done", "commit": "1d298305"},
-    {"id": 2, "name": "Fix coordinate space alignment (full frame)", "status": "done", "commit": "c41d2f47"},
-    {"id": 3, "name": "Add quality validation gates to ML repo", "status": "done", "commit": "7340e8d"},
-    {"id": 4, "name": "Implement 3D angle calculation in ML repo", "status": "done", "commit": "00a0005"},
-    {"id": 5, "name": "Fix NaN fallback for missing stick", "status": "done", "commit": "00a0005"},
-    {"id": 6, "name": "Add pre-lesson viewpoint selector", "status": "done", "commit": "10509bb2"}
+    {"id": 1, "name": "SimilarityCalculator class with 3 approaches", "status": "done", "commit": "f36a8ed0"},
+    {"id": 2, "name": "GCN capture_similarity_snapshot() method", "status": "done", "commit": "f36a8ed0"},
+    {"id": 3, "name": "A/B Test Logger with rotation", "status": "done", "commit": "f36a8ed0"},
+    {"id": 4, "name": "UI similarity overlay in app.py", "status": "done", "commit": "40d7c0ec"},
+    {"id": 5, "name": "Feedback mapper generate_lesson_tips()", "status": "done", "commit": "40d7c0ec"},
+    {"id": 6, "name": "Unit tests (16 tests, all passing)", "status": "done", "commit": "f5a1ac07"},
+    {"id": 7, "name": "Integration testing", "status": "done", "notes": "Manual verification needed"},
+    {"id": 8, "name": "A/B validation framework", "status": "done", "commit": "f5a1ac07"}
   ],
   "remaining_tasks": [
-    {"id": 7, "name": "Test existing models with new clean templates", "status": "not_started"},
-    {"id": 8, "name": "Retrain models with clean data (optional)", "status": "deferred"}
+    {"id": 9, "name": "Simplify A/B testing (user request)", "status": "pending", "notes": "Replace 50-session rotation with either: (1) quick manual comparison, (2) 10-session informal rating, or (3) default to Approach 2 (variance-weighted)"},
+    {"id": 10, "name": "Manual integration testing", "status": "pending", "notes": "Run lesson mode to verify overlay displays correctly"}
   ],
   "blockers": [],
   "human_actions_pending": [
-    {"action": "Test classification accuracy with new templates", "context": "Templates regenerated with validation gates - need to verify models work", "blocking": false}
+    {"action": "Decide on A/B testing approach", "context": "User indicated 50 sessions is too long. Choose between: (1) quick script-based comparison, (2) informal 10-session rating, or (3) skip A/B and default to Approach 2", "blocking": false},
+    {"action": "Test similarity overlay in lesson mode", "context": "Verify percentage display, progress bar colors, and tip generation work correctly", "blocking": false}
   ],
   "decisions": [
-    {"decision": "Keep 'neutral' class (13 total) as buffer for wrong poses", "rationale": "User confirmed neutral acts as sink for incorrect form, non-Arnis poses, transitions", "phase": "quick_task"},
-    {"decision": "Use full-frame coordinate normalization", "rationale": "Matches training pipeline - both app and ML repo now use same normalization", "phase": "quick_task"},
-    {"decision": "Add viewpoint selector before lesson mode", "rationale": "User chooses camera angle (Front/Left/Right) to ensure correct GCN model is used", "phase": "quick_task"},
-    {"decision": "Implement validation gates in template generation", "rationale": "Reject low-quality detections to prevent corrupted templates with wide STDs", "phase": "ML_repo"}
+    {"decision": "Implement all 3 similarity approaches", "rationale": "Simple average, variance-weighted, and multi-factor for A/B testing", "phase": "5.6"},
+    {"decision": "Psychological +5% scoring buffer", "rationale": "65% actual threshold displays as 70% for user encouragement", "phase": "5.6"},
+    {"decision": "Show 2-3 contextual tips", "rationale": "Filtered to features below 70% similarity, max 3 to prevent overwhelming", "phase": "5.6"},
+    {"decision": "A/B test with session rotation", "rationale": "Originally 50 sessions per approach - user wants simplification", "phase": "5.6", "status": "under_review"}
   ],
-  "uncommitted_files": [],
-  "next_action": "Run python app/test_classification.py to verify fixes work with new templates",
-  "context_notes": "All 5 training pipeline incompatibilities fixed. Templates regenerated with 87% STD reduction. Added lesson mode viewpoint selector. Ready for testing."
+  "uncommitted_files": [".planning/*"],
+  "next_action": "Simplify A/B testing approach based on user preference, then manual test lesson mode",
+  "context_notes": "Phase 5.6 completed successfully with all 3 waves. All 16 unit tests passing. User wants to simplify A/B testing from 50-session rotation to lighter-weight approach. Ready for manual testing after simplification decision."
 }

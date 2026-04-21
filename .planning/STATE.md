@@ -9,7 +9,10 @@
 | 3 | Feedback System | ✓ Complete | 3/3 | 100% |
 | 4 | GUI and User Interface | ✓ Complete | 5/5 | 100% |
 | 5 | Database and Persistence | ✓ Complete | 2/2 | 100% |
-| 6 | Packaging and Deployment | ○ Planned | 0/TBD | 0% |
+| 5.5 | Classification Optimization | ○ Planned | 0/3 | 0% |
+| 5.6 | Lesson Similarity Feedback | ○ Planned | 0/1 | 0% |
+| 5.7 | Training Pipeline Optimization | ○ Planned | 0/1 | 0% |
+| 6 | Packaging and Deployment | ○ Planned | 0/3 | 0% |
 | 7 | Distribution and Updates | ○ Future | - | - |
 | 8 | Performance Optimization | ○ Future | - | - |
 
@@ -31,6 +34,9 @@
 
 | Decision | Value | Made | Phase |
 |----------|-------|------|-------|
+| Quality Gates | YOLO 0.5, MP 0.7 visibility | 2026-04-21 | 5.7 |
+| Neutral Class | 13 classes (12 + neutral) | 2026-04-21 | 5.7 |
+| Template Variance | 87% reduction achieved | 2026-04-21 | 5.7 |
 | Build Tool | PyInstaller 6.12.0 | 2026-04-13 | 6 |
 | Package Mode | One-directory (_internal) | 2026-04-13 | 6 |
 | Console | Keep enabled (debugging) | 2026-04-13 | 6 |
@@ -46,8 +52,19 @@ None currently.
 2. **Manual hiddenimports** — Many ML libraries need explicit import declarations
 3. **Model file sizes** — GCN .pth files are large (~50MB each)
 
+## Completed Improvements
+
+### Phase 5.7: Training Pipeline (Quick Task Completed)
+- ✅ Quality validation gates (87% variance reduction)
+- ✅ 3D angle calculation for thrust/block discrimination
+- ✅ Neutral class (13 total classes: 12 techniques + buffer)
+- ✅ Full-frame coordinate normalization
+- ✅ Template regeneration with tight STDs
+
 ## Last Activity
 
+- 2026-04-21: Created Phase 5.7 Training Pipeline Optimization plan with template documentation and neutral class formalization
+- 2026-04-21: Quick task training-pipeline-fixes completed (all 5 issues resolved)
 - 2026-04-13: Planning phase initialized for Packaging (Phase 6)
 
 ---

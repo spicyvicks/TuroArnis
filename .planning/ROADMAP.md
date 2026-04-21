@@ -86,6 +86,19 @@ Replace binary correct/incorrect feedback in lesson mode with continuous similar
 
 ---
 
+### Phase 5.7: Training Pipeline Optimization
+**Status:** Ready to Execute
+**Goal:** Document and validate quality-gated template generation and neutral class integration
+
+**Description:**
+Formalize the completed training pipeline improvements including quality validation gates that reduced template variance by 87%, 3D angle calculation for thrust/block discrimination, and the addition of a neutral buffer class (13 total classes: 12 techniques + neutral). Document validation criteria, test existing models with cleaned templates, and retrain if accuracy below 80%. This phase consolidates the quick training-pipeline-fixes task into a formal, documented state.
+
+**Decisions:** [D-5.7-01: Quality Gates, D-5.7-02: Neutral Class Required, D-5.7-03: Conditional Retraining]
+**Plans:** 1 plan
+- Plan 01: Training Pipeline Documentation & Validation (TRN-01 through TRN-04) - Document templates and neutral class, test models, conditional retrain, sync to app
+
+---
+
 ### Phase 6: Packaging and Deployment
 **Status:** Ready to Execute
 **Goal:** Create standalone Windows executable with PyInstaller

@@ -1682,6 +1682,150 @@ class KioskApp(ctk.CTk):
     def draw_vertical_separator(self, frame, x, h):
         cv2.line(frame, (x, 50), (x, h-50), (255, 255, 255), 2)
 
+    def _draw_similarity_overlay(self, frame, w, h):
+        """
+        Draw real-time similarity overlay during lesson mode countdown.
+        
+        Shows percentage match to target technique with progress bar and tips.
+        """
+        # Only process for first zone (single user lesson mode)
+        zone_data = self.realtime_pose_cache.get(0)
+        if not zone_data or not zone_data.get('global_features'):
+            return
+        
+        # Get target technique
+        target_key = self.current_lesson.get("key")
+        if not target_key:
+            return
+        
+        # Get viewpoint
+        viewpoint = self.user_configs[0].get('viewpoint', 'front')
+        if hasattr(viewpoint, 'get'):
+            viewpoint = viewpoint.get()
+        viewpoint_mapping = {"Front": "front", "Right Side": "right", "Left Side": "left"}
+        viewpoint = viewpoint_mapping.get(viewpoint, viewpoint).lower()
+        
+        # Set viewpoint on GCN engine
+        if self.pose_analyzer and self.pose_analyzer.gcn_engine:
+            self.pose_analyzer.gcn_engine.set_viewpoint(viewpoint)
+        
+        # Calculate similarity (throttled to every 5th frame for performance)
+        if not hasattr(self, '_last_similarity_calc'):
+            self._last_similarity_calc = 0
+        self._last_similarity_calc += 1
+        
+        if self._last_similarity_calc % 5 != 0 and hasattr(self, '_cached_similarity'):
+            similarity_data = self._cached_similarity
+        else:
+            try:
+                # Get pose and stick keypoints
+                landmarks = zone_data.get('landmarks')
+                if landmarks is None:
+                    return
+                
+                pose_keypoints = []
+                for lm in landmarks.landmark:
+                    pose_keypoints.append([lm.x, lm.y, lm.z, lm.visibility])
+                pose_keypoints = np.array(pose_keypoints)
+                
+                # Get stick keypoints
+                stick_endpoints = zone_data.get('stick_endpoints')
+                if stick_endpoints:
+                    stick_keypoints = np.array([
+                        [stick_endpoints[0][0], stick_endpoints[0][1], 0.0, 1.0],
+                        [stick_endpoints[1][0], stick_endpoints[1][1], 0.0, 1.0]
+                    ])
+                else:
+                    stick_keypoints = np.array([
+                        [np.nan, np.nan, 0.0, 0.0],
+                        [np.nan, np.nan, 0.0, 0.0]
+                    ])
+                
+                # Get global features
+                global_features = zone_data.get('global_features', {})
+                
+                # Get A/B test approach
+                if not hasattr(self, '_ab_logger'):
+                    from computer_vision.ab_test_logger import ABTestLogger
+                    self._ab_logger = ABTestLogger()
+                approach = self._ab_logger.get_approach_for_session()
+                
+                # Calculate similarity
+                if self.pose_analyzer and self.pose_analyzer.gcn_engine:
+                    similarity_data = self.pose_analyzer.gcn_engine.capture_similarity_snapshot(
+                        pose_keypoints, stick_keypoints, global_features,
+                        target_key, approach=approach
+                    )
+                    self._cached_similarity = similarity_data
+                else:
+                    return
+            except Exception as e:
+                print(f"[SIMILARITY] Error calculating: {e}")
+                return
+        
+        if not similarity_data:
+            return
+        
+        # Extract data
+        display_score = similarity_data.get('display_score', 0)
+        passed = similarity_data.get('passed', False)
+        low_features = similarity_data.get('low_features', [])[:3]  # Max 3 tips
+        
+        # Determine color based on score
+        if display_score >= 90:
+            bar_color = (46, 204, 113)  # Green #2ecc71
+            text_color = (255, 255, 255)
+        elif display_score >= 70:
+            bar_color = (241, 196, 15)  # Yellow #f1c40f
+            text_color = (0, 0, 0)
+        else:
+            bar_color = (231, 76, 60)  # Red #e74c3c
+            text_color = (255, 255, 255)
+        
+        # Draw overlay box at top-left
+        box_w = 350
+        box_h = 100 + (len(low_features) * 25)
+        box_x = 20
+        box_y = 80
+        
+        # Semi-transparent background
+        overlay = frame.copy()
+        cv2.rectangle(overlay, (box_x, box_y), (box_x + box_w, box_y + box_h), (0, 0, 0), -1)
+        cv2.addWeighted(overlay, 0.75, frame, 0.25, 0, frame)
+        
+        # Draw percentage text
+        score_text = f"{int(display_score)}% Match"
+        font = cv2.FONT_HERSHEY_SIMPLEX
+        cv2.putText(frame, score_text, (box_x + 15, box_y + 35), font, 0.9, (255, 255, 255), 2, cv2.LINE_AA)
+        
+        # Draw progress bar
+        bar_x = box_x + 15
+        bar_y = box_y + 45
+        bar_w = box_w - 30
+        bar_h = 12
+        progress = display_score / 100.0
+        
+        # Background bar
+        cv2.rectangle(frame, (bar_x, bar_y), (bar_x + bar_w, bar_y + bar_h), (100, 100, 100), -1)
+        # Progress bar
+        cv2.rectangle(frame, (bar_x, bar_y), (bar_x + int(bar_w * progress), bar_y + bar_h), bar_color, -1)
+        
+        # Draw tips
+        from computer_vision.feedback_mapper import FEATURE_MESSAGES
+        tip_y = bar_y + 30
+        for i, feat in enumerate(low_features):
+            feat_name = feat['name']
+            if feat_name in FEATURE_MESSAGES:
+                # Determine direction (too high or too low)
+                feat_score = feat['score']
+                raw_value = zone_data.get('global_features', {}).get(feat_name, 0)
+                # For now, use generic tip
+                tip_text = f"- Adjust {feat_name.replace('_', ' ')}"
+                if feat_score < 0.5:
+                    tip_text = f"- Fix {feat_name.replace('_', ' ')}"
+                
+                cv2.putText(frame, tip_text, (box_x + 15, tip_y + (i * 25)), font, 0.6, (200, 200, 200), 1, cv2.LINE_AA)
+
     def draw_pose_keypoints(self, frame, zone_results, col_w, cols, prediction_ready=False, success=False, use_individual_colors=False):
         """Draw pose keypoints and skeleton on the frame
         
@@ -2031,6 +2175,10 @@ class KioskApp(ctk.CTk):
                 # White text
                 cv2.putText(frame, status_text, (text_x, text_y), font, font_scale, 
                            (255, 255, 255), thickness, cv2.LINE_AA)
+            
+            # SIMILARITY OVERLAY: Show during COUNTDOWN in lesson mode
+            if self.app_state == AppState.COUNTDOWN and self.current_lesson:
+                self._draw_similarity_overlay(frame, w, h)
             
             # Draw Minimal User IDs (only for first 3 seconds in ZONING state)
             if self.app_state == AppState.ZONING and self.show_user_names and (time.time() - self.names_shown_time) < 3.0:

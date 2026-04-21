@@ -204,3 +204,67 @@ def get_corrections(
     # Sort by worst score first, then trim
     corrections.sort(key=lambda x: x[1])
     return corrections[:max_corrections]
+
+
+def generate_lesson_tips(
+    low_features: List[Dict],
+    raw_features: Dict[str, float],
+    template_means: Dict[str, float],
+    max_tips: int = 3,
+    similarity_threshold: float = 0.70
+) -> List[str]:
+    """
+    Generate 2-3 actionable tips for features with similarity below threshold.
+    
+    This is used in lesson mode to provide contextual feedback based on
+    similarity scores, not just correction detection.
+    
+    Args:
+        low_features: List of feature dicts with 'name' and 'score' keys
+                     (from SimilarityCalculator.identify_low_features)
+        raw_features: Dict of feature_name → user's raw value
+        template_means: Dict of feature_name → template mean value
+        max_tips: Maximum number of tips to return (default 3)
+        similarity_threshold: Similarity threshold (default 0.70 = 70%)
+    
+    Returns:
+        List of actionable tip strings (max max_tips)
+    """
+    tips = []
+    
+    for feat in low_features:
+        fname = feat['name']
+        score = feat['score']
+        
+        # Skip if above threshold (shouldn't happen if filtered properly)
+        if score >= similarity_threshold:
+            continue
+        
+        # Get messages for this feature
+        if fname not in FEATURE_MESSAGES:
+            continue
+        
+        messages = FEATURE_MESSAGES[fname]
+        
+        # Determine direction based on raw vs mean
+        raw_val = raw_features.get(fname)
+        mean_val = template_means.get(fname)
+        
+        if raw_val is None or mean_val is None:
+            # Fallback: use generic message based on score severity
+            if score < 0.50:
+                tip = f"Focus on your {fname.replace('_', ' ')}"
+            else:
+                tip = f"Adjust your {fname.replace('_', ' ')}"
+            tips.append(tip)
+            continue
+        
+        direction = 'low' if raw_val < mean_val else 'high'
+        tip = messages[0] if direction == 'low' else messages[1]
+        tips.append(tip)
+        
+        # Stop once we have max_tips
+        if len(tips) >= max_tips:
+            break
+    
+    return tips

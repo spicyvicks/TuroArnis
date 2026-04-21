@@ -73,16 +73,32 @@ Address classification failures where thrusting techniques are incorrectly class
 
 ---
 
-### Phase 6: Packaging and Deployment
-**Status:** Future
-**Goal:** Create standalone Windows executable with PyInstaller
-**Requirements:** [PKG-01, PKG-02, PKG-03, PKG-04, PKG-05, PKG-06]
+### Phase 5.6: Lesson Mode Similarity Feedback
+**Status:** Ready to Execute
+**Goal:** Implement similarity-based feedback for lesson mode with A/B testing
 
 **Description:**
-Package the TuroArnis application into a standalone Windows executable that can be distributed and run without Python installation. Handle complex ML library bundling (PyTorch, MediaPipe, Ultralytics), asset inclusion (models, GIFs, images), and create an installer.
+Replace binary correct/incorrect feedback in lesson mode with continuous similarity scoring showing users how close their pose is to the target technique. Implement 3 approaches (simple average, variance-weighted, multi-factor), apply psychological +5% buffer (65% actual → 70% display), generate contextual tips, and A/B test to find optimal approach.
 
-**Plans:** TBD plans
-**Research:** Required for PyInstaller edge cases with ML libraries
+**Decisions:** [D-01, D-02, D-03, D-04]
+**Plans:** 1 plan
+- Plan 01: Similarity Feedback System (REQ-5.6-01 through REQ-5.6-06) - Implement all 3 approaches, A/B rotation, UI integration
+
+---
+
+### Phase 6: Packaging and Deployment
+**Status:** Ready to Execute
+**Goal:** Create standalone Windows executable with PyInstaller
+**Requirements:** [PKG-01, PKG-02, PKG-03, PKG-04, PKG-05, PKG-06, PKG-07]
+
+**Description:**
+Package the TuroArnis application into a standalone Windows executable that can be distributed and run without Python installation. Handle complex ML library bundling (PyTorch, MediaPipe, Ultralytics), asset inclusion (models, GIFs, images), and create distribution packaging with documentation.
+
+**Decisions:** [D-02, D-04, D-05, D-06]
+**Plans:** 3 plans
+- Plan 01: Build System Validation (PKG-01, PKG-02, PKG-03, PKG-04) - Validate spec, resource paths, execute clean build
+- Plan 02: Executable Testing (PKG-05) - Automated and manual functional testing of packaged app
+- Plan 03: Distribution Packaging (PKG-06, PKG-07) - Create ZIP distribution, deployment docs, optional installer
 
 ---
 

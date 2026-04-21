@@ -1,4 +1,16 @@
 {
+  "_metadata": {
+    "version": "1.0.0-legacy",
+    "generated": "2026-04-21",
+    "note": "Legacy templates with old class names - requires sync from TuroArnis-ML for quality-gated v2.1.0",
+    "git_commit": "unknown",
+    "validation_gate_version": "none",
+    "quality_gates_applied": false,
+    "templates_count": 39,
+    "classes_structure": "legacy",
+    "sync_required": true,
+    "sync_source": "TuroArnis-ML/hybrid_classifier/feature_templates.json"
+  },
   "front_crown_thrust_correct": {
     "left_elbow_angle": {
       "mean": 115.20394446784617,

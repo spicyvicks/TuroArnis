@@ -338,8 +338,31 @@ def evaluate(model, loader, criterion):
     return total_loss / len(loader), accuracy, all_preds, all_labels
 
 
-def train_model(train_dataset, val_dataset, viewpoint=None, merged=False):
+def train_model(train_dataset, val_dataset, viewpoint=None, merged=False, config=None):
     """Main training loop with optimizations."""
+    
+    # Use provided config or fall back to module constants
+    if config is None:
+        config = {
+            'epochs': EPOCHS,
+            'patience': PATIENCE,
+            'dropout': DROPOUT,
+            'hidden_dim': HIDDEN_DIM,
+            'learning_rate': LEARNING_RATE,
+            'weight_decay': WEIGHT_DECAY,
+            'batch_size': BATCH_SIZE,
+            'max_overfit_gap': MAX_OVERFIT_GAP
+        }
+    
+    # Extract config values
+    epochs = config['epochs']
+    patience = config['patience']
+    dropout = config['dropout']
+    hidden_dim = config['hidden_dim']
+    learning_rate = config['learning_rate']
+    weight_decay = config['weight_decay']
+    batch_size = config['batch_size']
+    max_overfit_gap = config['max_overfit_gap']
     
     # Create output directory
     MODELS_DIR.mkdir(parents=True, exist_ok=True)
@@ -354,10 +377,11 @@ def train_model(train_dataset, val_dataset, viewpoint=None, merged=False):
     print(f"\n{'='*60}")
     print(f"Training HybridGCN V2 - {view_suffix.upper()}")
     print(f"{'='*60}")
-    print(f"Hidden dim: {HIDDEN_DIM}")
-    print(f"Dropout: {DROPOUT}")
+    print(f"Hidden dim: {hidden_dim}")
+    print(f"Dropout: {dropout}")
     print(f"Node embed: {NODE_EMBED_DIM}")
-    print(f"Weight decay: {WEIGHT_DECAY}")
+    print(f"Weight decay: {weight_decay}")
+    print(f"Patience: {patience}")
     print(f"Device: {DEVICE}")
     
     # OPTIMIZED: Create weighted sampler for class balance
@@ -366,7 +390,7 @@ def train_model(train_dataset, val_dataset, viewpoint=None, merged=False):
     # Create data loaders
     train_loader = GeoDataLoader(
         train_dataset,
-        batch_size=BATCH_SIZE,
+        batch_size=batch_size,
         sampler=sampler,  # OPTIMIZED: Use weighted sampler instead of shuffle
         collate_fn=collate_fn,
         drop_last=True
@@ -374,7 +398,7 @@ def train_model(train_dataset, val_dataset, viewpoint=None, merged=False):
     
     val_loader = GeoDataLoader(
         val_dataset,
-        batch_size=BATCH_SIZE,
+        batch_size=batch_size,
         shuffle=False,
         collate_fn=collate_fn
     )
@@ -391,7 +415,7 @@ def train_model(train_dataset, val_dataset, viewpoint=None, merged=False):
         num_node_features=num_node_features,
         num_hybrid_features=num_hybrid_features,
         num_classes=NUM_CLASSES,
-        hidden_dim=HIDDEN_DIM
+        hidden_dim=hidden_dim
     ).to(DEVICE)
     
     # OPTIMIZED: Xavier initialization
@@ -411,8 +435,8 @@ def train_model(train_dataset, val_dataset, viewpoint=None, merged=False):
     # OPTIMIZED: Adam optimizer with weight decay
     optimizer = torch.optim.Adam(
         model.parameters(),
-        lr=LEARNING_RATE,
-        weight_decay=WEIGHT_DECAY
+        lr=learning_rate,
+        weight_decay=weight_decay
     )
     
     # OPTIMIZED: Learning rate scheduler
@@ -431,14 +455,14 @@ def train_model(train_dataset, val_dataset, viewpoint=None, merged=False):
     # Training history
     history = {
         'config': {
-            'hidden_dim': HIDDEN_DIM,
+            'hidden_dim': hidden_dim,
             'num_layers': NUM_LAYERS,
-            'dropout': DROPOUT,
+            'dropout': dropout,
             'node_embed_dim': NODE_EMBED_DIM,
-            'learning_rate': LEARNING_RATE,
-            'weight_decay': WEIGHT_DECAY,
-            'batch_size': BATCH_SIZE,
-            'patience': PATIENCE,
+            'learning_rate': learning_rate,
+            'weight_decay': weight_decay,
+            'batch_size': batch_size,
+            'patience': patience,
             'viewpoint': viewpoint,
             'merged': merged
         },
@@ -449,9 +473,9 @@ def train_model(train_dataset, val_dataset, viewpoint=None, merged=False):
     best_val_acc = 0.0
     patience_counter = 0
     
-    print(f"\nStarting training for up to {EPOCHS} epochs...")
+    print(f"\nStarting training for up to {epochs} epochs...")
     
-    for epoch in range(EPOCHS):
+    for epoch in range(epochs):
         # Train
         train_loss, train_acc = train_epoch(model, train_loader, optimizer, criterion)
         
@@ -476,7 +500,7 @@ def train_model(train_dataset, val_dataset, viewpoint=None, merged=False):
         })
         
         # Print progress
-        print(f"Epoch {epoch+1}/{EPOCHS}: "
+        print(f"Epoch {epoch+1}/{epochs}: "
               f"train_loss={train_loss:.4f}, train_acc={train_acc:.1f}%, "
               f"val_acc={val_acc:.1f}%, gap={overfit_gap:.1f}%, "
               f"lr={optimizer.param_groups[0]['lr']:.6f}")
@@ -498,13 +522,13 @@ def train_model(train_dataset, val_dataset, viewpoint=None, merged=False):
             patience_counter += 1
         
         # OPTIMIZED: Early stop on severe overfitting
-        if overfit_gap > MAX_OVERFIT_GAP:
+        if overfit_gap > max_overfit_gap:
             print(f"  ⚠ Severe overfitting detected (gap={overfit_gap:.1f}%), stopping...")
             break
         
         # Standard early stopping
-        if patience_counter >= PATIENCE:
-            print(f"  Early stopping after {epoch+1} epochs (no improvement for {PATIENCE} epochs)")
+        if patience_counter >= patience:
+            print(f"  Early stopping after {epoch+1} epochs (no improvement for {patience} epochs)")
             break
     
     # Save final history
@@ -524,28 +548,47 @@ def train_model(train_dataset, val_dataset, viewpoint=None, merged=False):
 # =============================================================================
 
 def main():
+    # Store default config values locally (avoid global modification)
+    default_config = {
+        'epochs': EPOCHS,
+        'patience': PATIENCE,
+        'dropout': DROPOUT,
+        'hidden_dim': HIDDEN_DIM,
+        'learning_rate': LEARNING_RATE,
+        'weight_decay': WEIGHT_DECAY,
+        'batch_size': BATCH_SIZE,
+        'max_overfit_gap': MAX_OVERFIT_GAP
+    }
+    
     parser = argparse.ArgumentParser(description='Train HybridGCN V2 (Optimized)')
     parser.add_argument('--viewpoint', choices=['front', 'left', 'right'],
                         help='Train specialist model for single viewpoint')
     parser.add_argument('--merged', action='store_true',
                         help='Train merged model using all viewpoints')
-    parser.add_argument('--epochs', type=int, default=EPOCHS,
-                        help=f'Number of epochs (default: {EPOCHS})')
-    parser.add_argument('--patience', type=int, default=PATIENCE,
-                        help=f'Early stopping patience (default: {PATIENCE})')
-    parser.add_argument('--dropout', type=float, default=DROPOUT,
-                        help=f'Dropout rate (default: {DROPOUT})')
-    parser.add_argument('--hidden-dim', type=int, default=HIDDEN_DIM,
-                        help=f'Hidden dimension (default: {HIDDEN_DIM})')
+    parser.add_argument('--epochs', type=int, default=default_config['epochs'],
+                        help=f"Number of epochs (default: {default_config['epochs']})")
+    parser.add_argument('--patience', type=int, default=default_config['patience'],
+                        help=f"Early stopping patience (default: {default_config['patience']})")
+    parser.add_argument('--dropout', type=float, default=default_config['dropout'],
+                        help=f"Dropout rate (default: {default_config['dropout']})")
+    parser.add_argument('--hidden-dim', type=int, default=default_config['hidden_dim'],
+                        help=f"Hidden dimension (default: {default_config['hidden_dim']})")
+    parser.add_argument('--learning-rate', type=float, default=default_config['learning_rate'],
+                        help=f"Learning rate (default: {default_config['learning_rate']})")
     
     args = parser.parse_args()
     
-    # Update config from args
-    global EPOCHS, PATIENCE, DROPOUT, HIDDEN_DIM
-    EPOCHS = args.epochs
-    PATIENCE = args.patience
-    DROPOUT = args.dropout
-    HIDDEN_DIM = args.hidden_dim
+    # Build config dict from args (no globals modified)
+    config = {
+        'epochs': args.epochs,
+        'patience': args.patience,
+        'dropout': args.dropout,
+        'hidden_dim': args.hidden_dim,
+        'learning_rate': args.learning_rate,
+        'weight_decay': default_config['weight_decay'],
+        'batch_size': default_config['batch_size'],
+        'max_overfit_gap': default_config['max_overfit_gap']
+    }
     
     # Check data exists
     train_path = DATA_DIR / "train_features.pt"
@@ -567,12 +610,13 @@ def main():
     print("\nLoading validation data...")
     val_dataset = GraphDataset(test_path, viewpoint=args.viewpoint)
     
-    # Train
+    # Train with config dict (clean parameter passing, no globals)
     best_acc, history = train_model(
         train_dataset,
         val_dataset,
         viewpoint=args.viewpoint,
-        merged=args.merged
+        merged=args.merged,
+        config=config
     )
     
     print(f"\n{'='*60}")

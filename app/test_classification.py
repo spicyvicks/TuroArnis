@@ -107,7 +107,10 @@ def draw_feedback_overlay(img, predicted_class, confidence, status, feedback_mes
     cv2.putText(result, status, (status_x, 75), font, 1.5, WHITE, 3)
     
     # 2. TECHNIQUE NAME - Top left
-    display_name = predicted_class.replace('_correct', '').replace('_', ' ').title()
+    if predicted_class.lower() == 'neutral':
+        display_name = "Pose not recognized"
+    else:
+        display_name = predicted_class.replace('_correct', '').replace('_', ' ').title()
     if is_lesson_mode and target_pose:
         target_display = target_pose.replace('_correct', '').replace('_', ' ').title()
         technique_text = f"Detected: {display_name}"
@@ -292,7 +295,7 @@ def test_classification(image_path, target_pose=None, viewpoint='front'):
             high_confidence = (confidence >= threshold + 0.15)
             good_confidence = (confidence >= threshold)
             pose_detected = (predicted_class != 'N/A' and 
-                           predicted_class.lower() != 'no technique detected' and 
+                           predicted_class.lower() not in ('no technique detected', 'neutral') and 
                            confidence > 0)
             
             correct_hit = pose_detected and (predicted_class == target_key)
@@ -329,8 +332,7 @@ def test_classification(image_path, target_pose=None, viewpoint='front'):
             else:
                 status = "NOT DETECTED"
                 if not feedback_messages:
-                    target_display = target_key.replace('_correct', '').replace('_', ' ').title()
-                    feedback_messages = [f"Get into {target_display} position", "Face the camera fully"]
+                    feedback_messages = ["Pose not recognized, try again"]
             
         else:
             # === FREE PRACTICE MODE LOGIC ===
@@ -338,7 +340,7 @@ def test_classification(image_path, target_pose=None, viewpoint='front'):
             high_confidence = (confidence >= threshold + 0.15)
             good_confidence = (confidence >= threshold)
             pose_detected = (predicted_class != 'N/A' and 
-                           predicted_class.lower() != 'no technique detected' and 
+                           predicted_class.lower() not in ('no technique detected', 'neutral') and 
                            confidence > 0)
             
             # Determine status based on confidence only
@@ -461,11 +463,11 @@ def main():
     
     valid_viewpoints = ['front', 'left', 'right']
     valid_targets = [
-        'crown_thrust_correct', 'left_chest_thrust_correct', 'right_chest_thrust_correct',
-        'left_eye_thrust_correct', 'right_eye_thrust_correct', 'solar_plexus_thrust_correct',
-        'left_elbow_block_correct', 'right_elbow_block_correct', 'left_downward_block_correct',
-        'right_downward_block_correct', 'left_upward_block_correct', 'right_upward_block_correct',
-        'left_outward_block_correct', 'right_outward_block_correct', 'neutral_stance'
+        'crown_thrust_correct', 'left_chest_thrust_correct', 'left_elbow_block_correct',
+        'left_eye_thrust_correct', 'left_knee_block_correct', 'left_temple_block_correct',
+        'right_chest_thrust_correct', 'right_elbow_block_correct',
+        'right_eye_thrust_correct', 'right_knee_block_correct', 'right_temple_block_correct',
+        'solar_plexus_thrust_correct', 'neutral'
     ]
     
     target_pose = None

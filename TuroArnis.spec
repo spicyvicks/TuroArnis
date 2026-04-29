@@ -105,6 +105,7 @@ hiddenimports = [
     
     # --- GCN model components ---
     'app.models.gcn.model_architecture',
+    'app.models.gcn.model_v6',
     'app.models.gcn.feature_extraction',
     
     # --- Database and utilities ---

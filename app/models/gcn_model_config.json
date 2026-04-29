@@ -4,22 +4,25 @@
     "viewpoint": "front",
     "models": {
         "front": {
-            "path": "app/models/hybrid_gcn_v2_front.pth",
-            "accuracy": 0.80,
+            "path": "app/models/hybrid_gcn_v6_front.pth",
+            "accuracy": 0.746,
             "confidence_threshold": 0.70,
-            "description": "Front viewpoint specialist"
+            "description": "Front viewpoint specialist (V6 masked pooling, 49 hybrid features)",
+            "model_version": "v6"
         },
         "left": {
             "path": "app/models/hybrid_gcn_v2_left.pth",
             "accuracy": 0.80,
             "confidence_threshold": 0.70,
-            "description": "Left side viewpoint specialist"
+            "description": "Left side viewpoint specialist (V2 legacy)",
+            "model_version": "v2"
         },
         "right": {
             "path": "app/models/hybrid_gcn_v2_right.pth",
             "accuracy": 0.80,
             "confidence_threshold": 0.70,
-            "description": "Right side viewpoint specialist"
+            "description": "Right side viewpoint specialist (V2 legacy)",
+            "model_version": "v2"
         }
     },
     "feature_templates": "app/models/gcn/feature_templates.json",

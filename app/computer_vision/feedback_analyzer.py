@@ -462,7 +462,7 @@ class FeedbackAnalyzer:
         if predicted_class == target_form and confidence < 0.55:
             # Right technique but low confidence — coach to sharpen the form
             suggestions.append(f"Close — sharpen your form ({confidence:.0%} confidence)")
-        elif predicted_class and predicted_class not in ('N/A', 'neutral_stance', 'neutral') \
+        elif predicted_class and predicted_class not in ('N/A', 'neutral') \
                 and target_form and predicted_class != target_form:
             # Wrong technique detected in lesson mode — keep it short
             target_display = target_form.replace('_correct', '').replace('_', ' ').title()

@@ -1,12 +1,40 @@
 """
-Feature Extraction for Hybrid GCN V2
+Feature Extraction for Hybrid GCN V2 / V5 / V6
 Extracts node features and hybrid features from pose keypoints
+
+V6 additions:
+- Signed direction features (15) + has_stick binary = 49 hybrid features
+- 7-dim node features with has_stick binary
+- node_mask for masked pooling
+- True zero-stick fallback (no NaN → origin hack)
+
+V2 compatibility preserved for left/right models.
 """
 
 import cv2
 import numpy as np
 import mediapipe as mp
 from ultralytics import YOLO
+
+# V6 direction features: pass-through normalized signed values (not Gaussian similarity)
+DIRECTION_FEATURES = {
+    'stick_tip_signed_x': 0.5,
+    'grip_signed_x': 0.5,
+    'wrist_spread': 0.5,
+    'stick_reach': 0.5,
+    'tip_height_vs_grip': 0.5,
+    'stick_forearm_dot': 1.0,
+    'tip_vs_nose_signed': 0.5,
+    'tip_vs_shoulder_signed': 0.5,
+    'left_elbow_angle_signed': 1.0,
+    'right_elbow_angle_signed': 1.0,
+    'stick_angle_signed': 1.0,
+    'right_wrist_height_signed': 0.5,
+    'left_wrist_height_signed': 0.5,
+    'left_wrist_x_signed': 0.5,
+    'right_wrist_x_signed': 0.5,
+    'has_stick': 1.0,  # binary hybrid feature
+}
 
 
 def calculate_angle(p1, p2, p3):
@@ -94,7 +122,8 @@ def extract_raw_features(image, stick_detector):
     return {
         'pose_keypoints': kpts,
         'stick_keypoints': stick_keypoints,
-        'global_features': features
+        'global_features': features,
+        'has_stick_detected': bool(stick_results.keypoints is not None and len(stick_results.keypoints.data) > 0)
     }
 
 
@@ -195,7 +224,54 @@ def compute_global_features_from_kpts(kpts, stick_keypoints):
         features['stick_length'] = calculate_distance(stick_grip, stick_tip)
     else:
         features['stick_length'] = 0.0
-    
+
+    # === V6 additional base features ===
+    features['stick_grip_to_r_wrist'] = calculate_distance(stick_grip, kpts[16]) if stick_available else 0.0
+    features['stick_right_of_center'] = (stick_tip[0] - root_x) if stick_available else 0.0
+    features['r_wrist_vs_l_wrist_x'] = kpts[16][0] - kpts[15][0]
+
+    # === V6 SIGNED DIRECTION FEATURES ===
+    shoulder_width = np.linalg.norm(kpts[11, :2] - kpts[12, :2]) + 1e-8
+
+    features['stick_tip_signed_x'] = (stick_tip[0] - hip_center_x) / shoulder_width if stick_available else 0.0
+    features['grip_signed_x'] = (stick_grip[0] - hip_center_x) / shoulder_width if stick_available else 0.0
+    features['wrist_spread'] = (kpts[15][0] - kpts[16][0]) / shoulder_width
+    features['stick_reach'] = abs(stick_tip[0] - stick_grip[0]) / shoulder_width if stick_available else 0.0
+    features['tip_height_vs_grip'] = (stick_tip[1] - stick_grip[1]) / shoulder_width if stick_available else 0.0
+
+    # stick_forearm_dot
+    grip_px = np.array([stick_grip[0], stick_grip[1]]) if stick_available else np.array([0.0, 0.0])
+    dist_to_rwrist = np.linalg.norm(grip_px - kpts[16, :2]) if stick_available else float('inf')
+    dist_to_lwrist = np.linalg.norm(grip_px - kpts[15, :2]) if stick_available else float('inf')
+    if stick_available:
+        if dist_to_rwrist < dist_to_lwrist:
+            forearm_vec = kpts[16, :2] - kpts[14, :2]
+        else:
+            forearm_vec = kpts[15, :2] - kpts[13, :2]
+        stick_vec_2d = np.array([stick_tip[0] - stick_grip[0], stick_tip[1] - stick_grip[1]])
+        forearm_len = np.linalg.norm(forearm_vec) + 1e-8
+        stick_len_2d = np.linalg.norm(stick_vec_2d) + 1e-8
+        if forearm_len > 0.01 and stick_len_2d > 0.01:
+            dot = np.dot(forearm_vec / forearm_len, stick_vec_2d / stick_len_2d)
+            features['stick_forearm_dot'] = dot
+        else:
+            features['stick_forearm_dot'] = 0.5
+    else:
+        features['stick_forearm_dot'] = 0.5
+
+    features['tip_vs_nose_signed'] = (stick_tip[1] - nose_y) / shoulder_width if stick_available else 0.0
+    features['tip_vs_shoulder_signed'] = (stick_tip[1] - shoulder_y) / shoulder_width if stick_available else 0.0
+    features['left_elbow_angle_signed'] = features['left_elbow_angle'] / 180.0
+    features['right_elbow_angle_signed'] = features['right_elbow_angle'] / 180.0
+    features['stick_angle_signed'] = features['stick_angle'] / 180.0
+    features['right_wrist_height_signed'] = features['right_wrist_height'] / shoulder_width
+    features['left_wrist_height_signed'] = features['left_wrist_height'] / shoulder_width
+    features['left_wrist_x_signed'] = features['left_wrist_x'] / shoulder_width
+    features['right_wrist_x_signed'] = features['right_wrist_x'] / shoulder_width
+
+    # V6 has_stick binary hybrid feature
+    features['has_stick'] = 1.0 if stick_available else 0.0
+
     return features
 
 
@@ -209,6 +285,7 @@ def gaussian_similarity(value, mean, std):
 def compute_hybrid_features(raw_features, templates, viewpoint, class_name):
     """
     Convert raw geometric features to similarity scores.
+    V2-compatible: iterates template keys so output length matches the model.
     
     Args:
         raw_features: dict of geometric feature values
@@ -217,7 +294,7 @@ def compute_hybrid_features(raw_features, templates, viewpoint, class_name):
         class_name: target class name
     
     Returns:
-        numpy array of similarity scores (30 features)
+        numpy array of similarity scores (matches template key count)
     """
     key = f"{viewpoint}_{class_name}"
     
@@ -227,8 +304,51 @@ def compute_hybrid_features(raw_features, templates, viewpoint, class_name):
     template = templates[key]
     hybrid_features = []
     
+    # FIX: iterate template keys (not raw_features) so vector length always
+    # matches the model's expected hybrid_in_channels, regardless of extra
+    # keys added for v6.
+    for feat_name in template:
+        if feat_name in raw_features:
+            feat_value = raw_features[feat_name]
+            mean = template[feat_name]['mean']
+            std = template[feat_name]['std']
+            similarity = gaussian_similarity(feat_value, mean, std)
+            hybrid_features.append(similarity)
+        else:
+            hybrid_features.append(0.0)
+    
+    return np.array(hybrid_features, dtype=np.float32)
+
+
+def compute_hybrid_features_v6(raw_features, templates, viewpoint, class_name):
+    """
+    V6 hybrid feature vector: 49-dim = 33 Gaussian + 15 signed + 1 has_stick.
+    Signed direction features are pass-through (normalized), not Gaussian.
+    Matches training pipeline exactly.
+    
+    Args:
+        raw_features: dict of geometric feature values (must include all 49 keys)
+        templates: dict loaded from feature_templates.json
+        viewpoint: 'front', 'left', or 'right'
+        class_name: target class name
+    
+    Returns:
+        numpy array of 49 hybrid features
+    """
+    key = f"{viewpoint}_{class_name}"
+    
+    if key not in templates:
+        return np.zeros(49, dtype=np.float32)
+    
+    template = templates[key]
+    hybrid_features = []
+    
     for feat_name, feat_value in raw_features.items():
-        if feat_name in template:
+        if feat_name in DIRECTION_FEATURES:
+            normalized = feat_value / DIRECTION_FEATURES[feat_name]
+            normalized = np.clip(normalized, -3.0, 3.0)
+            hybrid_features.append(normalized)
+        elif feat_name in template:
             mean = template[feat_name]['mean']
             std = template[feat_name]['std']
             similarity = gaussian_similarity(feat_value, mean, std)
@@ -278,3 +398,59 @@ def extract_node_features(pose_keypoints, stick_keypoints):
         node_features.append([x, y, z, vis, dist_to_hip, angle_from_hip])
     
     return np.array(node_features, dtype=np.float32)
+
+
+def extract_node_features_v6(pose_keypoints, stick_keypoints, has_stick_detected=True):
+    """
+    V6 node features: 7-dim [x, y, z, vis, dist_to_hip_3d, angle_from_hip, has_stick].
+    
+    - Body nodes (0-32): has_stick = 1.0
+    - Stick nodes (33-34): has_stick = 1.0 if detected, 0.0 if zero-stick fallback
+    - True zero for invisible/missing nodes (vis < 1e-6): all 7 dims = 0.0
+    
+    Args:
+        pose_keypoints: [33, 4] array from MediaPipe
+        stick_keypoints: [2, 4] array (true zeros when not detected)
+        has_stick_detected: bool, whether YOLO actually detected the stick
+    
+    Returns:
+        [35, 7] array of node features
+    """
+    all_keypoints = np.vstack([pose_keypoints, stick_keypoints])
+    hip_center = (pose_keypoints[23, :3] + pose_keypoints[24, :3]) / 2
+    
+    node_features = []
+    for i, kpt in enumerate(all_keypoints):
+        x, y, z, vis = kpt
+        is_stick_node = i >= 33
+        
+        if vis < 1e-6:
+            node_features.append([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
+        else:
+            dist_to_hip = np.sqrt((x - hip_center[0])**2 + (y - hip_center[1])**2 + (z - hip_center[2])**2)
+            angle_from_hip = np.degrees(np.arctan2(y - hip_center[1], x - hip_center[0]))
+            
+            if is_stick_node and not has_stick_detected:
+                has_stick = 0.0
+            else:
+                has_stick = 1.0
+            
+            node_features.append([x, y, z, vis, dist_to_hip, angle_from_hip, has_stick])
+    
+    return np.array(node_features, dtype=np.float32)
+
+
+def create_node_mask(has_stick_detected):
+    """
+    Create node-level mask for v6 masked pooling.
+    
+    Args:
+        has_stick_detected: bool, whether YOLO detected the stick
+    
+    Returns:
+        [35] array: 1.0 for body nodes (0-32), 1.0 for stick nodes (33-34) if detected, else 0.0
+    """
+    mask = np.ones(35, dtype=np.float32)
+    if not has_stick_detected:
+        mask[33:] = 0.0  # zero out stick nodes
+    return mask

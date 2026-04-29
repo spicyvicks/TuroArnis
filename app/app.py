@@ -221,8 +221,11 @@ LESSON_IMAGE_MAP = {
     "solar_plexus_thrust_correct":"solar_plexus.gif",
 }
 
-def _lesson_gif_filename(technique_key: str, viewpoint: str) -> str:
-    """Return the correct GIF filename for a technique + viewpoint combo."""
+def _lesson_gif_filename(technique_key: str) -> str:
+    """Return the correct GIF filename for a technique key.
+
+    Viewpoint is handled by the directory path (e.g. lesson/front_gif/).
+    """
     return LESSON_IMAGE_MAP.get(technique_key, "")
 
 MAX_GIF_FRAMES = 30  # cap to prevent memory exhaustion on large GIFs
@@ -790,7 +793,7 @@ class KioskApp(ctk.CTk):
                 return
             self._lesson_loading_vp = vp
             media_img_label.configure(image=None, text="Loading...", font=("Inter", 18))
-            gif_name = _lesson_gif_filename(self._lesson_technique_key, vp)
+            gif_name = _lesson_gif_filename(self._lesson_technique_key)
             if not gif_name:
                 media_img_label.configure(text="\U0001f5bc\ufe0f", font=("Inter", 60))
                 return
@@ -874,7 +877,7 @@ class KioskApp(ctk.CTk):
         self._lesson_zoom_anim_id = None
         technique_key = self.current_lesson.get("key") if self.current_lesson else None
         active_vp = getattr(self, "_lesson_active_vp", "front")
-        gif_name = _lesson_gif_filename(technique_key, active_vp) if technique_key else None
+        gif_name = _lesson_gif_filename(technique_key) if technique_key else None
 
         zoom_img_label = ctk.CTkLabel(zoom_panel, text="Loading...",
                                        font=("Inter", 24), image=None)

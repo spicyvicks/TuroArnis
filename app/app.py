@@ -11,7 +11,6 @@ import os
 import json
 
 # Add project root to path
-# Add project root to path
 # In PyInstaller, the app is running from a temp dir, so we need to ensure local imports work
 if getattr(sys, 'frozen', False):
     # Running as compiled exe
@@ -1556,8 +1555,8 @@ class KioskApp(ctk.CTk):
             predicted_class = zone_result.get('predicted_class', 'N/A')
             confidence = zone_result.get('confidence', 0.0)
             
-            # Filter out neutral_stance (training buffer)
-            if predicted_class.lower() == 'neutral_stance':
+            # Filter out neutral (no valid technique detected)
+            if predicted_class.lower() == 'neutral':
                 predicted_class = 'No Technique Detected'
                 confidence = 0.0
             
@@ -2032,8 +2031,8 @@ class KioskApp(ctk.CTk):
                             predicted_class = person_data.get('predicted_class', 'N/A')
                             confidence = person_data.get('confidence', 0.0)
                             
-                            # Filter out neutral_stance predictions
-                            if predicted_class.lower() == 'neutral_stance':
+                            # Filter out neutral predictions (no valid technique)
+                            if predicted_class.lower() == 'neutral':
                                 predicted_class = 'No Technique Detected'
                                 confidence = 0.0
                             

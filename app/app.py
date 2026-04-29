@@ -60,6 +60,12 @@ FONT_MAIN = ("Inter", 24)
 FONT_HEADER = ("Inter", 48, "bold")
 FONT_BOLD = ("Inter", 24, "bold")
 
+VIEWPOINT_MAPPING = {
+    "Front": "front",
+    "Right Side": "right",
+    "Left Side": "left"
+}
+
 # Confidence thresholds are defined per-viewpoint in app/models/gcn_model_config.json
 # (single source of truth — do not duplicate here)
 
@@ -1294,12 +1300,7 @@ class KioskApp(ctk.CTk):
             # Get viewpoint-specific confidence threshold from gcn_model_config.json (single source of truth)
             vp_raw = config['viewpoint']
             viewpoint_ui = vp_raw.get() if hasattr(vp_raw, 'get') else vp_raw
-            viewpoint_mapping = {
-                "Front": "front",
-                "Right Side": "right",
-                "Left Side": "left"
-            }
-            viewpoint = viewpoint_mapping.get(viewpoint_ui, viewpoint_ui).lower()
+            viewpoint = VIEWPOINT_MAPPING.get(viewpoint_ui, viewpoint_ui).lower()
             gcn_config = self.pose_analyzer.gcn_engine.config if (self.pose_analyzer and self.pose_analyzer.gcn_engine) else {}
             threshold = gcn_config.get('models', {}).get(viewpoint, {}).get('confidence_threshold', 0.55)
 
@@ -1701,8 +1702,7 @@ class KioskApp(ctk.CTk):
         viewpoint = self.user_configs[0].get('viewpoint', 'front')
         if hasattr(viewpoint, 'get'):
             viewpoint = viewpoint.get()
-        viewpoint_mapping = {"Front": "front", "Right Side": "right", "Left Side": "left"}
-        viewpoint = viewpoint_mapping.get(viewpoint, viewpoint).lower()
+        viewpoint = VIEWPOINT_MAPPING.get(viewpoint, viewpoint).lower()
         
         # Set viewpoint on GCN engine
         if self.pose_analyzer and self.pose_analyzer.gcn_engine:
@@ -1970,12 +1970,7 @@ class KioskApp(ctk.CTk):
             # Models are now mirror-invariant and work with mirrored frames directly
             vp_raw = self.user_configs[i]['viewpoint']
             viewpoint_ui = vp_raw.get() if hasattr(vp_raw, 'get') else vp_raw
-            viewpoint_mapping = {
-                "Front": "front",
-                "Right Side": "right",
-                "Left Side": "left"
-            }
-            viewpoint = viewpoint_mapping.get(viewpoint_ui, viewpoint_ui).lower()
+            viewpoint = VIEWPOINT_MAPPING.get(viewpoint_ui, viewpoint_ui).lower()
             
             if self.pose_analyzer.gcn_engine:
                 self.pose_analyzer.gcn_engine.set_viewpoint(viewpoint)
@@ -2274,12 +2269,7 @@ class KioskApp(ctk.CTk):
                         user_conf = self.user_configs[i]
                         vp_raw = user_conf['viewpoint']
                         viewpoint_ui = vp_raw.get() if hasattr(vp_raw, 'get') else vp_raw
-                        viewpoint_mapping = {
-                            "Front": "front",
-                            "Right Side": "right",
-                            "Left Side": "left"
-                        }
-                        viewpoint = viewpoint_mapping.get(viewpoint_ui, "front").lower()
+                        viewpoint = VIEWPOINT_MAPPING.get(viewpoint_ui, "front").lower()
 
                         gcn_config = self.pose_analyzer.gcn_engine.config if (self.pose_analyzer and self.pose_analyzer.gcn_engine) else {}
                         confidence_threshold = gcn_config.get('models', {}).get(viewpoint, {}).get('confidence_threshold', 0.55)

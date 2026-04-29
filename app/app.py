@@ -2202,11 +2202,8 @@ class KioskApp(ctk.CTk):
             elif self.app_state == AppState.ZONING and self.show_user_names and (time.time() - self.names_shown_time) >= 3.0:
                 self.show_user_names = False
         
-        # SAFEGUARD: Flag to prevent double skeleton drawings on the same frame
-        skeletons_drawn_this_frame = False
-        
         # Real-time keypoint drawing during ZONING, COUNTDOWN only (NOT SNAPSHOT to avoid double-drawing)
-        if self.app_state in [AppState.ZONING, AppState.COUNTDOWN] and self.pose_analyzer and not skeletons_drawn_this_frame:
+        if self.app_state in [AppState.ZONING, AppState.COUNTDOWN] and self.pose_analyzer:
             h, w, _ = frame.shape
             col_w = w // self.num_users
             
@@ -2329,9 +2326,8 @@ class KioskApp(ctk.CTk):
             # Draw all skeletons in a single call with individual colors
             if feedback_results:
                 try:
-                    self.draw_pose_keypoints(frame, feedback_results, col_w, self.num_users, 
+                    self.draw_pose_keypoints(frame, feedback_results, col_w, self.num_users,
                                             prediction_ready=True, use_individual_colors=True)
-                    skeletons_drawn_this_frame = True  # Mark that we've drawn skeletons
                 except Exception as e:
                     print(f"Error drawing feedback keypoints: {e}")
 

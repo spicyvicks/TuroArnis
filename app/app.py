@@ -1159,7 +1159,7 @@ class KioskApp(ctk.CTk):
                                 )
                                 if visible_count >= 5:
                                     properly_positioned += 1
-                except:
+                except Exception:
                     pass
             
             # If all users properly positioned, start countdown
@@ -2242,7 +2242,7 @@ class KioskApp(ctk.CTk):
                                 adjusted_grip = (grip_pt[0] + x_start, grip_pt[1])
                                 adjusted_tip = (tip_pt[0] + x_start, tip_pt[1])
                                 realtime_results[i]['stick_endpoints'] = (adjusted_grip, adjusted_tip)
-                except:
+                except Exception:
                     pass
             
             if realtime_results:

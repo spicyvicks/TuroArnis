@@ -95,7 +95,7 @@ except Exception as e:
     print(f"  FAIL: {e}")
 
 # ── VALIDATION 1 & 2 & 3: GCN engine loads and runs ──
-print("\n[VAL-1/2/3] Checking GCN engine load + v6/v2 predict...")
+print("\n[VAL-1/2/3] Checking GCN engine load + predict...")
 try:
     from app.computer_vision.gcn_inference import GCNInferenceEngine
     
@@ -110,20 +110,20 @@ try:
     print(f"  left version:  {left_meta.get('version', 'unknown')}")
     print(f"  right version: {right_meta.get('version', 'unknown')}")
     
-    v1_ok = front_meta.get('version') == 'v6'
+    v1_ok = front_meta.get('version') == 'v5'
     v3_ok = left_meta.get('version') == 'v2' and right_meta.get('version') == 'v2'
     
     if v1_ok and v3_ok:
         results['VAL1'] = "PASS"
         results['VAL3'] = "PASS"
-        print(f"  VAL1 PASS: front=V6, left/right=V2")
+        print(f"  VAL1 PASS: front=V5, left/right=V2")
         print(f"  VAL3 PASS: left/right remain V2")
     else:
         results['VAL1'] = f"FAIL - front={front_meta.get('version')}, left={left_meta.get('version')}, right={right_meta.get('version')}"
         results['VAL3'] = "FAIL"
         print(f"  VAL1/3 FAIL: version mismatch")
     
-    # Run v6 predict on dummy data
+    # Run v5 predict on dummy data
     engine.set_viewpoint('front')
     pose_kpts = np.random.rand(33, 4).astype(np.float32)
     pose_kpts[:, 3] = 1.0  # visibility

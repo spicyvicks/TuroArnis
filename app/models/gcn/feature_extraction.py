@@ -36,6 +36,42 @@ DIRECTION_FEATURES = {
     'has_stick': 1.0,  # binary hybrid feature
 }
 
+# V5 direction features: 13 signed (no has_stick, no left/right_wrist_x_signed)
+DIRECTION_FEATURES_V5 = {
+    'stick_tip_signed_x': 0.5,
+    'grip_signed_x': 0.5,
+    'wrist_spread': 0.5,
+    'stick_reach': 0.5,
+    'tip_height_vs_grip': 0.5,
+    'stick_forearm_dot': 1.0,
+    'tip_vs_nose_signed': 0.5,
+    'tip_vs_shoulder_signed': 0.5,
+    'left_elbow_angle_signed': 1.0,
+    'right_elbow_angle_signed': 1.0,
+    'stick_angle_signed': 1.0,
+    'right_wrist_height_signed': 0.5,
+    'left_wrist_height_signed': 0.5,
+}
+
+# Exact 46-feature order expected by v5 model (33 Gaussian + 13 signed)
+V5_ALL_FEATURES = (
+    'left_elbow_angle', 'right_elbow_angle', 'left_shoulder_angle', 'right_shoulder_angle',
+    'left_knee_angle', 'right_knee_angle',
+    'left_wrist_height', 'right_wrist_height', 'left_elbow_height', 'right_elbow_height',
+    'stick_tip_height', 'stick_grip_height',
+    'left_wrist_x', 'right_wrist_x', 'stick_tip_x', 'stick_grip_x',
+    'stick_angle', 'stick_dx', 'stick_dy',
+    'tip_vs_nose', 'tip_vs_shoulder', 'tip_vs_hip',
+    'r_hand_vs_nose', 'r_hand_vs_shoulder', 'r_hand_vs_hip',
+    'tip_side', 'grip_side', 'foot_stagger',
+    'hands_distance', 'stick_length',
+    'stick_grip_to_r_wrist', 'stick_right_of_center', 'r_wrist_vs_l_wrist_x',
+    'stick_tip_signed_x', 'grip_signed_x', 'wrist_spread', 'stick_reach',
+    'tip_height_vs_grip', 'stick_forearm_dot', 'tip_vs_nose_signed',
+    'tip_vs_shoulder_signed', 'left_elbow_angle_signed', 'right_elbow_angle_signed',
+    'stick_angle_signed', 'right_wrist_height_signed', 'left_wrist_height_signed',
+)
+
 
 def calculate_angle(p1, p2, p3):
     """Calculate 3D angle at p2 formed by p1-p2-p3 using three-dimensional coordinates"""
@@ -127,13 +163,16 @@ def extract_raw_features(image, stick_detector):
     }
 
 
-def compute_global_features_from_kpts(kpts, stick_keypoints):
+def compute_global_features_from_kpts(kpts, stick_keypoints, world_landmarks=None, has_stick_detected=None, version='v2'):
     """
     Compute global geometric features from pose and stick keypoints.
     
     Args:
-        kpts: [33, 4] pose keypoints
+        kpts: [33, 4] pose keypoints (normalized image coordinates)
         stick_keypoints: [2, 4] stick keypoints (grip, tip)
+        world_landmarks: Optional MediaPipe world landmarks for 3D angles (v5/v6)
+        has_stick_detected: Whether YOLO actually detected the stick (for has_stick feature)
+        version: 'v2', 'v5', or 'v6' — controls fallback behavior and angle source
         
     Returns:
         dict of features
@@ -141,18 +180,36 @@ def compute_global_features_from_kpts(kpts, stick_keypoints):
     stick_grip = stick_keypoints[0]
     stick_tip = stick_keypoints[1]
     
-    # FIX #2: Detect whether stick is available (NaN sentinel = unavailable)
-    stick_available = not (np.isnan(stick_grip[0]) or np.isnan(stick_tip[0]))
+    # V5/V6: sanitize NaN to origin/zero fallback so all features are computed normally.
+    # The models learned these constant offsets during training.
+    if version in ('v5', 'v6'):
+        if np.isnan(stick_grip).any():
+            stick_grip = np.array([0.0, 0.0, 0.0, 0.0])
+        if np.isnan(stick_tip).any():
+            stick_tip = np.array([0.0, 0.0, 0.0, 0.0])
+        stick_available = True
+    else:
+        # V2: NaN sentinel = unavailable, zero out stick features
+        stick_available = not (np.isnan(stick_grip[0]) or np.isnan(stick_tip[0]))
     
     features = {}
     
-    # Joint angles (body-only — always valid)
-    features['left_elbow_angle'] = calculate_angle(kpts[11], kpts[13], kpts[15])
-    features['right_elbow_angle'] = calculate_angle(kpts[12], kpts[14], kpts[16])
-    features['left_shoulder_angle'] = calculate_angle(kpts[13], kpts[11], kpts[23])
-    features['right_shoulder_angle'] = calculate_angle(kpts[14], kpts[12], kpts[24])
-    features['left_knee_angle'] = calculate_angle(kpts[23], kpts[25], kpts[27])
-    features['right_knee_angle'] = calculate_angle(kpts[24], kpts[26], kpts[28])
+    # Point getter for angles: use world landmarks for v5/v6 if available
+    if version in ('v5', 'v6') and world_landmarks is not None:
+        def get_point(idx):
+            lm = world_landmarks[idx]
+            return [lm.x, lm.y, lm.z]
+    else:
+        def get_point(idx):
+            return kpts[idx]
+    
+    # Joint angles
+    features['left_elbow_angle'] = calculate_angle(get_point(11), get_point(13), get_point(15))
+    features['right_elbow_angle'] = calculate_angle(get_point(12), get_point(14), get_point(16))
+    features['left_shoulder_angle'] = calculate_angle(get_point(13), get_point(11), get_point(23))
+    features['right_shoulder_angle'] = calculate_angle(get_point(14), get_point(12), get_point(24))
+    features['left_knee_angle'] = calculate_angle(get_point(23), get_point(25), get_point(27))
+    features['right_knee_angle'] = calculate_angle(get_point(24), get_point(26), get_point(28))
     
     # Heights relative to hip center
     hip_center_y = (kpts[23][1] + kpts[24][1]) / 2
@@ -166,8 +223,8 @@ def compute_global_features_from_kpts(kpts, stick_keypoints):
     features['left_wrist_x'] = kpts[15][0] - hip_center_x
     features['right_wrist_x'] = kpts[16][0] - hip_center_x
     
-    # FIX #2: Stick-dependent features — zero out when stick is unavailable
-    # so they contribute no discriminative signal instead of corrupt values.
+    # Stick-dependent features — computed normally for v5/v6 (model learned offsets),
+    # zeroed out for v2 when stick is unavailable.
     if stick_available:
         features['stick_tip_height'] = hip_center_y - stick_tip[1]
         features['stick_grip_height'] = hip_center_y - stick_grip[1]
@@ -230,7 +287,7 @@ def compute_global_features_from_kpts(kpts, stick_keypoints):
     features['stick_right_of_center'] = (stick_tip[0] - root_x) if stick_available else 0.0
     features['r_wrist_vs_l_wrist_x'] = kpts[16][0] - kpts[15][0]
 
-    # === V6 SIGNED DIRECTION FEATURES ===
+    # === SIGNED DIRECTION FEATURES ===
     shoulder_width = np.linalg.norm(kpts[11, :2] - kpts[12, :2]) + 1e-8
 
     features['stick_tip_signed_x'] = (stick_tip[0] - hip_center_x) / shoulder_width if stick_available else 0.0
@@ -269,8 +326,11 @@ def compute_global_features_from_kpts(kpts, stick_keypoints):
     features['left_wrist_x_signed'] = features['left_wrist_x'] / shoulder_width
     features['right_wrist_x_signed'] = features['right_wrist_x'] / shoulder_width
 
-    # V6 has_stick binary hybrid feature
-    features['has_stick'] = 1.0 if stick_available else 0.0
+    # has_stick binary hybrid feature (v6 only; v5 compute_hybrid_features_v5 ignores it)
+    if has_stick_detected is not None:
+        features['has_stick'] = 1.0 if has_stick_detected else 0.0
+    else:
+        features['has_stick'] = 1.0 if stick_available else 0.0
 
     return features
 
@@ -356,6 +416,36 @@ def compute_hybrid_features_v6(raw_features, templates, viewpoint, class_name):
         else:
             hybrid_features.append(0.0)
     
+    return np.array(hybrid_features, dtype=np.float32)
+
+
+def compute_hybrid_features_v5(raw_features, templates, viewpoint, class_name):
+    """
+    V5 hybrid feature vector: 46-dim = 33 Gaussian + 13 signed direction.
+    Iterates V5_ALL_FEATURES in fixed order so model input is deterministic.
+    Signed features: pass-through normalized (not Gaussian).
+    Gaussian features: similarity against template mean/std.
+    Missing template entry: 0.0 fallback.
+    """
+    key = f"{viewpoint}_{class_name}"
+    template = templates.get(key, {})
+    hybrid_features = []
+
+    for feat_name in V5_ALL_FEATURES:
+        feat_value = raw_features.get(feat_name, 0.0)
+
+        if feat_name in DIRECTION_FEATURES_V5:
+            normalized = feat_value / DIRECTION_FEATURES_V5[feat_name]
+            normalized = np.clip(normalized, -3.0, 3.0)
+            hybrid_features.append(normalized)
+        elif feat_name in template and isinstance(template[feat_name], dict):
+            mean = template[feat_name]['mean']
+            std = template[feat_name]['std']
+            similarity = gaussian_similarity(feat_value, mean, std)
+            hybrid_features.append(similarity)
+        else:
+            hybrid_features.append(0.0)
+
     return np.array(hybrid_features, dtype=np.float32)
 
 

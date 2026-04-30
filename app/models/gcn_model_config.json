@@ -4,11 +4,11 @@
     "viewpoint": "front",
     "models": {
         "front": {
-            "path": "app/models/hybrid_gcn_v6_front.pth",
-            "accuracy": 0.746,
+            "path": "app/models/hybrid_gcn_v5_front.pth",
+            "accuracy": 0.777,
             "confidence_threshold": 0.70,
-            "description": "Front viewpoint specialist (V6 masked pooling, 49 hybrid features)",
-            "model_version": "v6"
+            "description": "Front viewpoint specialist (V5 global_mean_pool, 46 hybrid features)",
+            "model_version": "v5"
         },
         "left": {
             "path": "app/models/hybrid_gcn_v2_left.pth",

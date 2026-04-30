@@ -1,5 +1,6 @@
 import os
 import sys
+import math
 import cv2
 import numpy as np
 
@@ -81,11 +82,12 @@ class PoseAnalyzer:
         # FIX #6: Separate static-mode Pose for snapshot classification.
         # FIX #6: Static pose detector for lessons/single images (prevents temporal bleed)
         # static_image_mode=True disables temporal smoothing - critical for lesson accuracy
-        # Video-mode (above) applies inter-frame temporal smoothing which bleeds
-        # ghost keypoints when processing independent snapshot frames.
+        # model_complexity=2 required for V5 front model (trained on complexity=2 data);
+        # using complexity=1 causes feature distribution mismatch and drops accuracy.
+        # Video-mode (self.pose) keeps complexity=1 for live camera performance.
         self.pose_static = self.mp_pose.Pose(
             static_image_mode=True,    #each frame treated independently
-            model_complexity=1,
+            model_complexity=2,        #match V5 training data (critical for accuracy)
             min_detection_confidence=0.5,
             min_tracking_confidence=0.5,
             smooth_landmarks=False
@@ -249,10 +251,12 @@ class PoseAnalyzer:
                 grip_conf = kpts[0][2].item()
                 tip_conf = kpts[1][2].item()
                 
-                # Confidence filtering - grip can be lower (often occluded by hand)
-                # Tip must be high confidence, grip can be lower but not zero
-                min_grip_conf = 0.01  # Very low - just needs to be detected
-                min_tip_conf = 0.3    # Higher - tip should be visible
+                # NOTE: confidence filtering relaxed to match deployment_package
+                # behavior. The v5 model was trained/validated with raw YOLO
+                # outputs (no confidence thresholding). Filtering at inference
+                # causes distribution mismatch on partially-occluded sticks.
+                min_grip_conf = 0.0
+                min_tip_conf = 0.0
                 if grip_conf < min_grip_conf or tip_conf < min_tip_conf:
                     if debug:
                         print(f"[DEBUG-STICK] low confidence - grip: {grip_conf:.2f} (min: {min_grip_conf}), tip: {tip_conf:.2f} (min: {min_tip_conf})")
@@ -284,7 +288,7 @@ class PoseAnalyzer:
                 traceback.print_exc()
             return None, None
 
-    def process_frame(self, frame, skip_ml_inference=False, skip_stick_detection=False, mode='snapshot', target_pose=None, stick_hand_config=None, skip_threshold=False):
+    def process_frame(self, frame, skip_ml_inference=False, skip_stick_detection=False, mode='snapshot', target_pose=None, stick_hand_config=None, skip_threshold=False, use_crop=False):
         """
         Process frame with mode-based detection strategy:
         
@@ -397,56 +401,53 @@ class PoseAnalyzer:
                 'stick_foreshortened': False
             } for p in tracked_persons 
         }
+
+        # --- MEDIAPIPE SETUP ---
+        pose_instance = self.pose_static if mode == 'snapshot' else self.pose
+        if mode == 'snapshot':
+            assert pose_instance is self.pose_static, "Must use pose_static for snapshot mode"
+        
+        # Full-frame MediaPipe (run once, shared across all persons when not cropping)
+        h_frame, w_frame = frame.shape[:2]
+        full_frame_pose_results = None
+        has_full_frame_pose = False
+        if not use_crop:
+            frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            full_frame_pose_results = pose_instance.process(frame_rgb)
+            has_full_frame_pose = full_frame_pose_results and full_frame_pose_results.pose_landmarks
+            print(f"[DEBUG-MediaPipe] Full-frame pose: detected={has_full_frame_pose}")
         
         for person in tracked_persons:
             person_id = int(person[4])
             x1, y1, x2, y2 = map(int, person[:4])
-            
-            x1_pad = max(0, x1 - 20)
-            y1_pad = max(0, y1 - 20)
-            x2_pad = min(w, x2 + 20)
-            y2_pad = min(h, y2 + 20)
-            
-            person_crop = frame[y1_pad:y2_pad, x1_pad:x2_pad]
-            
-            if person_crop.size == 0:
-                continue
             
             # MODE-BASED POSE PROCESSING
             # Countdown: Use YOLO-Pose for fast visualization (17 keypoints)
             # Snapshot: Use MediaPipe for accurate classification (33 keypoints)
             
             if mode == 'countdown' and self.yolo_pose is not None:
-                # YOLO-Pose for fast countdown visualization
                 try:
-                    yolo_results = self.yolo_pose(person_crop, verbose=False)
+                    yolo_results = self.yolo_pose(frame, verbose=False)
                     if len(yolo_results) > 0 and yolo_results[0].keypoints is not None:
                         keypoints = yolo_results[0].keypoints.data
                         if len(keypoints) > 0:
-                            kpts = keypoints[0].cpu().numpy()  # 17 COCO keypoints
-                            
-                            # Convert YOLO-Pose keypoints to absolute coordinates
-                            offset_x = x1_pad
-                            offset_y = y1_pad
+                            kpts = keypoints[0].cpu().numpy()
                             abs_landmarks = []
                             for kpt in kpts:
                                 x, y, conf = kpt
                                 if conf > 0.5:
-                                    abs_x = int(x) + offset_x
-                                    abs_y = int(y) + offset_y
-                                    abs_x = max(0, min(abs_x, frame.shape[1] - 1))
-                                    abs_y = max(0, min(abs_y, frame.shape[0] - 1))
-                                    abs_landmarks.append((abs_x, abs_y, 0.0))  # No z-coordinate
+                                    abs_x = int(x)
+                                    abs_y = int(y)
+                                    abs_x = max(0, min(abs_x, w_frame - 1))
+                                    abs_y = max(0, min(abs_y, h_frame - 1))
+                                    abs_landmarks.append((abs_x, abs_y, 0.0))
                                 else:
-                                    abs_landmarks.append((-1, -1, 0.0))  # Invalid keypoint (sentinel)
+                                    abs_landmarks.append((-1, -1, 0.0))
                             
-                            
-                            # Store limited data for countdown (no classification)
                             analysis_results[person_id]['landmarks_absolute'] = abs_landmarks
-                            analysis_results[person_id]['landmarks_2d'] = None  # Not needed for countdown
-                            analysis_results[person_id]['live_angles'] = None  # Skip angle calculation
+                            analysis_results[person_id]['landmarks_2d'] = None
+                            analysis_results[person_id]['live_angles'] = None
                             
-                            # Run stick detection for countdown mode
                             if not skip_stick_detection:
                                 stick_endpoints, stick_bbox = self._detect_stick_with_yolo(frame, (x1, y1, x2, y2), debug=self.debug_stick)
                                 if stick_endpoints:
@@ -454,365 +455,184 @@ class PoseAnalyzer:
                                     grip_pt, tip_pt = stick_endpoints
                                     analysis_results[person_id]['stick_keypoints'] = {'grip': grip_pt, 'tip': tip_pt}
                             
-                            # Skip MediaPipe processing (YOLO-Pose already provided landmarks)
                             continue
                 except Exception as e:
                     print(f"[warning] YOLO-Pose failed, falling back to MediaPipe: {e}")
                     # Fall through to MediaPipe
             
-            # MediaPipe for snapshot or fallback
-            # MODE SELECTION: snapshot=pose_static (lessons/accuracy, no temporal smoothing)
-            #                  other=pose (live/video, temporal smoothing OK)
-            # FIX #6: Use static-mode Pose for snapshots to avoid temporal bleed
-            pose_instance = self.pose_static if mode == 'snapshot' else self.pose
+            # --- MediaPipe pose detection: full-frame vs per-person crop ---
+            pose_results = None
+            landmarks_2d = None
+            abs_landmarks = []
             
-            # Verify correct pose instance selected (D5 - runtime assertion)
-            if mode == 'snapshot':
-                assert pose_instance is self.pose_static, "Must use pose_static for snapshot mode"
+            if use_crop:
+                # PER-PERSON CROP PATH (restored for A/B testing)
+                x1_pad = max(0, x1 - 20)
+                y1_pad = max(0, y1 - 20)
+                x2_pad = min(w_frame, x2 + 20)
+                y2_pad = min(h_frame, y2 + 20)
+                person_crop = frame[y1_pad:y2_pad, x1_pad:x2_pad]
+                if person_crop.size == 0:
+                    continue
+                crop_rgb = cv2.cvtColor(person_crop, cv2.COLOR_BGR2RGB)
+                pose_results = pose_instance.process(crop_rgb)
+                if pose_results and pose_results.pose_landmarks:
+                    landmarks_2d = pose_results.pose_landmarks.landmark
+                    crop_h, crop_w = person_crop.shape[:2]
+                    for lm in landmarks_2d:
+                        if hasattr(lm, 'visibility') and lm.visibility < 0.3:
+                            abs_landmarks.append((-1, -1, 0.0))
+                            continue
+                        abs_x = int(lm.x * crop_w) + x1_pad
+                        abs_y = int(lm.y * crop_h) + y1_pad
+                        abs_x = max(0, min(abs_x, w_frame - 1))
+                        abs_y = max(0, min(abs_y, h_frame - 1))
+                        abs_landmarks.append((abs_x, abs_y, lm.z))
+            else:
+                # FULL-FRAME PATH (default, matches v5 training)
+                if has_full_frame_pose:
+                    pose_results = full_frame_pose_results
+                    landmarks_2d = pose_results.pose_landmarks.landmark
+                    for lm in landmarks_2d:
+                        if hasattr(lm, 'visibility') and lm.visibility < 0.3:
+                            abs_landmarks.append((-1, -1, 0.0))
+                            continue
+                        abs_x = int(lm.x * w_frame)
+                        abs_y = int(lm.y * h_frame)
+                        abs_x = max(0, min(abs_x, w_frame - 1))
+                        abs_y = max(0, min(abs_y, h_frame - 1))
+                        abs_landmarks.append((abs_x, abs_y, lm.z))
             
-            crop_rgb = cv2.cvtColor(person_crop, cv2.COLOR_BGR2RGB)
-            pose_results = pose_instance.process(crop_rgb)
+            if not (pose_results and landmarks_2d):
+                continue
             
-            print(f"[DEBUG-MediaPipe] Person {person_id}: pose_results={pose_results is not None}, has_landmarks={pose_results.pose_landmarks is not None if pose_results else False}")
+            live_angles = self._calculate_all_angles_3d(pose_results.pose_world_landmarks)
+            if not live_angles and hasattr(pose_results, 'pose_landmarks') and pose_results.pose_landmarks:
+                live_angles = self._calculate_all_angles_2d_dict(pose_results.pose_landmarks.landmark)
             
-            if pose_results.pose_landmarks:
-                print(f"[DEBUG-MediaPipe] Person {person_id}: ✓ Landmarks detected (33 keypoints)")
-                landmarks_2d = pose_results.pose_landmarks.landmark
-                
-                offset_x = x1_pad
-                offset_y = y1_pad
+            # Build pose_kpts_array normalized to full frame
+            if use_crop:
                 crop_h, crop_w = person_crop.shape[:2]
-                
-                #calculate absolute landmarks in frame coordinates
-                #landmarks are relative to the crop, so we add the offset
-                abs_landmarks = []
-                for lm in landmarks_2d:
-                    # Skip low-visibility landmarks (mark as invalid)
-                    if hasattr(lm, 'visibility') and lm.visibility < 0.3:
-                        abs_landmarks.append((-1, -1, 0.0))
-                        continue
-                    #convert normalized coordinates to crop space, then to frame space
-                    abs_x = int(lm.x * crop_w) + offset_x
-                    abs_y = int(lm.y * crop_h) + offset_y
-                    #clamp to ensure they stay within reasonable bounds
-                    abs_x = max(0, min(abs_x, frame.shape[1] - 1))
-                    abs_y = max(0, min(abs_y, frame.shape[0] - 1))
-                    abs_landmarks.append((abs_x, abs_y, lm.z))
-                
-                live_angles = self._calculate_all_angles_3d(pose_results.pose_world_landmarks)
-                
-                # Fallback to 2D angles if 3D failed (ensures we always have feedback data)
-                if not live_angles and hasattr(pose_results, 'pose_landmarks') and pose_results.pose_landmarks:
-                    live_angles = self._calculate_all_angles_2d_dict(pose_results.pose_landmarks.landmark)
-
-                predicted_class, confidence = "N/A", 0.0
-                
-                #optimization: skip ml inference if requested (use cached from last frame)
-                if not skip_ml_inference:
-                    print(f"[DEBUG-GCN] skip_ml_inference=False, checking GCN...")
-                    print(f"[DEBUG-GCN] is_gcn={getattr(self, 'is_gcn', False)}, gcn_engine exists={self.gcn_engine is not None}")
-                    if getattr(self, 'is_gcn', False) and self.gcn_engine:
-                        print(f"[DEBUG-GCN] ✓ Entering GCN inference block...")
-                        try:
-                            # 1. Prepare keypoints for GCN (normalized to FULL FRAME coordinates)
-                            # MediaPipe outputs coordinates normalized to the crop (person_crop).
-                            # Training expects coordinates normalized to full frame dimensions.
-                            # Scale from crop-space to frame-space to match training.
-                            landmarks_2d = pose_results.pose_landmarks.landmark
-                            h_frame, w_frame = frame.shape[:2]
-                            crop_h, crop_w = person_crop.shape[:2]
-                            pose_kpts_array = np.array([
-                                [lm.x * crop_w / w_frame, 
-                                 lm.y * crop_h / h_frame, 
-                                 lm.z, 
-                                 lm.visibility] 
-                                for lm in landmarks_2d
-                            ])
+                pose_kpts_array = np.array([
+                    [lm.x * crop_w / w_frame,
+                     lm.y * crop_h / h_frame,
+                     lm.z,
+                     lm.visibility]
+                    for lm in landmarks_2d
+                ])
+            else:
+                pose_kpts_array = np.array([
+                    [lm.x, lm.y, lm.z, lm.visibility]
+                    for lm in landmarks_2d
+                ])
+            
+            predicted_class, confidence = "N/A", 0.0
+            
+            if not skip_ml_inference:
+                print(f"[DEBUG-GCN] skip_ml_inference=False, checking GCN...")
+                print(f"[DEBUG-GCN] is_gcn={getattr(self, 'is_gcn', False)}, gcn_engine exists={self.gcn_engine is not None}")
+                if getattr(self, 'is_gcn', False) and self.gcn_engine:
+                    path_label = "CROP" if use_crop else "FULL-FRAME"
+                    print(f"[DEBUG-GCN] ✓ Entering GCN inference block (V5 {path_label})...")
+                    try:
+                        # 1. Stick detection
+                        if not skip_stick_detection:
+                            is_snapshot = (mode == 'snapshot')
+                            print(f"[DEBUG-STICK-CALL] Calling _detect_stick_with_yolo for person {person_id}...")
+                            stick_res, _ = self._detect_stick_with_yolo(frame, (x1, y1, x2, y2), skip_smoothing=is_snapshot, debug=True)
+                            print(f"[DEBUG-STICK-CALL] Result: {stick_res}")
                             
-                            # 2. Get stick keypoints if detected
-                            if not skip_stick_detection:
-                                is_snapshot = (mode == 'snapshot')
-                                print(f"[DEBUG-STICK-CALL] Calling _detect_stick_with_yolo for person {person_id}...")
-                                stick_res, _ = self._detect_stick_with_yolo(frame, (x1, y1, x2, y2), skip_smoothing=is_snapshot, debug=True)
-                                print(f"[DEBUG-STICK-CALL] Result: {stick_res}")
-                                
-                                # Validate stick result against wrists
-                                if stick_res and landmarks_2d:
-                                    grip_pt, _ = stick_res
-                                    
-                                    # Get wrist coordinates
-                                    mp_lm = self.mp_pose.PoseLandmark
-                                    l_wrist = landmarks_2d[mp_lm.LEFT_WRIST]
-                                    r_wrist = landmarks_2d[mp_lm.RIGHT_WRIST]
-                                    
-                                    lx = int(l_wrist.x * crop_w) + offset_x
-                                    ly = int(l_wrist.y * crop_h) + offset_y
-                                    rx = int(r_wrist.x * crop_w) + offset_x
-                                    ry = int(r_wrist.y * crop_h) + offset_y
-                                    
-                                    # Check distances
-                                    l_dist = np.hypot(grip_pt[0] - lx, grip_pt[1] - ly)
-                                    r_dist = np.hypot(grip_pt[0] - rx, grip_pt[1] - ry)
-                                    
-                                    # Threshold: 25% of frame width is generous but excludes disparate objects
-                                    valid_thresh = frame.shape[1] * 0.25
-                                    
-                                    if min(l_dist, r_dist) > valid_thresh:
-                                        print(f"[DEBUG-STICK] Discarding stick - too far from wrists. Grip: {grip_pt}, Wrists: {(lx, ly)}, {(rx, ry)}")
-                                        stick_res = None
+                            # Validate stick result against wrists
+                            if stick_res and landmarks_2d:
+                                grip_pt, _ = stick_res
+                                mp_lm = self.mp_pose.PoseLandmark
+                                l_wrist = landmarks_2d[mp_lm.LEFT_WRIST]
+                                r_wrist = landmarks_2d[mp_lm.RIGHT_WRIST]
+                                if use_crop:
+                                    lx = int(l_wrist.x * crop_w) + x1_pad
+                                    ly = int(l_wrist.y * crop_h) + y1_pad
+                                    rx = int(r_wrist.x * crop_w) + x1_pad
+                                    ry = int(r_wrist.y * crop_h) + y1_pad
+                                else:
+                                    lx = int(l_wrist.x * w_frame)
+                                    ly = int(l_wrist.y * h_frame)
+                                    rx = int(r_wrist.x * w_frame)
+                                    ry = int(r_wrist.y * h_frame)
+                                l_dist = np.hypot(grip_pt[0] - lx, grip_pt[1] - ly)
+                                r_dist = np.hypot(grip_pt[0] - rx, grip_pt[1] - ry)
+                                valid_thresh = w_frame * 0.25
+                                if min(l_dist, r_dist) > valid_thresh:
+                                    print(f"[DEBUG-STICK] Discarding stick - too far from wrists. Grip: {grip_pt}, Wrists: {(lx, ly)}, {(rx, ry)}")
+                                    stick_res = None
                                 
                                 self._cached_stick_results[person_id] = (stick_res, _)
+                        else:
+                            stick_res, _ = self._cached_stick_results.get(person_id, (None, None))
+                        
+                        if stick_res:
+                            if self.disable_stick_correction:
+                                if self.debug_stick:
+                                    print(f"[DEBUG-PROCESS] Using RAW YOLO stick detection (correction disabled)")
+                                stick_endpoints = stick_res
+                                analysis_results[person_id]['stick_endpoints'] = stick_endpoints
                             else:
-                                stick_res, _ = self._cached_stick_results.get(person_id, (None, None))
+                                stick_endpoints = stick_res
+                                analysis_results[person_id]['stick_endpoints'] = stick_endpoints
+                                grip_pt, tip_pt = stick_endpoints
+                                analysis_results[person_id]['stick_keypoints'] = {'grip': grip_pt, 'tip': tip_pt}
                                 
-                            # --- IMPLEMENTING ADAPTIVE STICK CORRECTION (METHOD 4 REFINED) ---
-                            # Logic:
-                            # 1. Direction: Pure YOLO (Grip -> Tip) for stability.
-                            # 2. Length: Adaptive based on Viewpoint (Front vs Side).
-                            #    - Front (Wide Shoulders): Use Torso Scale (avoids foreshortening).
-                            #    - Side (Narrow Shoulders): Use Forearm Scale (accurate 3D length).
-                            
-                            if stick_res:
-                                # Option to use raw YOLO detection without correction
-                                if self.disable_stick_correction:
-                                    if self.debug_stick:
-                                        print(f"[DEBUG-PROCESS] Using RAW YOLO stick detection (correction disabled)")
-                                    stick_endpoints = stick_res
-                                    analysis_results[person_id]['stick_endpoints'] = stick_endpoints
-                                else:
-                                    stick_endpoints = stick_res # Initialize with raw detection
-                                    stick_foreshortened = False  # Initialize flag
-                                    try:
-                                        # 1. Get raw endpoints
-                                        grip_pt, tip_pt = stick_endpoints
-                                        
-                                        # 1.5. Detect foreshortening (stick pointing at camera)
-                                        # Calculate raw YOLO stick length before any corrections
-                                        raw_yolo_length = np.linalg.norm(np.array(tip_pt) - np.array(grip_pt))
-                                        FORESHORTEN_THRESHOLD_PX = 40  # If YOLO detects stick < 40px, likely pointing at camera
-                                        stick_foreshortened = (raw_yolo_length < FORESHORTEN_THRESHOLD_PX)
-                                        
-                                        if self.debug_stick and stick_foreshortened:
-                                            print(f"[DEBUG-PROCESS] FORESHORTENED STICK DETECTED: Raw YOLO length = {raw_yolo_length:.1f}px (threshold={FORESHORTEN_THRESHOLD_PX}px) - Will use raw endpoints")
-                                        
-                                        # 2. Get Landmark Coordinates (Absolute and World)
-                                        mp_lm = self.mp_pose.PoseLandmark
-                                        
-                                        def get_abs_point(idx):
-                                            lm = landmarks_2d[idx]
-                                            return np.array([int(lm.x * crop_w) + offset_x, int(lm.y * crop_h) + offset_y])
-
-                                        l_sh = get_abs_point(mp_lm.LEFT_SHOULDER)
-                                        r_sh = get_abs_point(mp_lm.RIGHT_SHOULDER)
-                                        l_hip = get_abs_point(mp_lm.LEFT_HIP)
-                                        r_hip = get_abs_point(mp_lm.RIGHT_HIP)
-                                        
-                                        # 3. Determine Viewpoint for Stick Scaling
-                                        use_gcn_viewpoint = False
-                                        if hasattr(self, 'gcn_engine') and self.gcn_engine is not None:
-                                            gcn_vp = self.gcn_engine.current_viewpoint
-                                            is_front_view = (gcn_vp == 'front')
-                                            use_gcn_viewpoint = True
-                                            if self.debug_stick:
-                                                print(f"[DEBUG-PROCESS] Using GCN viewpoint: {gcn_vp} → {'FRONT' if is_front_view else 'SIDE'} stick scaling")
-                                        else:
-                                            shoulder_width = np.linalg.norm(l_sh - r_sh)
-                                            torso_len_l = np.linalg.norm(l_sh - l_hip)
-                                            torso_len_r = np.linalg.norm(r_sh - r_hip)
-                                            avg_torso_px = (torso_len_l + torso_len_r) / 2.0
-                                            view_ratio = shoulder_width / (avg_torso_px + 1e-6)
-                                            is_front_view = (view_ratio > 0.45)
-                                            if self.debug_stick:
-                                                print(f"[DEBUG-PROCESS] Auto-detected viewpoint: ratio={view_ratio:.2f} → {'FRONT' if is_front_view else 'SIDE'}")
-                                        
-                                        # Calculate torso length for scaling
-                                        torso_len_l = np.linalg.norm(l_sh - l_hip)
-                                        torso_len_r = np.linalg.norm(r_sh - r_hip)
-                                        avg_torso_px = (torso_len_l + torso_len_r) / 2.0
-                                        
-                                        # 4. Calculate Stick Length based on Viewpoint
-                                        r_wrist = get_abs_point(mp_lm.RIGHT_WRIST)
-                                        l_wrist = get_abs_point(mp_lm.LEFT_WRIST)
-                                        grip_arr = np.array(grip_pt)
-                                        
-                                        dist_r = np.linalg.norm(grip_arr - r_wrist)
-                                        dist_l = np.linalg.norm(grip_arr - l_wrist)
-                                        
-                                        # SWAP FIX: Disabled for all viewpoints — trusts YOLO's grip/tip assignment directly.
-                                        tip_arr = np.array(tip_pt)
-                                        # if is_front_view:
-                                        #     dist_tip_r = np.linalg.norm(tip_arr - r_wrist)
-                                        #     dist_tip_l = np.linalg.norm(tip_arr - l_wrist)
-                                        #     min_grip_dist = min(dist_r, dist_l)
-                                        #     min_tip_dist = min(dist_tip_r, dist_tip_l)
-                                        #     if min_tip_dist < min_grip_dist:
-                                        #         if self.debug_stick:
-                                        #             print(f"[DEBUG-PROCESS] Swapping Grip/Tip: Tip ({min_tip_dist:.1f}) closer than Grip ({min_grip_dist:.1f})")
-                                        #         grip_pt, tip_pt = tip_pt, grip_pt
-                                        #         grip_arr = np.array(grip_pt)
-                                        #         tip_arr = np.array(tip_pt)
-                                        #         dist_r = np.linalg.norm(grip_arr - r_wrist)
-                                        #         dist_l = np.linalg.norm(grip_arr - l_wrist)
-                                        
-                                        # Camera mirrors the viewer:
-                                        # - Front view: viewer's right hand appears on LEFT of frame → use LEFT pinky
-                                        # - Left view:  viewer faces left, stick hand (right) appears on LEFT of frame → use LEFT pinky
-                                        # Per-pose hand override from config still takes priority.
-                                        current_viewpoint = getattr(self.gcn_engine, 'current_viewpoint', None) if hasattr(self, 'gcn_engine') and self.gcn_engine else None
-
-                                        # Check for per-pose hand override from config
-                                        use_right_hand = False
-                                        hand_override_applied = False
-                                        if target_pose and stick_hand_config and target_pose in stick_hand_config:
-                                            pose_config = stick_hand_config[target_pose]
-                                            if 'hand' in pose_config:
-                                                use_right_hand = (pose_config['hand'].lower() == 'right')
-                                                hand_override_applied = True
-                                                if self.debug_stick:
-                                                    print(f"[DEBUG-PROCESS] Per-pose hand override: {target_pose} → {pose_config['hand']} hand")
-
-                                        # Default: force RIGHT side for front and left viewpoints
-                                        # MediaPipe landmarks are subject-relative (not camera-relative)
-                                        # Person's RIGHT hand = stick hand in both front and left views
-                                        if hand_override_applied:
-                                            use_right_side = use_right_hand
-                                        else:
-                                            use_right_side = True
-                                        
-                                        if use_right_side:
-                                            wrist_pt_2d = r_wrist
-                                            elbow_pt_2d = get_abs_point(mp_lm.RIGHT_ELBOW)
-                                            w_idx, e_idx = mp_lm.RIGHT_WRIST, mp_lm.RIGHT_ELBOW
-                                        else:
-                                            wrist_pt_2d = l_wrist
-                                            elbow_pt_2d = get_abs_point(mp_lm.LEFT_ELBOW)
-                                            w_idx, e_idx = mp_lm.LEFT_WRIST, mp_lm.LEFT_ELBOW
-
-                                        arm_vec_2d = wrist_pt_2d - elbow_pt_2d
-
-                                        # UNIFIED ANCHOR: Use YOLO to determine which hand holds the stick,
-                                        # then snap grip to that hand's MediaPipe pinky (anatomically accurate).
-                                        # Direction is always pure YOLO (grip→tip). Length is shin-based for all views.
-                                        dist_r = np.linalg.norm(grip_arr - r_wrist)
-                                        dist_l = np.linalg.norm(grip_arr - l_wrist)
-
-                                        if dist_r < dist_l:
-                                            pinky_pt_2d = get_abs_point(mp_lm.RIGHT_PINKY)
-                                            hand_label = "RIGHT"
-                                        else:
-                                            pinky_pt_2d = get_abs_point(mp_lm.LEFT_PINKY)
-                                            hand_label = "LEFT"
-
-                                        grip_pt = (int(pinky_pt_2d[0]), int(pinky_pt_2d[1]))
-                                        grip_arr = np.array(grip_pt)
-
-                                        if self.debug_stick:
-                                            print(f"[DEBUG-PROCESS] UNIFIED anchor: {hand_label} pinky @ {grip_pt} (YOLO grip was closer to {hand_label} wrist by {abs(dist_r - dist_l):.1f}px)")
-
-                                        # LENGTH: Shin-based (knee→ankle 3D ratio) — same for all viewpoints
-                                        world_lms = pose_results.pose_world_landmarks.landmark
-                                        lk_3d = np.array([world_lms[mp_lm.LEFT_KNEE].x,  world_lms[mp_lm.LEFT_KNEE].y,  world_lms[mp_lm.LEFT_KNEE].z])
-                                        la_3d = np.array([world_lms[mp_lm.LEFT_ANKLE].x, world_lms[mp_lm.LEFT_ANKLE].y, world_lms[mp_lm.LEFT_ANKLE].z])
-                                        rk_3d = np.array([world_lms[mp_lm.RIGHT_KNEE].x,  world_lms[mp_lm.RIGHT_KNEE].y,  world_lms[mp_lm.RIGHT_KNEE].z])
-                                        ra_3d = np.array([world_lms[mp_lm.RIGHT_ANKLE].x, world_lms[mp_lm.RIGHT_ANKLE].y, world_lms[mp_lm.RIGHT_ANKLE].z])
-                                        shin_m = (np.linalg.norm(lk_3d - la_3d) + np.linalg.norm(rk_3d - ra_3d)) / 2.0
-                                        lk_px = get_abs_point(mp_lm.LEFT_KNEE);  la_px = get_abs_point(mp_lm.LEFT_ANKLE)
-                                        rk_px = get_abs_point(mp_lm.RIGHT_KNEE); ra_px = get_abs_point(mp_lm.RIGHT_ANKLE)
-                                        shin_px = (np.linalg.norm(lk_px - la_px) + np.linalg.norm(rk_px - ra_px)) / 2.0
-                                        stick_len_m = 0.71
-                                        stick_px = shin_px * (stick_len_m / (shin_m + 1e-6))
-                                        if stick_px > avg_torso_px * 2.5:
-                                            if self.debug_stick:
-                                                print(f"[DEBUG-PROCESS] Clamping excessive stick length: {stick_px:.1f} -> {avg_torso_px * 2.5:.1f}")
-                                            stick_px = avg_torso_px * 2.5
-
-                                        # DIRECTION: Pure YOLO (grip→tip) — same for all viewpoints
-                                        yolo_vec = tip_arr - grip_arr
-                                        y_len = np.linalg.norm(yolo_vec)
-                                        if y_len > 1e-6:
-                                            direction_unit = yolo_vec / y_len
-                                            new_tip = grip_arr + (direction_unit * stick_px)
-                                            corrected_tip = (int(new_tip[0]), int(new_tip[1]))
-                                            stick_endpoints = (grip_pt, corrected_tip)
-
-                                        if self.debug_stick:
-                                            print(f"[DEBUG-PROCESS] Stick Corrected (UNIFIED): Px={stick_px:.0f}, shin-based length, YOLO direction, {hand_label} pinky anchor")
-                                        # End of correction logic (only runs if not foreshortened)
-
-                                    except Exception as e:
-                                        print(f"[warning] Stick correction failed, using raw: {e}")
-                                        # Fallback to raw endpoints
-                                        stick_foreshortened = False  # Reset flag on error
-                                        pass
-
-                                    # If stick is foreshortened, use raw YOLO endpoints (don't apply corrections)
-                                    if stick_foreshortened:
-                                        stick_endpoints = stick_res  # Revert to original raw detection
-                                        if self.debug_stick:
-                                            print(f"[DEBUG-PROCESS] Using RAW endpoints for foreshortened stick")
-
-                                    # Save FINAL endpoints (Corrected or Raw) and foreshortening flag
-                                    analysis_results[person_id]['stick_endpoints'] = stick_endpoints
-                                    analysis_results[person_id]['stick_foreshortened'] = stick_foreshortened
+                                dx = tip_pt[0] - grip_pt[0]
+                                dy = tip_pt[1] - grip_pt[1]
+                                angle = math.degrees(math.atan2(-dy, dx))
+                                analysis_results[person_id]['grip_angle'] = angle
                                 
-                                # For keypoint array creation (used by both raw and corrected paths)
-                                # Normalize stick to FULL FRAME (matching training pipeline)
-                                # Training normalizes stick coordinates to full frame dimensions (w, h).
-                                # Stick endpoints are absolute frame pixels, so divide by frame dimensions.
-                                grip_pt, tip_pt = analysis_results[person_id]['stick_endpoints']
-                                h_frame, w_frame = frame.shape[:2]
-                                stick_kpts_array = np.array([
-                                    [grip_pt[0] / w_frame, grip_pt[1] / h_frame, 0.0, 1.0],
-                                    [tip_pt[0] / w_frame,  tip_pt[1] / h_frame, 0.0, 1.0]
-                                ]).astype(np.float32)
-                            else:
-                                # FIX #2: Flag stick as unavailable with NaN sentinels
-                                # instead of (0.5, 0.5) center-of-frame which corrupts
-                                # all stick features with bogus values.
-                                stick_kpts_array = np.array([
-                                    [np.nan, np.nan, 0.0, 0.0],
-                                    [np.nan, np.nan, 0.0, 0.0]
-                                ]).astype(np.float32)
-                            
-                            # 3. Use modular helper for global features (joint angles, heights, etc.)
-                            # Using pose_kpts_array (normalized MediaPipe coordinates)
-                            g_feat = compute_global_features_from_kpts(pose_kpts_array, stick_kpts_array)
-                            
-                            # 4. Run GCN Prediction
-                            predicted_class, confidence, _ = self.gcn_engine.predict(
-                                pose_kpts_array, stick_kpts_array, g_feat,
-                                skip_threshold=skip_threshold
-                            )
-                            self._cached_prediction = (predicted_class, confidence)
-                            self._cached_g_feat = g_feat  # cache for skipped frames
-                        except Exception as e:
-                            print(f"[error] GCN inference failed: {e}")
-                            pass
-                    # Legacy inference removed
-                    pass
-                else:
-                    #use cached prediction from previous frame
-                    if hasattr(self, '_cached_prediction'):
-                        predicted_class, confidence = self._cached_prediction
-                    # Restore cached global features for skipped frames
-                    if hasattr(self, '_cached_g_feat'):
-                        g_feat = self._cached_g_feat
-                
-                
-                # Stick detection already handled during GCN inference above (line 401)
-                # The corrected stick endpoints are already in analysis_results[person_id]['stick_endpoints']
-                
-                analysis_results[person_id]['predicted_class'] = predicted_class
-                analysis_results[person_id]['confidence'] = confidence
-                analysis_results[person_id]['global_features'] = g_feat if 'g_feat' in locals() else None
-                analysis_results[person_id]['pose_kpts_array'] = pose_kpts_array if 'pose_kpts_array' in locals() else None
-                analysis_results[person_id]['stick_kpts_array'] = stick_kpts_array if 'stick_kpts_array' in locals() else None
-                analysis_results[person_id]['live_angles'] = live_angles
-                analysis_results[person_id]['landmarks'] = pose_results.pose_landmarks
-                analysis_results[person_id]['world_landmarks'] = pose_results.pose_world_landmarks
-                analysis_results[person_id]['landmarks_absolute'] = abs_landmarks
-                analysis_results[person_id]['frame_w'] = w_frame if 'w_frame' in locals() else frame.shape[1]
-                analysis_results[person_id]['frame_h'] = h_frame if 'h_frame' in locals() else frame.shape[0]
+                                raw_yolo_length = np.linalg.norm(np.array(tip_pt) - np.array(grip_pt))
+                                FORESHORTEN_THRESHOLD_PX = 40
+                                analysis_results[person_id]['stick_foreshortened'] = raw_yolo_length < FORESHORTEN_THRESHOLD_PX
+                        else:
+                            stick_endpoints = None
+                            analysis_results[person_id]['stick_endpoints'] = None
+                            analysis_results[person_id]['stick_keypoints'] = None
+                            analysis_results[person_id]['grip_angle'] = None
+                            analysis_results[person_id]['stick_foreshortened'] = False
+                        
+                        # 2. Build stick keypoints array (full-frame normalized)
+                        if stick_endpoints:
+                            grip_pt, tip_pt = stick_endpoints
+                            stick_kpts = np.array([
+                                [grip_pt[0] / w_frame, grip_pt[1] / h_frame, 0.0, 1.0],
+                                [tip_pt[0] / w_frame, tip_pt[1] / h_frame, 0.0, 1.0]
+                            ])
+                            has_stick_detected = True
+                        else:
+                            stick_kpts = np.array([[0.0, 0.0, 0.0, 0.0], [0.0, 0.0, 0.0, 0.0]])
+                            has_stick_detected = False
+                        
+                        # 3. Compute global features
+                        from app.models.gcn.feature_extraction import compute_global_features_from_kpts
+                        global_features = compute_global_features_from_kpts(
+                            pose_kpts_array, stick_kpts,
+                            world_landmarks=pose_results.pose_world_landmarks.landmark if pose_results.pose_world_landmarks else None,
+                            has_stick_detected=has_stick_detected,
+                            version='v5'
+                        )
+                        
+                        # 4. Run GCN classification
+                        predicted_class, confidence, _ = self.gcn_engine.predict(
+                            pose_kpts_array, stick_kpts, global_features
+                        )
+                        print(f"[DEBUG-GCN] V5 result: {predicted_class} @ {confidence:.4f}")
+                    except Exception as e:
+                        print(f"[ERROR] GCN inference failed (V5): {e}")
+                        import traceback
+                        traceback.print_exc()
+            
+            # Store results
+            analysis_results[person_id]['landmarks'] = pose_kpts_array
+            analysis_results[person_id]['landmarks_absolute'] = abs_landmarks
+            analysis_results[person_id]['live_angles'] = live_angles
+            analysis_results[person_id]['predicted_class'] = predicted_class
+            analysis_results[person_id]['confidence'] = confidence
 
         return list(analysis_results.values())
 

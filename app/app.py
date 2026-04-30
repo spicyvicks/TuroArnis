@@ -1969,8 +1969,8 @@ class KioskApp(ctk.CTk):
             zone_frame = frame[:, x_start:x_end].copy()
             
             # Set viewpoint for this user's GCN model
-            # Direct mapping: models are trained with mirror augmentation
-            # Models are now mirror-invariant and work with mirrored frames directly
+            # V5 model trained on non-mirrored (third-person) data
+            # self.current_frame is raw (non-mirrored) to match training orientation
             vp_raw = self.user_configs[i]['viewpoint']
             viewpoint_ui = vp_raw.get() if hasattr(vp_raw, 'get') else vp_raw
             viewpoint = VIEWPOINT_MAPPING.get(viewpoint_ui, viewpoint_ui).lower()
@@ -1978,11 +1978,7 @@ class KioskApp(ctk.CTk):
             if self.pose_analyzer.gcn_engine:
                 self.pose_analyzer.gcn_engine.set_viewpoint(viewpoint)
             
-            # NEW: Models are mirror-invariant, trained with 66% flipped augmentation
-            # Send mirrored display frame directly to model without preprocessing
-            # No flip needed - models understand poses regardless of mirror orientation
-            
-            # Analyze the zone with mirrored frame directly
+            # Analyze the zone with raw (non-mirrored) frame
             try:
                 # MODE: snapshot - Lesson pose classification (no temporal smoothing)
                 # Use MediaPipe for accurate snapshot classification
@@ -2000,15 +1996,6 @@ class KioskApp(ctk.CTk):
                         # if predicted_class.lower() == 'neutral_stance':
                         #     predicted_class = 'No Technique Detected'
                         #     confidence = 0.0
-                        
-                        # MIRROR FIX: The camera frame is cv2.flip(frame, 1) for
-                        # display, so the GCN sees a mirrored pose — left↔right
-                        # are swapped vs. the user's real-world body.  Swap the
-                        # class label so it matches the user's actual perspective.
-                        if 'left_' in predicted_class:
-                            predicted_class = predicted_class.replace('left_', 'right_')
-                        elif 'right_' in predicted_class:
-                            predicted_class = predicted_class.replace('right_', 'left_')
                         
                         zone_results[i] = {
                             'predicted_class': predicted_class,
@@ -2090,52 +2077,56 @@ class KioskApp(ctk.CTk):
             return
 
         # Frame Capture
+        # RAW frame (non-mirrored) → stored in self.current_frame for inference
+        # DISPLAY frame (mirrored) → shown to user for familiar mirror-like UX
+        raw_frame = None
         if self.app_state == AppState.FEEDBACK and self.frozen_frame is not None:
-            frame = self.frozen_frame.copy()
+            raw_frame = self.frozen_frame.copy()
         elif self.app_state == AppState.PAUSED and self.frozen_frame is not None:
              if self.cap:
-                ret, frame = self.cap.read()
-                frame = cv2.flip(frame, 1) if ret else np.zeros((720,1280,3),np.uint8)
+                ret, raw_frame = self.cap.read()
+                if not ret: raw_frame = np.zeros((720,1280,3),np.uint8)
         else:
             if DEMO_MODE:
                 # TEMPORARY: Demo mode - load image instead of camera
                 # 9:16 portrait aspect ratio with black letterbox bars
                 try:
-                    frame = cv2.imread(DEMO_IMAGE_PATH)
-                    if frame is None:
+                    raw_frame = cv2.imread(DEMO_IMAGE_PATH)
+                    if raw_frame is None:
                         print(f"[DEMO] Could not load image: {DEMO_IMAGE_PATH}")
-                        frame = np.zeros((720, 1280, 3), np.uint8)
+                        raw_frame = np.zeros((720, 1280, 3), np.uint8)
                     else:
                         # Portrait 9:16 aspect ratio
                         target_height = 720
                         target_width = int(target_height * 9 / 16)  # 9:16 ratio = 405px width
-                        frame = cv2.resize(frame, (target_width, target_height))
+                        raw_frame = cv2.resize(raw_frame, (target_width, target_height))
                         # Pad with black bars to reach 1280x720, centered
                         padded = np.zeros((720, 1280, 3), dtype=np.uint8)
                         x_offset = (1280 - target_width) // 2
-                        padded[:, x_offset:x_offset+target_width] = frame
-                        frame = padded
+                        padded[:, x_offset:x_offset+target_width] = raw_frame
+                        raw_frame = padded
                         # Store x_offset for stick positioning
                         self._demo_x_offset = x_offset
                         self._demo_frame_width = target_width
-                    frame = cv2.flip(frame, 1)
-                    self.current_frame = frame.copy()
+                    self.current_frame = raw_frame.copy()
                     self._demo_image_name = os.path.basename(DEMO_IMAGE_PATH)
                 except Exception as e:
                     print(f"[DEMO] Error loading image: {e}")
-                    frame = np.zeros((720, 1280, 3), np.uint8)
-                    self.current_frame = frame.copy()
+                    raw_frame = np.zeros((720, 1280, 3), np.uint8)
+                    self.current_frame = raw_frame.copy()
                     self._demo_x_offset = 0
                     self._demo_frame_width = 1280
             elif self.cap:
-                ret, frame = self.cap.read()
-                if not ret: frame = np.zeros((720, 1280, 3), np.uint8)
-                else: frame = cv2.flip(frame, 1)
-                # Store CLEAN frame before any drawing operations
-                self.current_frame = frame.copy()
+                ret, raw_frame = self.cap.read()
+                if not ret: raw_frame = np.zeros((720, 1280, 3), np.uint8)
+                # Store RAW frame for inference (non-mirrored to match training)
+                self.current_frame = raw_frame.copy()
             else:
-                 frame = np.zeros((720, 1280, 3), np.uint8)
-                 self.current_frame = frame.copy()
+                 raw_frame = np.zeros((720, 1280, 3), np.uint8)
+                 self.current_frame = raw_frame.copy()
+
+        # Create display frame: mirror horizontally for familiar UX
+        frame = cv2.flip(raw_frame, 1) if raw_frame is not None else np.zeros((720, 1280, 3), np.uint8)
 
 
         # Draw Zoning

@@ -92,11 +92,11 @@ hiddenimports = [
     # --- GUI framework ---
     'customtkinter',  # Modern Tkinter UI
     
-    # --- Application GUI modules ---
+    # --- Application GUI modules (active only) ---
+    # EXCLUDED from build: app.gui.toast, loading_spinner, splash_screen,
+    # status_bar, multi_user_dialog, draftTuroArnis, TuroArnis_pyqt, TuroArnis_ttk
     'app.gui.results_window',
     'app.gui.user_dialog',
-    'app.gui.toast',
-    'app.gui.loading_spinner',
     
     # --- Computer vision pipeline ---
     'app.computer_vision.pose_analyzer',
@@ -152,6 +152,30 @@ for root, dirs, files in os.walk('app/models'):
         dest = os.path.dirname(filepath)
         model_datas.append((filepath, dest))
 
+# Build filtered deployment model datas: V5 weights only, exclude V6/V2
+# This saves ~10 MB by not bundling V6 model weights.
+# V6 model code (model_v6.py) is kept in hiddenimports for engine compatibility.
+deployment_model_datas = []
+for viewpoint in ['front', 'left', 'right']:
+    models_dir = f'app/deployment/{viewpoint}/models'
+    if os.path.isdir(models_dir):
+        for file in os.listdir(models_dir):
+            if file.endswith('.pth') and 'v5' in file.lower():
+                filepath = os.path.join(models_dir, file)
+                deployment_model_datas.append((filepath, models_dir))
+            elif file.endswith('.pth'):
+                print(f"EXCLUDING from build: {os.path.join(models_dir, file)} (V2/V6 weight)")
+
+# Build filtered deployment template datas: all JSON templates (small files)
+deployment_template_datas = []
+for viewpoint in ['front', 'left', 'right']:
+    templates_dir = f'app/deployment/{viewpoint}/templates'
+    if os.path.isdir(templates_dir):
+        for file in os.listdir(templates_dir):
+            if file.endswith('.json'):
+                filepath = os.path.join(templates_dir, file)
+                deployment_template_datas.append((filepath, templates_dir))
+
 datas = [
     # --- UI Assets ---
     # Contains: TA.ico (window icon), UI graphics, loading images
@@ -164,16 +188,13 @@ datas = [
     ('lesson/left_gif', 'lesson/left_gif'),
     ('lesson/right_gif', 'lesson/right_gif'),
     
-    # --- Per-Viewpoint Deployment Models (V5) ---
-    # Self-contained: each viewpoint has its own model + templates
-    ('app/deployment/front/models', 'app/deployment/front/models'),
-    ('app/deployment/front/templates', 'app/deployment/front/templates'),
-    ('app/deployment/left/models', 'app/deployment/left/models'),
-    ('app/deployment/left/templates', 'app/deployment/left/templates'),
-    ('app/deployment/right/models', 'app/deployment/right/models'),
-    ('app/deployment/right/templates', 'app/deployment/right/templates'),
+    # --- Per-Viewpoint Deployment (V5 models + all templates) ---
+    # V6 and V2 model weights are excluded to reduce installer size.
+    # The runtime uses V5 models per viewpoint_engine.py and gcn_model_config.json.
+    *deployment_model_datas,
+    *deployment_template_datas,
     
-    # --- App models (configs + source only, excluding legacy weights) ---
+    # --- App models (configs + source only, excluding legacy weights/backups) ---
     *model_datas,
     
     # --- YOLO base models ---
@@ -232,8 +253,17 @@ for package in packages:
 # =============================================================================
 # EXCLUSIONS (Build size optimization and error prevention)
 # =============================================================================
+# Core exclusions:
 # - torch_geometric.distributed: Causes RPC initialization errors at runtime
 # - app.eval_app, app.main_app: Not used in kiosk mode (app.py is entry point)
+#
+# Old GUI modules (not imported by app.py):
+# - draftTuroArnis, TuroArnis_pyqt, TuroArnis_ttk, splash_screen, status_bar,
+#   loading_spinner, toast, multi_user_dialog
+#
+# Test/backup modules (development only, not runtime):
+# - test_lesson_similarity, test_classification, test_similarity_visual,
+#   ab_test_logger, gcn_inference_backup, inference_v6
 # =============================================================================
 
 # Filter out torch_geometric.distributed to prevent RPC initialization errors
@@ -246,16 +276,13 @@ print(f"Total hiddenimports: {len(hiddenimports)}")
 # =============================================================================
 # ANALYSIS CONFIGURATION
 # =============================================================================
-# Entry point: app/app.py (Kiosk Mode - fullscreen, multi-user application)
-# 
+# Entry point: app/app.py (Kiosk mode - fullscreen, multi-user application)
+#
 # Path configuration:
 # - project_root: Allows absolute imports from project root
 # - app_dir: Allows imports relative to app/ directory
 #
-# Excludes:
-# - torch_geometric.distributed: Prevents RPC errors
-# - app.eval_app: Evaluation interface (separate entry point, not needed)
-# - app.main_app: Development GUI (windowed mode, not needed for kiosk)
+# Excludes: See EXCLUSIONS section above for rationale
 # =============================================================================
 
 a = Analysis(
@@ -267,7 +294,31 @@ a = Analysis(
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=['torch_geometric.distributed', 'app.eval_app', 'app.main_app'],
+    excludes=[
+        # --- Runtime error prevention ---
+        'torch_geometric.distributed',
+        # --- Unused entry points ---
+        'app.eval_app',
+        'app.main_app',
+        # --- Old GUI implementations (not imported by app.py) ---
+        'app.gui.draftTuroArnis',
+        'app.gui.TuroArnis_pyqt',
+        'app.gui.TuroArnis_ttk',
+        'app.gui.splash_screen',
+        'app.gui.status_bar',
+        'app.gui.loading_spinner',
+        'app.gui.toast',
+        'app.gui.multi_user_dialog',
+        # --- Test/development modules ---
+        'app.database.test_results_window',
+        'app.test_lesson_similarity',
+        'app.test_classification',
+        'app.test_similarity_visual',
+        'app.computer_vision.ab_test_logger',
+        'app.computer_vision.gcn_inference_backup_20260503',
+        'app.computer_vision.inference_v6',
+        'app.models.gcn.feature_extraction_v6',
+    ],
     noarchive=False,
 )
 

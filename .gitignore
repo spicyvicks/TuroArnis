@@ -237,7 +237,13 @@ dmypy.json              # MyPy daemon
 # !app/models/label_encoder.joblib     # Label encoder (small, required)
 # !TuroArnis.spec                      # Build specification (tracked)
 # !requirements.txt                    # Dependencies (tracked)
+# Generated test/training outputs (not needed in repo or build)
 test_images/
-dist/
 results/
+results_*/
+.similarity_results/
+similarity_results/
+
+# Build outputs
+dist/
 installer/

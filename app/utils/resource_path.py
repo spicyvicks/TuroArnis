@@ -36,7 +36,7 @@ def get_app_data_path(app_name='TuroArnis'):
         Absolute path to app data directory (created if doesn't exist)
     """
     if sys.platform == 'win32':
-        app_data = os.getenv('APPDATA')
+        app_data = os.getenv('LOCALAPPDATA') or os.getenv('APPDATA')
         if not app_data:
             app_data = os.path.expanduser('~')
     elif sys.platform == 'darwin':

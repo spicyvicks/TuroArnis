@@ -7,8 +7,25 @@ and collects data for comparison.
 
 import json
 import os
+import sys
 from datetime import datetime
 from typing import Optional, Dict, List
+
+# Use app data directory for logs so installed apps have write permissions
+try:
+    from app.utils.resource_path import get_app_data_path
+except ImportError:
+    # Standalone fallback when imported outside main package
+    def get_app_data_path(app_name='TuroArnis'):
+        if sys.platform == 'win32':
+            app_data = os.getenv('LOCALAPPDATA') or os.getenv('APPDATA')
+        elif sys.platform == 'darwin':
+            app_data = os.path.expanduser('~/Library/Application Support')
+        else:
+            app_data = os.path.expanduser('~/.local/share')
+        app_dir = os.path.join(app_data, app_name)
+        os.makedirs(app_dir, exist_ok=True)
+        return app_dir
 
 
 class ABTestLogger:
@@ -30,12 +47,10 @@ class ABTestLogger:
         Initialize A/B test logger.
         
         Args:
-            log_file: Path to JSON log file. Defaults to .planning/ab_test_results.json
+            log_file: Path to JSON log file. Defaults to AppData/TuroArnis/ab_test_results.json
         """
         if log_file is None:
-            # Store in .planning directory relative to project root
-            base_dir = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
-            log_file = os.path.join(base_dir, '.planning', 'ab_test_results.json')
+            log_file = os.path.join(get_app_data_path(), 'ab_test_results.json')
         
         self.results_file = log_file
         self.index_file = log_file.replace('.json', '_current_index.txt')

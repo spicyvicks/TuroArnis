@@ -56,6 +56,7 @@ print(f"App Dir: {app_dir}")
 # - app.gui.*: UI components (results, dialogs, toasts, spinner)
 # - app.computer_vision.*: CV pipeline components
 # - app.models.gcn.*: GCN model architecture and feature extraction
+# - app.deployment.*: Per-viewpoint model loaders and inference engines (V5)
 # - app.database.*: SQLite database management
 # - app.utils.*: Resource path resolution and device management
 # =============================================================================
@@ -105,8 +106,13 @@ hiddenimports = [
     
     # --- GCN model components ---
     'app.models.gcn.model_architecture',
+    'app.models.gcn.model_v5',
     'app.models.gcn.model_v6',
     'app.models.gcn.feature_extraction',
+    
+    # --- Per-viewpoint deployment engines (V5) ---
+    'app.deployment',
+    'app.deployment.viewpoint_engine',
     
     # --- Database and utilities ---
     'app.database.db_manager',
@@ -126,9 +132,25 @@ hiddenimports = [
 # Assets included:
 # - UI graphics and icons (app/assets/ including TA.ico)
 # - Instructional GIFs for all 12 techniques × 3 viewpoints
-# - GCN model weights (.pth files) and configuration
+# - GCN model weights (.pth files) and configuration (legacy + deployment)
+# - Per-viewpoint deployment models (app/deployment/ front/left/right)
 # - YOLO base models (person detection)
 # =============================================================================
+
+# Build filtered app/models datas: exclude legacy weights, backups, and __pycache__
+# Production only needs JSON configs and .py architecture files from this tree.
+model_datas = []
+for root, dirs, files in os.walk('app/models'):
+    # Skip __pycache__ and weights directories entirely
+    if '__pycache__' in root.split(os.sep) or os.path.basename(root) == 'weights':
+        continue
+    for file in files:
+        filepath = os.path.join(root, file)
+        # Skip legacy model weights, backups, and copies
+        if file.endswith('.pth') or file.endswith('.joblib') or 'backup' in file.lower() or 'copy' in file.lower():
+            continue
+        dest = os.path.dirname(filepath)
+        model_datas.append((filepath, dest))
 
 datas = [
     # --- UI Assets ---
@@ -137,21 +159,29 @@ datas = [
     
     # --- Instructional GIFs (36 total: 12 techniques × 3 viewpoints) ---
     # Crown, Left Chest, Left Elbow, Left Eye, Left Knee, Left Temple,
-    # Right Chest, Right Elbow, Right Eye, Right Knee, Right Temple, Solar Plexus
+    # Right Chest, Right Eye, Right Knee, Right Temple, Solar Plexus
     ('lesson/front_gif', 'lesson/front_gif'),
     ('lesson/left_gif', 'lesson/left_gif'),
     ('lesson/right_gif', 'lesson/right_gif'),
     
-    # --- ML Models and Configuration ---
-    # GCN models: hybrid_gcn_v2_front.pth, hybrid_gcn_v2_left.pth, hybrid_gcn_v2_right.pth
-    # Config: gcn_model_config.json, feature_templates.json
-    # YOLO stick detector: weights/best.pt
-    ('app/models', 'app/models'),
-    ('app/models/gcn_model_config.json', 'app/models'),
+    # --- Per-Viewpoint Deployment Models (V5) ---
+    # Self-contained: each viewpoint has its own model + templates
+    ('app/deployment/front/models', 'app/deployment/front/models'),
+    ('app/deployment/front/templates', 'app/deployment/front/templates'),
+    ('app/deployment/left/models', 'app/deployment/left/models'),
+    ('app/deployment/left/templates', 'app/deployment/left/templates'),
+    ('app/deployment/right/models', 'app/deployment/right/models'),
+    ('app/deployment/right/templates', 'app/deployment/right/templates'),
+    
+    # --- App models (configs + source only, excluding legacy weights) ---
+    *model_datas,
     
     # --- YOLO base models ---
     # yolov8n.pt: Person detection model (root level for easy access)
     ('yolov8n.pt', '.'),
+    
+    # --- Stick detector ---
+    ('deployment_package/weights', 'deployment_package/weights'),
 ]
 
 # =============================================================================

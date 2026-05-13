@@ -32,11 +32,25 @@ BUILD_DIR = "build"
 SPEC_FILE = "TuroArnis.spec"
 
 # Required model files (per TuroArnis.spec configuration)
+# Mixed v5/v6 per-viewpoint deployment models + legacy models + YOLO weights
 REQUIRED_MODELS = [
-    "app/models/hybrid_gcn_v2_front.pth",
+    # --- Per-viewpoint deployment models (V5) ---
+    "app/deployment/front/models/model_front_v5_deploy.pth",
+    "app/deployment/left/models/model_left_v5_mirrored.pth",
+    "app/deployment/right/models/model_right_v5_standard.pth",
+    # --- Per-viewpoint deployment models (V6) ---
+    "app/deployment/front/models/model_front_v6_standard.pth",
+    "app/deployment/left/models/model_left_v6_standard.pth",
+    "app/deployment/right/models/model_right_v6_standard.pth",
+    # --- Legacy model paths (backwards compatibility v5) ---
+    "app/models/hybrid_gcn_v5_front.pth",
     "app/models/hybrid_gcn_v2_left.pth",
     "app/models/hybrid_gcn_v2_right.pth",
-    "app/models/weights/best.pt",
+    # --- Legacy model paths (v6) ---
+    "app/models/hybrid_gcn_v6_front.pth",
+    "deployment_package/models/model_front_v6_deploy.pth",
+    # --- YOLO models ---
+    "deployment_package/weights/best.pt",
     "yolov8n.pt",
 ]
 
@@ -50,6 +64,16 @@ REQUIRED_GIF_DIRS = [
 # Required asset files
 REQUIRED_ASSETS = [
     "app/assets/TA.ico",
+]
+
+# Per-viewpoint deployment template files (V5 + V6)
+REQUIRED_DEPLOYMENT_TEMPLATES = [
+    "app/deployment/front/templates/feature_templates_v5.json",
+    "app/deployment/left/templates/feature_templates_v5.json",
+    "app/deployment/right/templates/feature_templates_v5.json",
+    "app/deployment/front/templates/feature_templates.json",
+    "app/deployment/left/templates/feature_templates.json",
+    "app/deployment/right/templates/feature_templates.json",
 ]
 
 
@@ -142,6 +166,23 @@ def check_assets():
             log(f"  [OK] {asset_path}", "INFO")
         else:
             log(f"  [MISSING] {asset_path}", "ERROR")
+            all_present = False
+    
+    return all_present
+
+
+def check_deployment_templates():
+    """Verify per-viewpoint deployment template files exist."""
+    log("Checking deployment templates (V5)...", "INFO")
+    all_present = True
+    
+    for template_path in REQUIRED_DEPLOYMENT_TEMPLATES:
+        path = Path(template_path)
+        if path.exists():
+            size_kb = path.stat().st_size / 1024
+            log(f"  [OK] {template_path} ({size_kb:.1f} KB)", "INFO")
+        else:
+            log(f"  [MISSING] {template_path}", "ERROR")
             all_present = False
     
     return all_present
@@ -338,6 +379,7 @@ def pre_flight_checks():
         ("PyInstaller", check_pyinstaller),
         ("Spec File", check_spec_file),
         ("Model Files", check_model_files),
+        ("Deployment Templates", check_deployment_templates),
         ("GIF Directories", check_gif_directories),
         ("UI Assets", check_assets),
     ]

@@ -34,7 +34,7 @@ from app.gui.results_window import ResultsWindow
 from app.gui.user_dialog import UserManagementDialog
 from app.computer_vision.pose_analyzer import PoseAnalyzer
 from app.computer_vision.feedback_analyzer import FeedbackAnalyzer
-from app.utils.resource_path import get_resource_path
+from app.utils.resource_path import get_resource_path, get_app_data_path
 
 # Fix for CTk DPI Scaling
 try:
@@ -266,8 +266,9 @@ class KioskApp(ctk.CTk):
         self.geometry(f"{SCREEN_WIDTH}x{SCREEN_HEIGHT}")
         self.attributes("-fullscreen", True)
         
-        # Database
-        self.db = DatabaseManager('turoarnis.db')
+        # Database (use app data directory so installed app has write permissions)
+        db_path = os.path.join(get_app_data_path(), 'turoarnis.db')
+        self.db = DatabaseManager(db_path)
         
         # Initialize Pose Analyzer with GCN
         try:
@@ -743,7 +744,7 @@ class KioskApp(ctk.CTk):
 
         self._lesson_gif_frames = {}   # viewpoint → list of (CTkImage, delay_ms)
         self._lesson_thumb_refs = {}   # keep refs to prevent GC
-        self._lesson_active_vp = technique["viewpoint"].lower()
+        self._lesson_active_vp = VIEWPOINT_MAPPING.get(technique["viewpoint"], technique["viewpoint"]).lower()
         self._lesson_gif_anim_id = None  # after() id for cancellation
         self._lesson_gif_frame_idx = 0
         self._lesson_technique_key = technique["key"]
@@ -1068,6 +1069,14 @@ class KioskApp(ctk.CTk):
         self.frozen_frame = None
         self.analysis_results = {}
         self.realtime_pose_cache.clear()  # drop stale per-zone pose data
+        # Reset similarity overlay caches so the new rep starts from scratch
+        self._last_similarity_calc = 0
+        if hasattr(self, '_cached_similarity'):
+            del self._cached_similarity
+        # Clear demo-mode overrides so they never leak into live camera
+        for attr in ('_demo_forced_feedback', '_demo_force_excellent', '_demo_image_name'):
+            if hasattr(self, attr):
+                delattr(self, attr)
         self.show_user_names = True
         self.names_shown_time = time.time()
         self.zoning_start_time = time.time()
@@ -1090,10 +1099,17 @@ class KioskApp(ctk.CTk):
             sid = self.db.start_session(user_id, target_pose=target_pose)
             config['session_id'] = sid
 
-        # Clear stale caches from any previous session so the GCN warm-up
-        # check doesn't see a leftover _cached_g_feat and so inference
+        # Clear stale caches from any previous session so inference
         # starts fresh without leaked predictions or stick history.
+        self.frozen_frame = None
+        self.analysis_results = {}
         self.realtime_pose_cache.clear()
+        self._last_similarity_calc = 0
+        if hasattr(self, '_cached_similarity'):
+            del self._cached_similarity
+        for attr in ('_demo_forced_feedback', '_demo_force_excellent', '_demo_image_name'):
+            if hasattr(self, attr):
+                delattr(self, attr)
         if self.pose_analyzer:
             self.pose_analyzer.clear_session_cache()
 
@@ -1111,9 +1127,9 @@ class KioskApp(ctk.CTk):
         if self.app_state != AppState.ZONING:
             return
         
-        # Check for 5-second timeout (was 10s)
+        # Check for 3-second timeout
         elapsed_time = time.time() - self.zoning_start_time
-        if elapsed_time > 5.0:
+        if elapsed_time > 3.0:
             # Timeout: start countdown anyway
             self.after(1000, self.start_countdown)
             return
@@ -1178,7 +1194,7 @@ class KioskApp(ctk.CTk):
     def start_countdown(self):
         self.app_state = AppState.COUNTDOWN
         self.clear_ui()
-        self.countdown_timer = 5
+        self.countdown_timer = 3
         
         cx, cy = self.screen_width//2, self.screen_height//2
         
@@ -1190,40 +1206,10 @@ class KioskApp(ctk.CTk):
         )
         self.canvas_items.append(self.countdown_circle_id)
         
-        self.count_text_id = self.video_canvas.create_text(cx, cy, text="5", font=("Inter", 200, "bold"), fill="white")
+        self.count_text_id = self.video_canvas.create_text(cx, cy, text="3", font=("Inter", 200, "bold"), fill="white")
         self.canvas_items.append(self.count_text_id)
 
-        # Kick off a background GCN warm-up inference so _cached_g_feat is
-        # set well before SNAP fires (5-second runway).
-        self._snapshot_defer_count = 0
-        threading.Thread(target=self._warmup_gcn, daemon=True).start()
-
         self.update_countdown()
-
-    def _warmup_gcn(self):
-        """Run one GCN inference in a background thread during countdown.
-
-        This populates _cached_g_feat / _cached_prediction so that
-        capture_snapshot() can proceed without deferring.
-        """
-        try:
-            frame = self.current_frame
-            if frame is None or self.pose_analyzer is None:
-                return
-            h, w = frame.shape[:2]
-            col_w = w // self.num_users
-            # Use zone 0; any zone is fine — we just need GCN to run once.
-            zone_frame = frame[:, 0:col_w].copy()
-            viewpoint = "front"  # default; exact viewpoint doesn't matter for warm-up
-            if self.pose_analyzer.gcn_engine:
-                self.pose_analyzer.gcn_engine.set_viewpoint(viewpoint)
-            # MODE: snapshot - GCN warm-up inference (single image, no temporal smoothing needed)
-            self.pose_analyzer.process_frame(
-                zone_frame, skip_ml_inference=False, mode='snapshot'
-            )
-            print("[GCN-WARMUP] Warm-up inference complete — GCN ready.")
-        except Exception as e:
-            print(f"[GCN-WARMUP] Warm-up inference failed (non-fatal): {e}")
 
 
     def update_countdown(self):
@@ -1241,38 +1227,24 @@ class KioskApp(ctk.CTk):
             self.capture_snapshot()
 
     def capture_snapshot(self):
-        # Guard: ensure GCN has completed at least one inference so global_features
-        # will be available for hybrid feedback corrections.
-        gcn_ready = (
-            self.pose_analyzer is not None
-            and hasattr(self.pose_analyzer, '_cached_g_feat')
-        )
-        if not gcn_ready:
-            # Cap deferrals at 2 (max 2 extra seconds) so we never hang forever.
-            defer_count = getattr(self, '_snapshot_defer_count', 0)
-            if defer_count < 2:
-                self._snapshot_defer_count = defer_count + 1
-                if self.count_text_id:
-                    try:
-                        self.video_canvas.itemconfig(self.count_text_id, text="...", font=("Inter", 80, "bold"))
-                        if self.countdown_circle_id:
-                            self.video_canvas.itemconfig(self.countdown_circle_id, fill=COLOR_WARNING)
-                    except Exception:
-                        pass
-                print(f"[SNAPSHOT] GCN not warmed up yet — deferring 1 s ({self._snapshot_defer_count}/2)")
-                self.after(1000, self.capture_snapshot)
-                return
-            else:
-                # Proceed anyway — don't let a slow warm-up block the user indefinitely.
-                print("[SNAPSHOT] Defer limit reached — proceeding without warm-up cache.")
-
+        """Freeze the frame and schedule async analysis for smoother UX."""
         self.app_state = AppState.SNAPSHOT
         if self.current_frame is not None:
             self.frozen_frame = self.current_frame.copy()
-            # Analyze poses in the snapshot
-            if self.pose_analyzer:
+        # Run analysis asynchronously so the UI can render the frozen frame immediately
+        self.after(50, self._run_snapshot_analysis)
+
+    def _run_snapshot_analysis(self):
+        """Run heavy GCN inference on the frozen frame (non-blocking)."""
+        if self.frozen_frame is not None and self.pose_analyzer:
+            try:
                 self.analysis_results = self.analyze_zones(self.frozen_frame)
-        self.after(800, self.show_feedback)
+            except Exception as e:
+                print(f"[SNAPSHOT] Analysis error: {e}")
+                import traceback
+                traceback.print_exc()
+        # Short delay to let the frozen frame be visible before showing feedback
+        self.after(200, self.show_feedback)
 
 
     def show_feedback(self):
@@ -1455,7 +1427,14 @@ class KioskApp(ctk.CTk):
                 hint_spacing = 30  # px between lines
                 # Start just above the stick indicator and grow upward
                 y_base = video_bottom - 60
-                for msg in reversed(feedback_messages):
+
+                # In lesson mode, prepend "To do: [Target Class]" as a header
+                display_messages = list(feedback_messages)
+                if self.current_lesson:
+                    target_display = self.current_lesson["key"].replace('_correct', '').replace('_', ' ').title()
+                    display_messages = [f"To do {target_display}"] + display_messages
+
+                for msg in reversed(display_messages):
                     self.add_text(cx, y_base, msg, font=hint_font, fill=hint_color)
                     y_base -= hint_spacing
             else:
@@ -2082,6 +2061,8 @@ class KioskApp(ctk.CTk):
         raw_frame = None
         if self.app_state == AppState.FEEDBACK and self.frozen_frame is not None:
             raw_frame = self.frozen_frame.copy()
+        elif self.app_state == AppState.SNAPSHOT and self.frozen_frame is not None:
+            raw_frame = self.frozen_frame.copy()
         elif self.app_state == AppState.PAUSED and self.frozen_frame is not None:
              if self.cap:
                 ret, raw_frame = self.cap.read()
@@ -2143,7 +2124,7 @@ class KioskApp(ctk.CTk):
             # Show positioning status during ZONING
             if self.app_state == AppState.ZONING:
                 elapsed = time.time() - self.zoning_start_time
-                remaining = max(0, 10 - int(elapsed))
+                remaining = max(0, 3 - int(elapsed))
                 
                 status_text = f"Position yourself properly - {remaining}s"
                 font = cv2.FONT_HERSHEY_SIMPLEX
@@ -2292,6 +2273,19 @@ class KioskApp(ctk.CTk):
                             result_copy['stick_endpoints'] = (
                                 (grip_pt[0] + x_start, grip_pt[1]),
                                 (tip_pt[0] + x_start, tip_pt[1])
+                            )
+
+                        # Mirror x-coordinates to match the mirrored display frame
+                        # (analysis runs on non-mirrored frame, but display is mirrored for UX)
+                        if 'landmarks_absolute' in result_copy and result_copy['landmarks_absolute']:
+                            result_copy['landmarks_absolute'] = [
+                                (w - 1 - x, y, z) for x, y, z in result_copy['landmarks_absolute']
+                            ]
+                        if 'stick_endpoints' in result_copy and result_copy['stick_endpoints']:
+                            grip_pt, tip_pt = result_copy['stick_endpoints']
+                            result_copy['stick_endpoints'] = (
+                                (w - 1 - grip_pt[0], grip_pt[1]),
+                                (w - 1 - tip_pt[0], tip_pt[1])
                             )
 
                         if wrong_technique:

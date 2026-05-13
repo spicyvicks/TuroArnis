@@ -2,10 +2,10 @@
 
 **Status**: ✅ Ready for integration  
 **Model**: `model_front_v6_deploy.pth`  
-**Accuracy**: 72.2% real-only test (front view)  
+**Accuracy**: 74.2% real-only test (front view)  
 **Classes**: 13 (including `neutral`)  
 **Date**: 2026-04-30  
-**Source**: `model_front_with_synthetic_2x_v6.pth` (epoch 39, val_acc 72.2%)
+**Source**: `model_front_with_synthetic_2x_v6.pth` (epoch 61, val_acc 74.7%)
 
 ---
 
@@ -132,20 +132,20 @@ print(result['top_k'])        # [{'class': '...', 'confidence': ...}, ...]
 
 | Class | Accuracy |
 |-------|----------|
-| crown | 53.3% |
-| left_chest | 13.3% |
-| left_elbow | 14.3% |
+| crown | 66.7% |
+| left_chest | 46.7% |
+| left_elbow | 7.1% |
 | left_eye | 100.0% |
-| left_knee | 78.6% |
-| left_temple | 94.7% |
+| left_knee | 71.4% |
+| left_temple | 84.2% |
 | right_chest | 69.2% |
-| right_elbow | 50.0% |
+| right_elbow | 58.3% |
 | right_eye | 84.6% |
 | right_knee | 77.8% |
 | right_temple | 93.3% |
 | solar_plexus | 85.7% |
 | neutral | 100.0% |
-| **Overall** | **72.2%** |
+| **Overall** | **74.2%** |
 
 ---
 

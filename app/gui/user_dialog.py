@@ -20,7 +20,7 @@ class UserManagementDialog:
         self.dialog.title("User Management")
         
         #set app icon for taskbar (use after() to ensure window is ready)
-        from app.utils.resource_path import get_resource_path
+        from app.utils.resource_path import get_resource_path, get_app_data_path
         icon_path = get_resource_path('app/assets/TA.ico')
         if os.path.exists(icon_path):
             #delay icon setting for ctktoplevel compatibility
@@ -414,7 +414,7 @@ if __name__ == "__main__":
     root = ttk.Window(themename="darkly")
     root.withdraw()
     
-    db = DatabaseManager('turoarnis.db')
+    db = DatabaseManager(os.path.join(get_app_data_path(), 'turoarnis.db'))
     user = show_user_dialog(root, db)
     
     if user:

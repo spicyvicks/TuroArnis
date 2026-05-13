@@ -284,7 +284,9 @@ debug=False  # to debug=True
 
 ### Creating Release Package
 
-After successful build, create a ZIP for distribution:
+After successful build, you have two distribution options:
+
+#### Option A: ZIP Archive (Manual Extract)
 
 ```powershell
 # Navigate to dist folder
@@ -297,13 +299,32 @@ Compress-Archive -Path TuroArnis -DestinationPath TuroArnis-v1.0.zip
 7z a -tzip TuroArnis-v1.0.zip TuroArnis
 ```
 
+#### Option B: Windows Installer (Recommended)
+
+Build a professional installer using Inno Setup:
+
+```powershell
+# 1. Ensure PyInstaller build is complete
+python scripts/build_app.py --clean
+
+# 2. Compile installer (requires Inno Setup 6.x installed)
+& "C:\Program Files (x86)\Inno Setup 6\iscc.exe" installer\TuroArnis.iss
+
+# Output: installer\Output\TuroArnis-1.0.0-setup.exe
+```
+
+See `installer/README.md` for full Inno Setup documentation.
+
 ### What to Distribute
 
-Include in release:
+**ZIP release:**
 - `TuroArnis/` folder (entire dist/TuroArnis/ directory)
 - `README.txt` (brief user instructions)
 
-Do NOT include:
+**Installer release:**
+- `TuroArnis-1.0.0-setup.exe` (single file)
+
+Do NOT include in either:
 - Source code
 - build/ directory
 - Model training data
@@ -315,27 +336,43 @@ Minimum requirements for running the packaged app:
 
 - **OS:** Windows 10 (64-bit) or Windows 11
 - **RAM:** 4GB minimum, 8GB recommended
-- **Storage:** 1GB free space
+- **Storage:** 1GB free space (4GB recommended for installer)
 - **Camera:** USB webcam (720p or higher recommended)
 - **Python:** NOT required (bundled in executable)
 
 ### Installation Instructions for End Users
 
+**ZIP Distribution:**
 1. Download `TuroArnis-v1.0.zip`
 2. Extract to any folder (e.g., `C:\Program Files\TuroArnis\`)
 3. Run `TuroArnis.exe`
-4. On first run:
-   - Database auto-creates in `%APPDATA%/TuroArnis/`
-   - Windows may show SmartScreen warning (click "More info" → "Run anyway")
+
+**Installer Distribution (Recommended):**
+1. Download `TuroArnis-1.0.0-setup.exe`
+2. Double-click and accept UAC prompt
+3. Follow wizard (Next → Next → Install)
+4. Optionally create Desktop shortcut
+5. Launch TuroArnis from Start Menu
+
+On first run:
+- Database auto-creates in `%LOCALAPPDATA%/TuroArnis/`
+- Windows may show SmartScreen warning (click "More info" → "Run anyway")
 
 ### Uninstallation
 
+**ZIP users:**
 1. Delete the `TuroArnis/` folder
 2. Optional: Remove user data:
    ```powershell
-   # Remove database and settings
+   Remove-Item -Recurse "$env:LOCALAPPDATA\TuroArnis"
    Remove-Item -Recurse "$env:APPDATA\TuroArnis"
    ```
+
+**Installer users:**
+1. Open **Add or Remove Programs**
+2. Find **TuroArnis**
+3. Click **Uninstall**
+4. User data is removed automatically
 
 ## Build Scripts Reference
 

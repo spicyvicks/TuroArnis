@@ -1,31 +1,31 @@
 {
-    "_comment": "Dynamic threshold: base_threshold * (1 - 0.3 * (1 - score_variance)), clamped [0.45, 0.70]. Confidence penalty 0.7x when stick missing. Template STDs clamped (20 deg angles, 0.1 coords).",
-    "model_type": "gcn_hybrid_v2",
+    "_comment": "V5 per-viewpoint deployment. All models are V5 with 6-dim nodes, 46 hybrid features, no node_mask.",
+    "model_type": "gcn_hybrid_v5",
     "viewpoint": "front",
     "models": {
         "front": {
-            "path": "app/models/hybrid_gcn_v5_front.pth",
-            "accuracy": 0.777,
+            "path": "app/deployment/front/models/model_front_v5_deploy.pth",
+            "accuracy": 0.72,
             "confidence_threshold": 0.70,
-            "description": "Front viewpoint specialist (V5 global_mean_pool, 46 hybrid features)",
+            "description": "Front viewpoint specialist (V5 deploy, 46 hybrid features)",
             "model_version": "v5"
         },
         "left": {
-            "path": "app/models/hybrid_gcn_v2_left.pth",
+            "path": "app/deployment/left/models/model_left_v5_mirrored.pth",
             "accuracy": 0.80,
             "confidence_threshold": 0.70,
-            "description": "Left side viewpoint specialist (V2 legacy)",
-            "model_version": "v2"
+            "description": "Left side viewpoint specialist (V5 mirrored, 46 hybrid features)",
+            "model_version": "v5"
         },
         "right": {
-            "path": "app/models/hybrid_gcn_v2_right.pth",
-            "accuracy": 0.80,
+            "path": "app/deployment/right/models/model_right_v5_standard.pth",
+            "accuracy": 0.69,
             "confidence_threshold": 0.70,
-            "description": "Right side viewpoint specialist (V2 legacy)",
-            "model_version": "v2"
+            "description": "Right side viewpoint specialist (V5 standard, 46 hybrid features)",
+            "model_version": "v5"
         }
     },
-    "feature_templates": "app/models/gcn/feature_templates.json",
+    "feature_templates": "app/deployment/front/templates/feature_templates_v5.json",
     "stick_detector": "deployment_package/weights/best.pt",
     "class_names": [
         "crown_thrust_correct",

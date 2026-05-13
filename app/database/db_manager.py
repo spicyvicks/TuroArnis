@@ -295,7 +295,9 @@ class DatabaseManager:
 
 #example usage
 if __name__ == "__main__":
-    db = DatabaseManager('turoarnis.db')
+    import os
+    from app.utils.resource_path import get_app_data_path
+    db = DatabaseManager(os.path.join(get_app_data_path(), 'turoarnis.db'))
     
     #create a test user
     user_id = db.create_user("Test User")

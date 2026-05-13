@@ -1,0 +1,145 @@
+{
+  "timestamp": "2026-05-05T04:30:30.170429",
+  "executable_path": "dist\\TuroArnis\\TuroArnis.exe",
+  "tests": {
+    "executable_exists": {
+      "status": "PASS",
+      "size_mb": 96.36,
+      "path": "dist\\TuroArnis\\TuroArnis.exe"
+    },
+    "internal_structure": {
+      "status": "PASS",
+      "file_count": 10558,
+      "dir_count": 1245,
+      "dll_count": 48,
+      "pyd_count": 457
+    },
+    "critical_files": {
+      "status": "FAIL",
+      "found": [
+        "executable",
+        "python_dll",
+        "torch_lib",
+        "mediapipe",
+        "opencv"
+      ],
+      "missing": [
+        "assets",
+        "models_dir",
+        "gcn_front_v5",
+        "gcn_front_v6",
+        "gcn_left_v5",
+        "gcn_right_v5",
+        "yolo_weights",
+        "yolo_base",
+        "deploy_front_v5",
+        "deploy_left_v5",
+        "deploy_right_v5",
+        "deploy_front_v6",
+        "deploy_left_v6",
+        "deploy_right_v6",
+        "gifs_front",
+        "gifs_left",
+        "gifs_right"
+      ],
+      "count": {
+        "found": 5,
+        "missing": 17
+      }
+    },
+    "resource_path": {
+      "status": "FAIL",
+      "tests": [
+        [
+          "app/assets/TA.ico",
+          "UI icon"
+        ],
+        [
+          "app/models/gcn_model_config.json",
+          "Model config"
+        ]
+      ]
+    },
+    "database_path": {
+      "status": "PASS"
+    },
+    "model_files": {
+      "status": "FAIL",
+      "models": [
+        [
+          "app/models/hybrid_gcn_v2_front.pth",
+          "Front GCN"
+        ],
+        [
+          "app/models/hybrid_gcn_v2_left.pth",
+          "Left GCN"
+        ],
+        [
+          "app/models/hybrid_gcn_v2_right.pth",
+          "Right GCN"
+        ]
+      ]
+    },
+    "build_size": {
+      "status": "WARN",
+      "total_mb": 3981.61,
+      "largest_files": [
+        [
+          697.64,
+          "_pywrap_tensorflow_internal.pyd"
+        ],
+        [
+          252.67,
+          "torch_cpu.dll"
+        ],
+        [
+          203.52,
+          "jax_common.dll"
+        ],
+        [
+          151.87,
+          "_polars_runtime.pyd"
+        ],
+        [
+          96.36,
+          "TuroArnis.exe"
+        ],
+        [
+          95.6,
+          "left_temple.gif"
+        ],
+        [
+          85.73,
+          "right_knee.gif"
+        ],
+        [
+          83.34,
+          "left_eye.gif"
+        ],
+        [
+          80.98,
+          "right_chest.gif"
+        ],
+        [
+          73.16,
+          "left_eye.gif"
+        ]
+      ]
+    },
+    "imports": {
+      "status": "SKIP",
+      "reason": "Python executable not found"
+    },
+    "smoke_test": {
+      "status": "PASS",
+      "runtime_seconds": 10,
+      "note": "Process terminated after timeout"
+    }
+  },
+  "summary": {
+    "total": 30,
+    "passed": 4,
+    "failed": 23,
+    "warnings": 3
+  }
+}

@@ -46,11 +46,18 @@ CRITICAL_FILES = {
     "opencv": "_internal/cv2/",
     "assets": "app/assets/TA.ico",
     "models_dir": "app/models/",
-    "gcn_front": "app/models/hybrid_gcn_v2_front.pth",
-    "gcn_left": "app/models/hybrid_gcn_v2_left.pth",
-    "gcn_right": "app/models/hybrid_gcn_v2_right.pth",
+    "gcn_front_v5": "app/models/hybrid_gcn_v5_front.pth",
+    "gcn_front_v6": "app/models/hybrid_gcn_v6_front.pth",
+    "gcn_left_v5": "app/models/hybrid_gcn_v2_left.pth",
+    "gcn_right_v5": "app/models/hybrid_gcn_v2_right.pth",
     "yolo_weights": "app/models/weights/best.pt",
     "yolo_base": "yolov8n.pt",
+    "deploy_front_v5": "app/deployment/front/models/model_front_v5_deploy.pth",
+    "deploy_left_v5": "app/deployment/left/models/model_left_v5_mirrored.pth",
+    "deploy_right_v5": "app/deployment/right/models/model_right_v5_standard.pth",
+    "deploy_front_v6": "app/deployment/front/models/model_front_v6_standard.pth",
+    "deploy_left_v6": "app/deployment/left/models/model_left_v6_standard.pth",
+    "deploy_right_v6": "app/deployment/right/models/model_right_v6_standard.pth",
     "gifs_front": "lesson/front_gif/",
     "gifs_left": "lesson/left_gif/",
     "gifs_right": "lesson/right_gif/",
@@ -90,7 +97,7 @@ class BuildTester:
     
     def log(self, message, level="INFO"):
         """Log test message."""
-        prefix = {"INFO": "[i]", "PASS": "[✓]", "FAIL": "[✗]", "WARN": "[!]"}.get(level, "[?]")
+        prefix = {"INFO": "[i]", "PASS": "[OK]", "FAIL": "[XX]", "WARN": "[!]"}.get(level, "[?]")
         print(f"{prefix} {message}")
         
         # Store in results
@@ -493,9 +500,9 @@ print(json.dumps(results))
         print("TEST SUMMARY")
         print("=" * 50)
         print(f"Total tests:   {s['total']}")
-        print(f"Passed:        {s['passed']} ✓")
-        print(f"Failed:        {s['failed']} ✗")
-        print(f"Warnings:      {s['warnings']} !")
+        print(f"Passed:        {s['passed']} OK")
+        print(f"Failed:        {s['failed']} FAIL")
+        print(f"Warnings:      {s['warnings']} WARN")
         print("=" * 50)
         
         if s['failed'] == 0:

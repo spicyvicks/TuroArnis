@@ -256,7 +256,40 @@ class FeedbackAnalyzer:
             'severity': severity
         })
         return feedback
-    
+
+    @staticmethod
+    def _joint_direction(joint_name: str, action: str) -> str:
+        """Convert joint + mechanical action into a natural directional cue.
+
+        Examples:
+            _joint_direction('right_elbow', 'extend') -> 'Straighten your right elbow'
+            _joint_direction('left_shoulder', 'flex')  -> 'Lower your left arm'
+        """
+        parts = joint_name.split('_')
+        side = parts[0].title() if parts else ''
+        region = parts[1] if len(parts) > 1 else joint_name
+
+        if region == 'elbow':
+            if action == 'extend':
+                return f"Straighten your {side} elbow"
+            return f"Bend your {side} elbow more"
+        elif region == 'shoulder':
+            if action == 'extend':
+                return f"Raise your {side} arm higher"
+            return f"Lower your {side} arm"
+        elif region == 'knee':
+            if action == 'extend':
+                return f"Straighten your {side} knee"
+            return f"Bend your {side} knee more"
+        elif region == 'hip':
+            if action == 'extend':
+                return f"Straighten your {side} hip"
+            return f"Bend your {side} hip more"
+        else:
+            # Fallback for unknown joints
+            verb = "Extend" if action == 'extend' else "Bend"
+            return f"{verb} your {joint_name.replace('_', ' ')}"
+
     def _analyze_grip_angle(self, result: Dict, target_form: str) -> Tuple[List[str], List[Dict]]:
         """Analyze grip angle and return error messages and corrections"""
         errors = []
@@ -276,7 +309,7 @@ class FeedbackAnalyzer:
         
         if grip_angle < target_min:
             diff = target_min - grip_angle
-            msg = f"Grip: Extend stick ({diff:.0f}° too narrow)"
+            msg = "Bring stick grip closer to you"
             errors.append(msg)
             corrections.append({
                 'joint': 'wrist', # Generalizing to wrist/hand
@@ -286,7 +319,7 @@ class FeedbackAnalyzer:
             })
         elif grip_angle > target_max:
             diff = grip_angle - target_max
-            msg = f"Grip: Retract stick ({diff:.0f}° too wide)"
+            msg = "Extend stick grip further out"
             errors.append(msg)
             corrections.append({
                 'joint': 'wrist',
@@ -294,7 +327,7 @@ class FeedbackAnalyzer:
                 'value': diff,
                 'message': msg
             })
-        
+
         return errors, corrections
     
     def _analyze_joint_angles(self, result: Dict, target_form: str) -> Tuple[List[str], List[Dict]]:
@@ -319,8 +352,8 @@ class FeedbackAnalyzer:
             
             if current_angle < target_min:
                 diff = target_min - current_angle
-                msg = f"{joint_name.replace('_', ' ').title()}: Extend ({diff:.0f}°)"
-                
+                msg = self._joint_direction(joint_name, 'extend')
+
                 if importance == 'high' or diff > 15:
                     errors.append(msg)
                     corrections.append({
@@ -329,11 +362,11 @@ class FeedbackAnalyzer:
                         'value': diff,
                         'message': msg
                     })
-            
+
             elif current_angle > target_max:
                 diff = current_angle - target_max
-                msg = f"{joint_name.replace('_', ' ').title()}: Bend ({diff:.0f}°)"
-                
+                msg = self._joint_direction(joint_name, 'flex')
+
                 if importance == 'high' or diff > 15:
                     errors.append(msg)
                     corrections.append({

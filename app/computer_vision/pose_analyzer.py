@@ -126,7 +126,7 @@ class PoseAnalyzer:
 
     def clear_session_cache(self):
         """Clear all per-session inference caches.
-        
+
         Call this at the start of every new repetition / session so that
         stale predictions, stick results and global features from the
         previous rep cannot bleed into the next one.
@@ -140,6 +140,14 @@ class PoseAnalyzer:
         self._cached_stick_results.clear()
         # Stick keypoint smoothing buffer
         self.stick_buffer.clear()
+        # Reset MediaPipe video-mode temporal state so the first frame of
+        # the new rep isn't biased by the last frame of the previous rep.
+        if hasattr(self, 'pose') and self.pose:
+            self.pose.reset()
+        # Reset ByteTrack mapping so IDs start fresh (prevents ghost tracks
+        # in multi-user mode when the same physical person appears in a
+        # different zone on the next rep).
+        self.reset_tracker()
         print("[PoseAnalyzer] Session cache cleared.")
 
     def _calculate_iou(self, boxA, boxB):

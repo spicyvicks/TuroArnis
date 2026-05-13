@@ -1,0 +1,45 @@
+{
+    "_comment": "Dynamic threshold: base_threshold * (1 - 0.3 * (1 - score_variance)), clamped [0.45, 0.70]. Confidence penalty 0.7x when stick missing. Template STDs clamped (20 deg angles, 0.1 coords).",
+    "model_type": "gcn_hybrid_v2",
+    "viewpoint": "front",
+    "models": {
+        "front": {
+            "path": "app/models/hybrid_gcn_v5_front.pth",
+            "accuracy": 0.777,
+            "confidence_threshold": 0.70,
+            "description": "Front viewpoint specialist (V5 global_mean_pool, 46 hybrid features)",
+            "model_version": "v5"
+        },
+        "left": {
+            "path": "app/models/hybrid_gcn_v2_left.pth",
+            "accuracy": 0.80,
+            "confidence_threshold": 0.70,
+            "description": "Left side viewpoint specialist (V2 legacy)",
+            "model_version": "v2"
+        },
+        "right": {
+            "path": "app/models/hybrid_gcn_v2_right.pth",
+            "accuracy": 0.80,
+            "confidence_threshold": 0.70,
+            "description": "Right side viewpoint specialist (V2 legacy)",
+            "model_version": "v2"
+        }
+    },
+    "feature_templates": "app/models/gcn/feature_templates.json",
+    "stick_detector": "deployment_package/weights/best.pt",
+    "class_names": [
+        "crown_thrust_correct",
+        "left_chest_thrust_correct",
+        "left_elbow_block_correct",
+        "left_eye_thrust_correct",
+        "left_knee_block_correct",
+        "left_temple_block_correct",
+        "right_chest_thrust_correct",
+        "right_elbow_block_correct",
+        "right_eye_thrust_correct",
+        "right_knee_block_correct",
+        "right_temple_block_correct",
+        "solar_plexus_thrust_correct",
+        "neutral"
+    ]
+}

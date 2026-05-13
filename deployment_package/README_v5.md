@@ -2,10 +2,10 @@
 
 **Status**: ✅ Ready for integration  
 **Model**: `model_front_v5_deploy.pth`  
-**Accuracy**: 76.3% real-only test (front view)  
+**Accuracy**: 74.7% real-only test (front view)  
 **Classes**: 13 (including `neutral`)  
 **Date**: 2026-04-30  
-**Source**: `model_front_with_synthetic_3x_v5.pth` (epoch 41, val_acc 62.1%)
+**Source**: `model_front_with_synthetic_3x_v5.pth` (epoch 22, val_acc 58.8%)
 
 ---
 
@@ -121,20 +121,20 @@ print(result['top_k'])        # [{'class': '...', 'confidence': ...}, ...]
 
 | Class | Accuracy |
 |-------|----------|
-| crown | 73.3% |
-| left_chest | 26.7% |
-| left_elbow | 21.4% |
-| left_eye | 100.0% |
-| left_knee | 78.6% |
-| left_temple | 84.2% |
-| right_chest | 76.9% |
-| right_elbow | 58.3% |
-| right_eye | 84.6% |
-| right_knee | 83.3% |
-| right_temple | 100.0% |
-| solar_plexus | 85.7% |
+| crown | 66.7% |
+| left_chest | 40.0% |
+| left_elbow | 7.1% |
+| left_eye | 88.2% |
+| left_knee | 71.4% |
+| left_temple | 94.7% |
+| right_chest | 92.3% |
+| right_elbow | 50.0% |
+| right_eye | 76.9% |
+| right_knee | 77.8% |
+| right_temple | 86.7% |
+| solar_plexus | 100.0% |
 | neutral | 100.0% |
-| **Overall** | **76.3%** |
+| **Overall** | **74.7%** |
 
 ---
 

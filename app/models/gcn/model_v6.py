@@ -113,24 +113,58 @@ class HybridGCN(nn.Module):
 
 
 def load_deployment_model(checkpoint_path, device='cpu'):
-    """Load deployment model from checkpoint."""
+    """Load deployment model from checkpoint.
+
+    Handles both full deployment checkpoints (with all config keys)
+    and raw training checkpoints that may be missing num_node_features,
+    num_hybrid_features, or num_classes. Missing values are inferred
+    directly from the state dict shapes.
+    """
     ckpt = torch.load(checkpoint_path, map_location=device)
-    config = ckpt['config']
-    
+    config = ckpt.get('config', {})
+    state = ckpt['model_state_dict']
+
+    # V6 defaults for training checkpoints missing deployment keys
+    defaults = {
+        'num_node_features': 7,
+        'num_hybrid_features': 49,
+        'num_classes': 13,
+        'hidden_dim': 128,
+        'num_layers': 3,
+        'dropout': 0.5,
+        'node_embed_dim': 8,
+    }
+
+    merged = {**defaults, **config}
+
+    # Infer from state dict when keys are still missing / mismatched
+    if 'hybrid_mlp.0.weight' in state:
+        merged['num_hybrid_features'] = state['hybrid_mlp.0.weight'].shape[1]
+        merged['hidden_dim'] = state['hybrid_mlp.0.weight'].shape[0] * 2
+    if 'fc2.weight' in state:
+        merged['num_classes'] = state['fc2.weight'].shape[0]
+    if 'convs.0.lin.weight' in state:
+        conv_in = state['convs.0.lin.weight'].shape[1]
+        merged['num_node_features'] = conv_in - merged.get('node_embed_dim', 8)
+    # Count conv layers from state dict keys
+    conv_keys = [k for k in state.keys() if k.startswith('convs.') and k.endswith('.lin.weight')]
+    if conv_keys:
+        merged['num_layers'] = len(conv_keys)
+
     model = HybridGCN(
-        num_node_features=config['num_node_features'],
-        num_hybrid_features=config['num_hybrid_features'],
-        num_classes=config['num_classes'],
-        hidden_dim=config['hidden_dim'],
-        num_layers=config['num_layers'],
-        dropout=config['dropout'],
-        node_embed_dim=config['node_embed_dim']
+        num_node_features=merged['num_node_features'],
+        num_hybrid_features=merged['num_hybrid_features'],
+        num_classes=merged['num_classes'],
+        hidden_dim=merged['hidden_dim'],
+        num_layers=merged['num_layers'],
+        dropout=merged['dropout'],
+        node_embed_dim=merged['node_embed_dim']
     ).to(device)
-    
-    model.load_state_dict(ckpt['model_state_dict'])
+
+    model.load_state_dict(state)
     model.eval()
-    
-    return model, ckpt.get('class_names', []), config
+
+    return model, ckpt.get('class_names', []), merged
 
 
 # Skeleton edges for Arnis pose graph
